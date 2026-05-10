@@ -1,0 +1,197 @@
+🚀 QUICK START - ScreamCase Premium TMA
+
+═══════════════════════════════════════════════════════════════
+
+📋 REQUIREMENTS
+✓ Node.js 16+ (https://nodejs.org/)
+✓ npm 8+
+✓ Windows/Mac/Linux
+
+═══════════════════════════════════════════════════════════════
+
+🎯 GET STARTED IN 30 SECONDS
+
+OPTION A: Windows (Easiest)
+─────────────────────────────
+1. Double-click: run_web.bat
+2. Wait for "npm install" to complete
+3. Browser opens automatically at http://localhost:5173
+4. Done! 🎉
+
+OPTION B: Mac/Linux
+───────────────────
+1. Open terminal in ScreamCase folder
+2. Run: npm install
+3. Run: npm run dev
+4. Go to: http://localhost:5173
+5. Done! 🎉
+
+═══════════════════════════════════════════════════════════════
+
+📱 WHAT YOU GET
+
+✨ Features:
+  • 10 Premium Cases with unique glow effects
+  • Smooth spin roulette animation (5 seconds)
+  • Liquid Glass design with frosted cards
+  • Telegram Mini App ready
+  • Mobile optimized (450px max-width)
+  • Fully responsive
+
+🎨 Design:
+  • Deep black background (#000000)
+  • Glass-morphism UI with blur effects
+  • White glowing accents
+  • Smooth Framer Motion animations
+  • Premium drop shadows and glows
+
+═══════════════════════════════════════════════════════════════
+
+🎮 HOW TO USE
+
+1. Click any case card to see details
+2. Click "BUY [PRICE] ⭐" to open roulette
+3. Watch the spin animation (5 seconds)
+4. Your item appears when roulette stops
+5. Click "Claim" to take your reward
+
+═══════════════════════════════════════════════════════════════
+
+📦 PROJECT FILES
+
+Essential files:
+  src/App.jsx                 - Main app component
+  src/components/CasesGrid.jsx - 10 cases display
+  src/components/SpinModal.jsx - Roulette animation
+  
+Config files:
+  package.json                - Dependencies
+  tailwind.config.js          - Styling config
+  vite.config.js             - Build config
+  index.html                  - HTML entry point
+  
+Launchers:
+  run_web.bat               - Start dev server (Windows)
+  run.bat                   - Run Python version (legacy)
+
+Docs:
+  README.md                 - Full documentation
+  IMPLEMENTATION_GUIDE.md   - Development guide
+
+═══════════════════════════════════════════════════════════════
+
+⚙️ CUSTOMIZE
+
+Add New Case:
+  Edit: src/components/CasesGrid.jsx
+  Find: CASES_DATA array
+  Add: { id: 11, name: "...", price: ..., ... }
+
+Change Animation Speed:
+  Edit: src/components/SpinModal.jsx
+  Find: transition={{ duration: 5, ... }}
+  Change: duration value (in seconds)
+
+Modify Colors:
+  Edit: tailwind.config.js
+  Find: theme.extend.colors
+  Update: color values
+
+═══════════════════════════════════════════════════════════════
+
+🌐 DEPLOY TO TELEGRAM
+
+1. Build for production:
+   npm run build
+
+2. Deploy to hosting (Vercel, Netlify, etc.)
+   
+3. Create Telegram bot:
+   • Talk to @BotFather in Telegram
+   • Create new bot
+   • Get token
+
+4. Add webview button:
+   InlineKeyboardButton(
+     "🎁 Open Cases",
+     web_app=WebAppInfo(url="https://your-domain.com")
+   )
+
+5. Test in Telegram! 🎉
+
+═══════════════════════════════════════════════════════════════
+
+❓ TROUBLESHOOTING
+
+Issue: Port 5173 already in use
+Fix:   npm run dev -- --port 3000
+
+Issue: npm install fails
+Fix:   npm cache clean --force && npm install
+
+Issue: Cases don't show image
+Fix:   Place CaseBlack.png in public/assets/
+      Or update path in CasesGrid.jsx
+
+Issue: Animations lag
+Fix:   Check browser dev tools
+      Try: npm run build && npm run preview
+
+═══════════════════════════════════════════════════════════════
+
+📊 CASE DATA
+
+ID | Name          | Price | Glow    | Badge
+─────────────────────────────────────────────
+1  | Promo Case    | 0 ⭐  | White   | Mid Float
+2  | Daily Case    | 123 ⭐| Red     | BS/WW
+3  | Snoop Case    | 667 ⭐| Green   | Random
+4  | Lover's Case  | 599 ⭐| White   | FN/MW
+5  | Hobo Case     | 199 ⭐| Brown   | Any
+6  | Risky Box     | 50 ⭐ | Yellow  | Extreme
+7  | Scam Box      | 111 ⭐| Gray    | Hidden
+8  | Ebati Case    | 444 ⭐| Blue    | FN/MW ✓
+9  | Pussy Case    | 222 ⭐| Pink    | Aesthetic
+10 | Skolnik Case  | 250 ⭐| Orange  | BS
+
+═══════════════════════════════════════════════════════════════
+
+🎯 NEXT STEPS
+
+□ Test all animations and interactions
+□ Add your CaseBlack.png asset
+□ Test on mobile device
+□ Build for production: npm run build
+□ Deploy to hosting service
+□ Create Telegram bot
+□ Add to Telegram
+□ Share with team! 🚀
+
+═══════════════════════════════════════════════════════════════
+
+✅ SUCCESS CHECKLIST
+
+Your app is ready when:
+□ npm run dev launches without errors
+□ Browser shows 10 cases in 2 columns
+□ Each case has a price button
+□ Hovering cards shows glow effect
+□ Clicking "BUY" opens spin modal
+□ Roulette animates smoothly for 5 seconds
+□ Spin stops with winning item in center
+□ Result shows with nice animations
+□ Mobile view is responsive (< 450px)
+□ No console errors
+
+═══════════════════════════════════════════════════════════════
+
+🎉 READY TO LAUNCH!
+
+Your premium Telegram Mini App is now ready.
+Just run run_web.bat and start building your community!
+
+Questions? Check README.md and IMPLEMENTATION_GUIDE.md
+
+Good luck! 🚀⭐
+
+═══════════════════════════════════════════════════════════════

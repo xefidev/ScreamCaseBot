@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'SF Pro Rounded';
+  src: url('/asset/Font/SF-Pro-Rounded-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SF Pro Rounded';
+  src: url('/asset/Font/SF-Pro-Rounded-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SF Pro Rounded';
+  src: url('/asset/Font/SF-Pro-Rounded-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SF Pro Text';
+  src: url('/asset/Font/SF-Pro-Text-Regular.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'SF Pro Text';
+  src: url('/asset/Font/SF-Pro-Text-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #000000;
+}
+
+h1, h2, h3, h4, h5, h6, .font-rounded {
+  font-family: 'SF Pro Rounded', sans-serif;
+}
+
+/* Perfect centering for interactive elements */
+button, input, .flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Liquid Glass Components */
+@layer components {
+  .glass-panel {
+    @apply backdrop-blur-2xl bg-white/5 border border-white/10 rounded-3xl shadow-glass;
+  }
+
+  .glass-panel-hover {
+    @apply hover:bg-white/8 hover:border-white/20 transition-all duration-300;
+  }
+
+  .glass-card {
+    @apply backdrop-blur-xl bg-white/[0.03] border border-white/[0.08] rounded-2xl;
+  }
+
+  .glass-button {
+    @apply backdrop-blur-xl bg-white/10 border border-white/20 rounded-xl flex items-center justify-center;
+    @apply hover:bg-white/15 hover:border-white/30 transition-all duration-200;
+    @apply active:bg-white/5 active:scale-[0.98];
+  }
+
+  .glass-input {
+    @apply bg-white/5 border border-white/20 rounded-xl text-white flex items-center justify-center;
+    @apply placeholder:text-white/30 focus:outline-none focus:border-white/40;
+    @apply transition-all duration-200;
+  }
+
+  .oil-slick-bg {
+    background: linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.02) 25%,
+      rgba(0, 0, 0, 0.1) 50%,
+      rgba(255, 255, 255, 0.03) 75%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+  }
+
+  .shimmer-bg {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Telegram Webview optimization */
+@media (max-width: 450px) {
+  html, body {
+    overflow-x: hidden;
+  }
+
+  @supports (padding: max(0px)) {
+    body {
+      padding-left: max(0, env(safe-area-inset-left));
+      padding-right: max(0, env(safe-area-inset-right));
+      padding-bottom: max(0, env(safe-area-inset-bottom));
+    }
+  }
+}
+
+/* Framer Motion fixes for Telegram */
+.framer-motion-fix {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
