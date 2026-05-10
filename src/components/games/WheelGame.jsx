@@ -44,6 +44,10 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
       return;
     }
 
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+
     setIsSpinning(true);
     setWinSegment(null);
 

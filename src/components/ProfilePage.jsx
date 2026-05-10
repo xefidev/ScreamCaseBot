@@ -5,6 +5,7 @@ const ADMIN_IDS = [7782281997, 5396975347];
 
 export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, spent, donor }) {
   const [user, setUser] = React.useState(null);
+  const [adminCommand, setAdminCommand] = React.useState('');
 
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
@@ -12,7 +13,14 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
     }
   }, []);
 
+  const triggerHaptic = () => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+  };
+
   const handleSell = (item) => {
+    triggerHaptic();
     if (!setInventory || !setBalance) return;
 
     setInventory(prev => prev.filter(i => i.id !== item.id));
@@ -30,13 +38,14 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
     }
     
     if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+      window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
     }
   };
 
   const handleCopyReferral = () => {
+    triggerHaptic();
     const userId = user?.id || 'guest';
-    const refLink = `https://t.me/screamcase_bot?start=${userId}`;
+    const refLink = `https://t.me/ScreamCase_bot?start=${userId}`;
     navigator.clipboard.writeText(refLink);
     if (window.Telegram?.WebApp) {
       window.Telegram.WebApp.showPopup({
@@ -45,6 +54,22 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
         buttons: [{ type: 'ok' }]
       });
       window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+    }
+  };
+
+  const handleAdminCommand = (e) => {
+    if (e.key === 'Enter') {
+      const match = adminCommand.match(/^\+\s*(\d+)$/);
+      if (match) {
+        const amount = parseInt(match[1]);
+        setBalance(prev => prev + amount);
+        triggerHaptic();
+        if (window.Telegram?.WebApp) {
+          window.Telegram.WebApp.showAlert(`Successfully added ${amount} stars!`);
+          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        }
+        setAdminCommand('');
+      }
     }
   };
 
@@ -144,13 +169,25 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
           </h4>
           
-          <div className="space-y-3 relative z-10">
+          <div className="space-y-4 relative z-10">
+            <div className="space-y-2">
+              <p className="text-green-400/50 text-[10px] uppercase font-bold px-1">Команда (+ [число])</p>
+              <input
+                type="text"
+                value={adminCommand}
+                onChange={(e) => setAdminCommand(e.target.value)}
+                onKeyDown={handleAdminCommand}
+                placeholder="+ 500"
+                className="w-full bg-black/40 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 font-bold font-rounded focus:outline-none focus:border-green-500/60 placeholder:text-green-900"
+              />
+            </div>
+
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={() => {
                 setBalance(prev => prev + 100);
-                console.log(`[ADMIN] Added 100 Stars to user ${user.id}`);
+                triggerHaptic();
                 if (window.Telegram?.WebApp) {
                   window.Telegram.WebApp.showAlert("Stars Added by Admin");
                   window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
@@ -158,7 +195,7 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
               }}
               className="w-full py-3 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2"
             >
-              +100 STARS (DEBUG)
+              БЫСТРЫЕ +100 STARS
               <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" />
             </motion.button>
           </div>

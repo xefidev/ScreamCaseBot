@@ -14,8 +14,9 @@ const TABS = {
 };
 
 const ADMIN_IDS = [7782281997, 5396975347];
-const CHANNEL_LINK = 'https://t.me/screamcases';
+const CHANNEL_LINK = 'https://t.me/ScreamCase';
 const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
+const PRODUCTION_URL = 'https://scream-case-bot.vercel.app';
 
 const TAB_COLORS = {
   cases: { bubble: 'rgba(255, 255, 255, 0.15)', icon: '#ffffff' },
@@ -38,10 +39,18 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  const triggerHaptic = () => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+  };
+
   // Initialize Telegram User
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
       const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
       const userData = tg.initDataUnsafe?.user;
       if (userData) {
         setUser(userData);
@@ -67,12 +76,13 @@ export default function App() {
   }, [isSubscribed]);
 
   const handleCheckSubscription = async () => {
+    triggerHaptic();
     // In a real app, you'd fetch this from your backend which uses the bot token
     // Example: const res = await fetch(`${API_URL}/check-sub?user_id=${user.id}`)
     
     // Simulate check
     if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showConfirm("Вы действительно подписаны на @screamcases?", (ok) => {
+      window.Telegram.WebApp.showConfirm("Вы действительно подписаны на @ScreamCase?", (ok) => {
         if (ok) {
           setIsSubscribed(true);
           localStorage.setItem('isSubscribed', 'true');
@@ -88,26 +98,28 @@ export default function App() {
   };
 
   const handleStarsPayment = () => {
+    triggerHaptic();
     if (window.Telegram?.WebApp) {
       // In a real app, you'd get an invoice link from your backend
       // const invoiceUrl = await getInvoice(starsAmount);
       // window.Telegram.WebApp.openInvoice(invoiceUrl, (status) => { ... });
       
       window.Telegram.WebApp.showAlert(`Инвойс на ${starsAmount} Stars будет создан ботом. Функция в разработке.`);
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
     }
   };
 
   const handleTonPayment = () => {
+    triggerHaptic();
     const amount = parseFloat(tonAmount) || 0;
-    const tonUrl = `ton://transfer/${TON_WALLET}?amount=${amount * 1000000000}`; // amount in nanotons
+    const nanotons = Math.floor(amount * 1000000000);
+    const tonUrl = `ton://transfer/${TON_WALLET}?amount=${nanotons}`; // amount in nanotons
     console.log(`[PAYMENT] Initiating TON transfer: ${amount} TON to ${TON_WALLET}`);
     
     if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showConfirm(`Вы собираетесь перевести ${amount} TON на кошелек ${TON_WALLET}. Продолжить?`, (ok) => {
+      window.Telegram.WebApp.showConfirm("Confirm transfer to wallet", (ok) => {
         if (ok) {
           window.Telegram.WebApp.openTelegramLink(tonUrl);
-          window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+          triggerHaptic();
         }
       });
     } else {
@@ -127,7 +139,7 @@ export default function App() {
 
   const [balance, setBalance] = useState(() => {
     const saved = localStorage.getItem('balance');
-    return saved ? parseInt(saved) : 1000;
+    return saved ? parseInt(saved) : 0;
   });
   const [spent, setSpent] = useState(() => {
     const saved = localStorage.getItem('spent');
@@ -280,7 +292,10 @@ export default function App() {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => setShowTopUp(true)}
+              onClick={() => {
+                setShowTopUp(true);
+                triggerHaptic();
+              }}
               className="glass-button flex items-center gap-3 px-5 py-2.5"
             >
               <img src="/asset/Icons/TelegramStar.png" alt="Stars" className="w-7 h-7" />
@@ -309,7 +324,10 @@ export default function App() {
                 <motion.button
                   key={key}
                   className="relative w-16 h-12 flex flex-col items-center justify-center z-10 cursor-pointer"
-                  onClick={() => setActiveTab(key)}
+                  onClick={() => {
+                    setActiveTab(key);
+                    triggerHaptic();
+                  }}
                   whileTap={{ scale: 0.9 }}
                   transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                 >

@@ -14,6 +14,12 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
   const [animKey, setAnimKey] = useState(0);
   const pendingResult = useRef(null);
 
+  const triggerHaptic = () => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+  };
+
   const successChance = useMemo(() => {
     if (!selectedSlot1 || !selectedSlot2 || selectedSlot2.price <= selectedSlot1.price || selectedSlot2.price === 0) return 0;
     return parseFloat(((selectedSlot1.price / selectedSlot2.price) * 100).toFixed(2));
@@ -37,6 +43,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
       return;
     }
 
+    triggerHaptic();
     setIsUpgrading(true);
     setResult(null);
     setShowConfetti(false);
@@ -235,7 +242,10 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
-                      onClick={() => setShowGiftSelector(true)}
+                      onClick={() => {
+                        setShowGiftSelector(true);
+                        triggerHaptic();
+                      }}
                       className="w-32 h-32 mx-auto rounded-3xl border border-dashed border-white/20 bg-white/5 hover:bg-white/10 flex items-center justify-center"
                     >
                       <span className="text-white/30 text-4xl font-rounded">+</span>
@@ -302,6 +312,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                       setSelectedSlot1(item);
                       setResult(null);
                       setSelectedSlot2(null);
+                      triggerHaptic();
                     }}
                     className={`p-2 rounded-xl border cursor-pointer transition-all flex flex-col items-center ${
                       selectedSlot1?.id === item.id
@@ -357,6 +368,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                       onClick={() => {
                         setSelectedSlot2(gift);
                         setShowGiftSelector(false);
+                        triggerHaptic();
                       }}
                       className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col items-center ${
                         selectedSlot2?.name === gift.name
@@ -434,7 +446,12 @@ function UpgradeButtonContent({ canUpgrade, isUpgrading, upgradeCost, handleUpgr
       <motion.button
         whileHover={{ scale: canUpgrade ? 1.02 : 1 }}
         whileTap={{ scale: canUpgrade ? 0.98 : 1 }}
-        onClick={handleUpgrade}
+        onClick={() => {
+          handleUpgrade();
+          if (canUpgrade && window.Telegram?.WebApp?.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+          }
+        }}
         disabled={isUpgrading || !canUpgrade}
         className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
         style={{

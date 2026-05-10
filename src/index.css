@@ -46,7 +46,7 @@
 html, body, #root {
   width: 100%;
   height: 100%;
-  font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'SF Pro Text', 'SF Pro Rounded', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
@@ -54,8 +54,8 @@ html, body, #root {
   background: #000000;
 }
 
-h1, h2, h3, h4, h5, h6, .font-rounded {
-  font-family: 'SF Pro Rounded', sans-serif;
+h1, h2, h3, h4, h5, h6, button, input, .font-rounded {
+  font-family: 'SF Pro Rounded', 'SF Pro Text', sans-serif;
 }
 
 /* Perfect centering for interactive elements */

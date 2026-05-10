@@ -22,6 +22,12 @@ const getRandomFlashDiscount = () => {
 };
 
 const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
+  const triggerHaptic = () => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+  };
+
   const dropItems = useMemo(() =>
     getGiftsInRange(caseItem.minPrice, caseItem.maxPrice),
     [caseItem.minPrice, caseItem.maxPrice]
@@ -48,7 +54,10 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
       whileHover={{ scale: 1.02 }}
       whileTap={{ scale: 0.98 }}
       className="group relative cursor-pointer"
-      onClick={onClick}
+      onClick={() => {
+        onClick();
+        triggerHaptic();
+      }}
     >
       <div className="glass-panel p-4 h-full flex flex-col gap-3 overflow-hidden relative">
         {/* Radial Glow Behind Gift */}
@@ -160,6 +169,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
           onClick={(e) => {
             e.stopPropagation();
             onClick();
+            triggerHaptic();
           }}
           className="w-full py-3 rounded-2xl border border-white/20 bg-white/10 text-white font-black text-sm transition-all hover:border-white/30 flex items-center justify-center gap-2 font-rounded"
         >

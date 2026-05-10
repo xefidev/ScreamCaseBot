@@ -48,6 +48,12 @@ export default function CasePreview({ caseItem, onClose, onWin, balance, setBala
   const FULL_ITEM_WIDTH = ITEM_SIZE + GAP;
   const viewportRef = useRef(null);
 
+  const triggerHaptic = () => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    }
+  };
+
   const handleOpen = () => {
     if (isSpinning || !canOpen) return;
 
@@ -56,6 +62,7 @@ export default function CasePreview({ caseItem, onClose, onWin, balance, setBala
       return;
     }
 
+    triggerHaptic();
     const cheapItems = spinItems.filter(i => i.price <= 50);
     const midTier = spinItems.filter(i => i.price > 50 && i.price <= 150);
     const jackpotItems = spinItems.filter(i => i.price > 150);
@@ -124,6 +131,7 @@ export default function CasePreview({ caseItem, onClose, onWin, balance, setBala
   };
 
   const handleClaim = () => {
+    triggerHaptic();
     setShowConfetti(false);
     onClose();
   };
@@ -145,7 +153,12 @@ export default function CasePreview({ caseItem, onClose, onWin, balance, setBala
       <div className="relative z-10 flex-1 overflow-y-auto">
         <div className="glass-panel border-b border-white/10 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
           <button
-            onClick={!isSpinning && !showResult ? onClose : undefined}
+            onClick={() => {
+              if (!isSpinning && !showResult) {
+                onClose();
+                triggerHaptic();
+              }
+            }}
             className="text-white/50 hover:text-white text-xl"
           >
             ←

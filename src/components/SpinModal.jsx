@@ -193,7 +193,12 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={onClose}
+                onClick={() => {
+                  onClose();
+                  if (window.Telegram?.WebApp?.HapticFeedback) {
+                    window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+                  }
+                }}
                 className="flex-1 py-3 rounded-xl bg-white/10 border border-white/20 text-white font-bold hover:bg-white/15 transition-colors"
               >
                 Claim
