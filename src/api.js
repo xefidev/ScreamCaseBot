@@ -12,29 +12,14 @@ export const fetchBalance = async (userId) => {
   }
 };
 
-export const fetchDailyInfo = async (userId) => {
+export const fetchLeaderboard = async () => {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/daily_info?user_id=${userId}`);
-    if (!response.ok) throw new Error('Failed to fetch daily info');
+    const response = await fetch(`${BACKEND_URL}/api/leaderboard`);
+    if (!response.ok) throw new Error('Failed to fetch leaderboard');
     return await response.json();
   } catch (error) {
-    console.error('Error fetching daily info:', error);
-    return { status: 'error' };
-  }
-};
-
-export const claimDaily = async (userId) => {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/claim_daily`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId }),
-    });
-    if (!response.ok) throw new Error('Failed to claim daily');
-    return await response.json();
-  } catch (error) {
-    console.error('Error claiming daily:', error);
-    throw error;
+    console.error('Error fetching leaderboard:', error);
+    return [];
   }
 };
 
@@ -56,6 +41,21 @@ export const claimPromo = async (userId, code) => {
   }
 };
 
+export const adminCreatePromo = async (adminId, promoData) => {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/admin/create_promo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_id: adminId, ...promoData }),
+    });
+    if (!response.ok) throw new Error('Failed to create promo');
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating promo:', error);
+    throw error;
+  }
+};
+
 export const createInvoice = async (userId, amount) => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
@@ -71,30 +71,29 @@ export const createInvoice = async (userId, amount) => {
     }
   };
 
-export const addStars = async (userId, amount) => {
+export const notifyTonSuccess = async (userId, amount) => {
   try {
-    const response = await fetch(`${BACKEND_URL}/api/add_stars`, {
+    const response = await fetch(`${BACKEND_URL}/api/ton_success`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, amount }),
     });
-    if (!response.ok) throw new Error('Failed to add stars');
-    const data = await response.json();
-    return data.new_balance;
+    if (!response.ok) throw new Error('Failed to notify TON success');
+    return await response.json();
   } catch (error) {
-    console.error('Error adding stars:', error);
+    console.error('Error notifying TON success:', error);
     throw error;
   }
 };
 
-export const openCase = async (userId, caseId) => {
+export const openCase = async (userId, caseId, price) => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/open_case`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, case_id: caseId }),
+        body: JSON.stringify({ user_id: userId, case_id: caseId, price }),
       });
-      if (!response.ok) throw new Error('Failed to open case');
+      if (!response.ok) throw new Error('Insufficient funds or error');
       return await response.json();
     } catch (error) {
       console.error('Error opening case:', error);

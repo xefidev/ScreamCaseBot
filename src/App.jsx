@@ -6,7 +6,7 @@ import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import { useTonConnectUI } from '@tonconnect/ui-react';
-import { fetchBalance, addStars, createInvoice } from './api';
+import { fetchBalance, addStars, createInvoice, notifyTonSuccess } from './api';
 
 const LoadingSpinner = () => (
   <div className="flex flex-col items-center justify-center h-full">
@@ -171,7 +171,12 @@ export default function App() {
       await tonConnectUI.sendTransaction(transaction);
       triggerHaptic('success');
       setShowTopUp(false);
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Транзакция отправлена!");
+      
+      // Sync with backend
+      await notifyTonSuccess(user.id, amount);
+      await syncBalance(user.id);
+      
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Транзакция отправлена и баланс обновлен!");
     } catch (e) {
       console.error(e);
       if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка или отмена транзакции");
@@ -264,7 +269,7 @@ export default function App() {
     
     switch (activeTab) {
       case 'cases':
-        return <CasesGrid onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
+        return <CasesGrid user={user} onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
       case 'fortune':
         return <WheelGame isPage={true} onWin={handleWheelWin} balance={balance} setBalance={setBalance} />;
       case 'upgrade':
@@ -288,25 +293,9 @@ export default function App() {
                 <div className="glass-panel p-4 border-red-500/20 bg-red-500/5">
                   <h3 className="text-red-400 font-bold text-sm mb-4 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    Admin Debug Panel
+                    Admin Manager
                   </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    <motion.button
-                      whileTap={{ scale: 0.95 }}
-                      onClick={async () => {
-                        triggerHaptic('heavy');
-                        try {
-                          await addStars(user.id, 100);
-                          await syncBalance(user.id);
-                          triggerHaptic('success');
-                        } catch (e) {
-                          window.Telegram?.WebApp?.showAlert('Error adding stars');
-                        }
-                      }}
-                      className="glass-button py-3 text-[10px] font-black uppercase tracking-tighter border-red-500/30 text-red-400"
-                    >
-                      Add +100 Stars
-                    </motion.button>
+                  <div className="grid grid-cols-1 gap-3">
                     <motion.button
                       whileTap={{ scale: 0.95 }}
                       onClick={() => {
@@ -316,7 +305,7 @@ export default function App() {
                       }}
                       className="glass-button py-3 text-[10px] font-black uppercase tracking-tighter border-white/20 text-white/50"
                     >
-                      Clear Cache
+                      Reset Local Cache
                     </motion.button>
                   </div>
                 </div>
@@ -325,7 +314,7 @@ export default function App() {
           </div>
         );
       default:
-        return <CasesGrid onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
+        return <CasesGrid user={user} onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
     }
   };
 

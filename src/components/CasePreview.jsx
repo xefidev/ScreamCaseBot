@@ -2,10 +2,11 @@ import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
+import { openCase } from '../api';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
-export default function CasePreview({ caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null }) {
+export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -54,65 +55,63 @@ export default function CasePreview({ caseItem, onClose, onWin, balance, setBala
     }
   };
 
-  const handleOpen = () => {
-    if (isSpinning || !canOpen) return;
+  const handleOpen = async () => {
+    if (isSpinning || !canOpen || !user?.id) return;
 
-    if (balance < getCost) {
-      console.error(`Insufficient balance! Need ${getCost}, have ${balance}`);
+    const cost = getCost;
+    if (balance < cost) {
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Недостаточно средств!");
       return;
     }
 
-    triggerHaptic();
-    const cheapItems = spinItems.filter(i => i.price <= 50);
-    const midTier = spinItems.filter(i => i.price > 50 && i.price <= 150);
-    const jackpotItems = spinItems.filter(i => i.price > 150);
+    try {
+        await openCase(user.id, caseItem.id, cost);
+        
+        triggerHaptic();
+        
+        if (setBalance) setBalance(prev => Math.max(0, prev - cost));
+        if (setSpent) setSpent(prev => prev + cost);
+        setCurrentStock(prev => Math.max(0, prev - 1));
 
-    const rand = Math.random() * 100;
-    let actualWonItem;
+        const cheapItems = spinItems.filter(i => i.price <= 50);
+        const midTier = spinItems.filter(i => i.price > 50 && i.price <= 150);
+        const jackpotItems = spinItems.filter(i => i.price > 150);
 
-    if (rand < 85 && cheapItems.length > 0) {
-      actualWonItem = cheapItems[Math.floor(Math.random() * cheapItems.length)];
-    } else if (rand < 97 && midTier.length > 0) {
-      actualWonItem = midTier[Math.floor(Math.random() * midTier.length)];
-    } else if (jackpotItems.length > 0) {
-      actualWonItem = jackpotItems[Math.floor(Math.random() * jackpotItems.length)];
-    } else {
-      actualWonItem = spinItems[Math.floor(Math.random() * spinItems.length)];
+        const rand = Math.random() * 100;
+        let actualWonItem;
+
+        if (rand < 85 && cheapItems.length > 0) {
+          actualWonItem = cheapItems[Math.floor(Math.random() * cheapItems.length)];
+        } else if (rand < 97 && midTier.length > 0) {
+          actualWonItem = midTier[Math.floor(Math.random() * midTier.length)];
+        } else if (jackpotItems.length > 0) {
+          actualWonItem = jackpotItems[Math.floor(Math.random() * jackpotItems.length)];
+        } else {
+          actualWonItem = spinItems[Math.floor(Math.random() * spinItems.length)];
+        }
+
+        setWonItem(actualWonItem);
+        setIsSpinning(true);
+        setHasSpun(false);
+        setShowConfetti(false);
+        setShowResult(false);
+
+        const winIndex = spinItems.findIndex(i => i.name === actualWonItem.name && i.price === actualWonItem.price);
+        const repetitions = 10;
+        const extendedItems = [];
+        for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
+
+        const targetIndex = spinItems.length * 7 + winIndex;
+        const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
+        const containerCenter = viewportWidth / 2;
+        const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
+        const targetX = containerCenter - itemCenter;
+
+        animationKey.current += 1;
+        setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
+    } catch (e) {
+        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка: " + e.message);
     }
-
-    setWonItem(actualWonItem);
-
-    if (setBalance && getCost > 0) {
-      setBalance(prev => Math.max(0, prev - getCost));
-    }
-    if (setSpent && getCost > 0) {
-      setSpent(prev => prev + getCost);
-    }
-
-    // Subtract stock
-    setCurrentStock(prev => Math.max(0, prev - 1));
-
-    setIsSpinning(true);
-    setHasSpun(false);
-    setShowConfetti(false);
-    setShowResult(false);
-
-    const winIndex = spinItems.findIndex(i => i.name === actualWonItem.name && i.price === actualWonItem.price);
-
-    const repetitions = 10;
-    const extendedItems = [];
-    for (let r = 0; r < repetitions; r++) {
-      extendedItems.push(...spinItems);
-    }
-
-    const targetIndex = spinItems.length * 7 + winIndex;
-    const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
-    const containerCenter = viewportWidth / 2;
-    const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
-    const targetX = containerCenter - itemCenter;
-
-    animationKey.current += 1;
-    setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
   };
 
   const handleAnimationComplete = () => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { fetchDailyInfo, claimDaily, claimPromo, fetchBalance } from '../api';
+import { claimPromo, fetchBalance, adminCreatePromo, fetchLeaderboard } from '../api';
 
 const ADMIN_IDS = [7782281997, 5396975347];
 
@@ -8,59 +8,25 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
   const [user, setUser] = React.useState(null);
   const [adminCommand, setAdminCommand] = React.useState('');
   const [promoCode, setPromoCode] = React.useState('');
-  const [dailyStatus, setDailyStatus] = React.useState({ status: 'loading' });
-  const [timer, setTimer] = React.useState('');
+  const [leaderboard, setLeaderboard] = React.useState([]);
+  
+  // Manager State
+  const [mgrCode, setMgrCode] = React.useState('');
+  const [mgrReward, setMgrReward] = React.useState('100');
+  const [mgrDays, setMgrDays] = React.useState('7');
+  const [mgrMinDonation, setMgrMinDonation] = React.useState('0');
 
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
       const userData = window.Telegram.WebApp.initDataUnsafe?.user;
       setUser(userData);
-      if (userData) {
-          updateDailyStatus(userData.id);
-      }
     }
+    loadLeaderboard();
   }, []);
 
-  const updateDailyStatus = async (uid) => {
-      const info = await fetchDailyInfo(uid);
-      setDailyStatus(info);
-  };
-
-  React.useEffect(() => {
-      if (dailyStatus.status === 'cooldown' && dailyStatus.remaining > 0) {
-          const interval = setInterval(() => {
-              setDailyStatus(prev => {
-                  if (prev.remaining <= 1) {
-                      clearInterval(interval);
-                      return { status: 'ready' };
-                  }
-                  return { ...prev, remaining: prev.remaining - 1 };
-              });
-          }, 1000);
-          return () => clearInterval(interval);
-      }
-  }, [dailyStatus]);
-
-  const formatTime = (seconds) => {
-      const h = Math.floor(seconds / 3600);
-      const m = Math.floor((seconds % 3600) / 60);
-      const s = seconds % 60;
-      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const handleClaimDaily = async () => {
-      if (!user?.id) return;
-      try {
-          const res = await claimDaily(user.id);
-          if (res.success) {
-              setBalance(prev => prev + res.reward);
-              updateDailyStatus(user.id);
-              triggerHaptic('success');
-              if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(`Вы получили ${res.reward} Stars!`);
-          }
-      } catch (e) {
-          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Кулдаун еще не прошел");
-      }
+  const loadLeaderboard = async () => {
+      const data = await fetchLeaderboard();
+      setLeaderboard(data);
   };
 
   const handleClaimPromo = async () => {
@@ -77,6 +43,24 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
           }
       } catch (e) {
           if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(e.message || "Ошибка активации промокода");
+      }
+  };
+
+  const handleCreatePromo = async () => {
+      if (!user?.id) return;
+      try {
+          await adminCreatePromo(user.id, {
+              code: mgrCode,
+              reward: parseInt(mgrReward),
+              days: parseInt(mgrDays),
+              min_donation: parseInt(mgrMinDonation),
+              type: 'stars'
+          });
+          setMgrCode('');
+          triggerHaptic('success');
+          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Промокод успешно создан!");
+      } catch (e) {
+          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка при создании промокода");
       }
   };
 
@@ -125,22 +109,6 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
         buttons: [{ type: 'ok' }]
       });
       window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-    }
-  };
-
-  const handleAdminCommand = (e) => {
-    if (e.key === 'Enter') {
-      const match = adminCommand.match(/^\+\s*(\d+)$/);
-      if (match) {
-        const amount = parseInt(match[1]);
-        setBalance(prev => prev + amount);
-        triggerHaptic();
-        if (window.Telegram?.WebApp) {
-          window.Telegram.WebApp.showAlert(`Successfully added ${amount} stars!`);
-          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        }
-        setAdminCommand('');
-      }
     }
   };
 
@@ -206,27 +174,8 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
         </div>
       </div>
 
-      {/* Daily Reward & Promo */}
+      {/* Promo & Manager */}
       <div className="grid grid-cols-1 gap-4 mb-6">
-          <div className="glass-panel p-5 relative overflow-hidden group">
-            <h4 className="text-white font-black text-sm mb-3 font-rounded uppercase tracking-widest relative z-10">Ежедневный бонус</h4>
-            {dailyStatus.status === 'ready' ? (
-                <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleClaimDaily}
-                    className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2"
-                >
-                    ЗАБРАТЬ +10 STARS
-                    <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" />
-                </motion.button>
-            ) : (
-                <div className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/30 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2">
-                    ДОСТУПНО ЧЕРЕЗ {dailyStatus.remaining ? formatTime(dailyStatus.remaining) : '--:--:--'}
-                </div>
-            )}
-          </div>
-
           <div className="glass-panel p-5 relative overflow-hidden group">
             <h4 className="text-white font-black text-sm mb-3 font-rounded uppercase tracking-widest relative z-10">Промокод</h4>
             <div className="flex gap-2 relative z-10">
@@ -245,6 +194,62 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
                     OK
                 </motion.button>
             </div>
+          </div>
+
+          {ADMIN_IDS.includes(user?.id) && (
+            <div className="glass-panel p-6 border-red-500/20 bg-red-500/5 relative overflow-hidden">
+                <h4 className="text-red-400 font-black text-lg mb-4 font-rounded uppercase tracking-widest relative z-10 flex items-center gap-2">
+                    MANAGER PANEL
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                </h4>
+                <div className="space-y-3 relative z-10">
+                    <input type="text" value={mgrCode} onChange={e => setMgrCode(e.target.value.toUpperCase())} placeholder="PROMO CODE" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white font-bold text-sm" />
+                    <div className="grid grid-cols-3 gap-2">
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] text-white/40 uppercase ml-1">Reward</span>
+                            <input type="number" value={mgrReward} onChange={e => setMgrReward(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] text-white/40 uppercase ml-1">Days</span>
+                            <input type="number" value={mgrDays} onChange={e => setMgrDays(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] text-white/40 uppercase ml-1">Min Donat</span>
+                            <input type="number" value={mgrMinDonation} onChange={e => setMgrMinDonation(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
+                        </div>
+                    </div>
+                    <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={handleCreatePromo}
+                        className="w-full py-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 font-black uppercase tracking-widest text-xs"
+                    >
+                        CREATE PROMO
+                    </motion.button>
+                </div>
+            </div>
+          )}
+      </div>
+
+      {/* Leaderboard */}
+      <div className="glass-panel p-6 mb-6">
+          <h4 className="text-white font-black text-xl mb-4 font-rounded uppercase tracking-widest">Таблица лидеров</h4>
+          <div className="space-y-3">
+              {leaderboard.length > 0 ? leaderboard.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center p-3 rounded-2xl bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-3">
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>
+                              {idx + 1}
+                          </span>
+                          <span className="text-white font-bold font-rounded">ID: {item.user_id}</span>
+                      </div>
+                      <span className="text-yellow-400 font-black font-rounded flex items-center gap-1">
+                          {item.donated}
+                          <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
+                      </span>
+                  </div>
+              )) : (
+                  <p className="text-white/30 text-center py-4 text-sm font-rounded">Загрузка...</p>
+              )}
           </div>
       </div>
 
@@ -272,48 +277,6 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
           </motion.button>
         </div>
       </div>
-
-      {/* Admin Panel */}
-      {ADMIN_IDS.includes(user?.id) && (
-        <div className="glass-panel p-6 mb-6 border-green-500/20 bg-green-500/5 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/10 blur-2xl rounded-full -mr-12 -mt-12" />
-          <h4 className="text-green-400 font-black text-lg mb-4 font-rounded uppercase tracking-widest relative z-10 flex items-center gap-2">
-            Админ-панель
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          </h4>
-          
-          <div className="space-y-4 relative z-10">
-            <div className="space-y-2">
-              <p className="text-green-400/50 text-[10px] uppercase font-bold px-1">Команда (в боте: /gen_promo, /clear_cooldown)</p>
-              <input
-                type="text"
-                value={adminCommand}
-                onChange={(e) => setAdminCommand(e.target.value)}
-                onKeyDown={handleAdminCommand}
-                placeholder="+ 500"
-                className="w-full bg-black/40 border border-green-500/30 rounded-xl px-4 py-3 text-green-400 font-bold font-rounded focus:outline-none focus:border-green-500/60 placeholder:text-green-900"
-              />
-            </div>
-
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => {
-                setBalance(prev => prev + 100);
-                triggerHaptic();
-                if (window.Telegram?.WebApp) {
-                  window.Telegram.WebApp.showAlert("Stars Added by Admin");
-                  window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-                }
-              }}
-              className="w-full py-3 rounded-xl bg-green-500/20 border border-green-500/30 text-green-400 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2"
-            >
-              БЫСТРЫЕ +100 STARS
-              <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" />
-            </motion.button>
-          </div>
-        </div>
-      )}
 
       {/* Inventory */}
       <div className="glass-panel p-6 mb-6">

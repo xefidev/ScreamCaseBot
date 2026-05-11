@@ -190,7 +190,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
   );
 };
 
-export default function CasesGrid({ onBuy, onWin, balance, setBalance, setSpent }) {
+export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [view, setView] = useState('grid');
   const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
@@ -255,6 +255,7 @@ export default function CasesGrid({ onBuy, onWin, balance, setBalance, setSpent 
             className="h-full"
           >
             <CasePreview
+              user={user}
               caseItem={selectedCase}
               onClose={handleClosePreview}
               onWin={handleWin}
