@@ -5,6 +5,19 @@ import CasesGrid from './components/CasesGrid';
 import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
+import { useTonConnectUI } from '@tonconnect/ui-react';
+import { fetchBalance, addStars, createInvoice } from './api';
+
+const LoadingSpinner = () => (
+  <div className="flex flex-col items-center justify-center h-full">
+    <motion.div
+      animate={{ rotate: 360 }}
+      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+      className="w-12 h-12 border-4 border-white/10 border-t-white rounded-full mb-4"
+    />
+    <p className="text-white/50 font-rounded animate-pulse uppercase tracking-widest text-xs">Loading Balance...</p>
+  </div>
+);
 
 const TABS = {
   cases: 'Cases',
@@ -30,6 +43,7 @@ export default function App() {
   const [showTopUp, setShowTopUp] = useState(false);
   const [starsAmount, setStarsAmount] = useState('100');
   const [tonAmount, setTonAmount] = useState('1');
+  const [tonConnectUI] = useTonConnectUI();
   const [showSubscriptionPopup, setShowSubscriptionPopup] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(() => {
     const saved = localStorage.getItem('isSubscribed');
@@ -38,31 +52,57 @@ export default function App() {
 
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const triggerHaptic = () => {
+  const triggerHaptic = (type = 'light') => {
     if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+      if (type === 'success') {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      } else {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred(type === 'heavy' ? 'heavy' : 'light');
+      }
+    }
+  };
+
+  const syncBalance = async (userId) => {
+    if (!userId) return;
+    const b = await fetchBalance(userId);
+    setBalance(b);
+    return b;
+  };
+
+  const handleChannelLink = () => {
+    triggerHaptic();
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.openTelegramLink(CHANNEL_LINK);
+    } else {
+      window.open(CHANNEL_LINK, '_blank');
     }
   };
 
   // Initialize Telegram User
   React.useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      const userData = tg.initDataUnsafe?.user;
-      if (userData) {
-        setUser(userData);
-        setIsAdmin(ADMIN_IDS.includes(userData.id));
-        
-        // Track Referral
-        const startParam = tg.initDataUnsafe?.start_param;
-        if (startParam) {
-          console.log('Referrer ID:', startParam);
+    const init = async () => {
+      if (window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        const userData = tg.initDataUnsafe?.user;
+        if (userData) {
+          setUser(userData);
+          setIsAdmin(ADMIN_IDS.includes(userData.id));
+          await syncBalance(userData.id);
+          
+          // Track Referral
+          const startParam = tg.initDataUnsafe?.start_param;
+          if (startParam) {
+            console.log('Referrer ID:', startParam);
+          }
         }
       }
-    }
+      setLoading(false);
+    };
+    init();
   }, []);
 
   // Check subscription on mount
@@ -97,33 +137,44 @@ export default function App() {
     }
   };
 
-  const handleStarsPayment = () => {
+  const handleStarsPayment = async () => {
     triggerHaptic();
-    if (window.Telegram?.WebApp) {
-      // In a real app, you'd get an invoice link from your backend
-      // const invoiceUrl = await getInvoice(starsAmount);
-      // window.Telegram.WebApp.openInvoice(invoiceUrl, (status) => { ... });
-      
-      window.Telegram.WebApp.showAlert(`Инвойс на ${starsAmount} Stars будет создан ботом. Функция в разработке.`);
+    if (!user?.id) return;
+    try {
+      const { link } = await createInvoice(user.id, starsAmount);
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.openTelegramLink(link);
+        setShowTopUp(false);
+      }
+    } catch (e) {
+      console.error(e);
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка при создании инвойса");
     }
   };
 
-  const handleTonPayment = () => {
+  const handleTonPayment = async () => {
     triggerHaptic();
-    const amount = parseFloat(tonAmount) || 0;
-    const nanotons = Math.floor(amount * 1000000000);
-    const tonUrl = `ton://transfer/${TON_WALLET}?amount=${nanotons}`; // amount in nanotons
-    console.log(`[PAYMENT] Initiating TON transfer: ${amount} TON to ${TON_WALLET}`);
+    const amount = 0.1; // Фиксированная сумма 0.1 TON как в ТЗ
+    const nanotons = (amount * 1000000000).toString();
     
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showConfirm("Confirm transfer to wallet", (ok) => {
-        if (ok) {
-          window.Telegram.WebApp.openTelegramLink(tonUrl);
-          triggerHaptic();
-        }
-      });
-    } else {
-      window.location.href = tonUrl;
+    const transaction = {
+      validUntil: Math.floor(Date.now() / 1000) + 600, // 10 minutes
+      messages: [
+        {
+          address: TON_WALLET,
+          amount: nanotons,
+        },
+      ],
+    };
+
+    try {
+      await tonConnectUI.sendTransaction(transaction);
+      triggerHaptic('success');
+      setShowTopUp(false);
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Транзакция отправлена!");
+    } catch (e) {
+      console.error(e);
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка или отмена транзакции");
     }
   };
 
@@ -179,6 +230,9 @@ export default function App() {
       item: item.name,
     };
     setTransactions(prev => [newTransaction, ...prev]);
+    
+    // Refresh balance from server
+    syncBalance(user?.id);
   };
 
   const handleWheelWin = (segment) => {
@@ -200,9 +254,14 @@ export default function App() {
     };
     setTransactions(prev => [...prev, newTransaction]);
     setBalance(prev => Math.max(0, prev - 50));
+    
+    // Refresh balance from server
+    syncBalance(user?.id);
   };
 
   const renderContent = () => {
+    if (loading) return <LoadingSpinner />;
+    
     switch (activeTab) {
       case 'cases':
         return <CasesGrid onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
@@ -211,17 +270,60 @@ export default function App() {
       case 'upgrade':
         return <UpgradeGame isPage={true} inventory={inventory} setInventory={setInventory} balance={balance} setBalance={setBalance} setSpent={setSpent} />;
       case 'profile':
-        return <ProfilePage
-          isPage={true}
-          inventory={inventory}
-          setInventory={setInventory}
-          transactions={transactions}
-          setTransactions={setTransactions}
-          balance={balance}
-          setBalance={setBalance}
-          spent={spent}
-          donor={donor}
-        />;
+        return (
+          <div className="flex flex-col h-full overflow-y-auto">
+            <ProfilePage
+              isPage={true}
+              inventory={inventory}
+              setInventory={setInventory}
+              transactions={transactions}
+              setTransactions={setTransactions}
+              balance={balance}
+              setBalance={setBalance}
+              spent={spent}
+              donor={donor}
+            />
+            {isAdmin && (
+              <div className="p-6 pb-24">
+                <div className="glass-panel p-4 border-red-500/20 bg-red-500/5">
+                  <h3 className="text-red-400 font-bold text-sm mb-4 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                    Admin Debug Panel
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={async () => {
+                        triggerHaptic('heavy');
+                        try {
+                          await addStars(user.id, 100);
+                          await syncBalance(user.id);
+                          triggerHaptic('success');
+                        } catch (e) {
+                          window.Telegram?.WebApp?.showAlert('Error adding stars');
+                        }
+                      }}
+                      className="glass-button py-3 text-[10px] font-black uppercase tracking-tighter border-red-500/30 text-red-400"
+                    >
+                      Add +100 Stars
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        triggerHaptic('heavy');
+                        localStorage.clear();
+                        window.location.reload();
+                      }}
+                      className="glass-button py-3 text-[10px] font-black uppercase tracking-tighter border-white/20 text-white/50"
+                    >
+                      Clear Cache
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
       default:
         return <CasesGrid onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
     }
@@ -488,7 +590,7 @@ export default function App() {
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => window.Telegram?.WebApp?.openLink(CHANNEL_LINK)}
+                    onClick={handleChannelLink}
                     className="w-full mt-3 py-2 rounded-xl bg-white/10 text-white text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2"
                   >
                     Перейти в канал <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" />
@@ -499,7 +601,10 @@ export default function App() {
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setShowTopUp(false)}
+                onClick={() => {
+                  setShowTopUp(false);
+                  triggerHaptic();
+                }}
                 className="w-full mt-4 py-3 rounded-xl border border-white/10 text-white/50 font-semibold"
               >
                 Отмена
@@ -544,7 +649,7 @@ export default function App() {
                 <motion.button
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => window.Telegram?.WebApp?.openLink(CHANNEL_LINK)}
+                  onClick={handleChannelLink}
                   className="w-full py-4 rounded-2xl bg-white text-black font-black uppercase tracking-widest text-sm shadow-xl shadow-white/10"
                 >
                   ПОДПИСАТЬСЯ

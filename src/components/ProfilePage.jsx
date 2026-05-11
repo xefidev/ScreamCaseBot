@@ -1,21 +1,92 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { fetchDailyInfo, claimDaily, claimPromo, fetchBalance } from '../api';
 
 const ADMIN_IDS = [7782281997, 5396975347];
 
 export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, spent, donor }) {
   const [user, setUser] = React.useState(null);
   const [adminCommand, setAdminCommand] = React.useState('');
+  const [promoCode, setPromoCode] = React.useState('');
+  const [dailyStatus, setDailyStatus] = React.useState({ status: 'loading' });
+  const [timer, setTimer] = React.useState('');
 
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
-      setUser(window.Telegram.WebApp.initDataUnsafe?.user);
+      const userData = window.Telegram.WebApp.initDataUnsafe?.user;
+      setUser(userData);
+      if (userData) {
+          updateDailyStatus(userData.id);
+      }
     }
   }, []);
 
-  const triggerHaptic = () => {
+  const updateDailyStatus = async (uid) => {
+      const info = await fetchDailyInfo(uid);
+      setDailyStatus(info);
+  };
+
+  React.useEffect(() => {
+      if (dailyStatus.status === 'cooldown' && dailyStatus.remaining > 0) {
+          const interval = setInterval(() => {
+              setDailyStatus(prev => {
+                  if (prev.remaining <= 1) {
+                      clearInterval(interval);
+                      return { status: 'ready' };
+                  }
+                  return { ...prev, remaining: prev.remaining - 1 };
+              });
+          }, 1000);
+          return () => clearInterval(interval);
+      }
+  }, [dailyStatus]);
+
+  const formatTime = (seconds) => {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const handleClaimDaily = async () => {
+      if (!user?.id) return;
+      try {
+          const res = await claimDaily(user.id);
+          if (res.success) {
+              setBalance(prev => prev + res.reward);
+              updateDailyStatus(user.id);
+              triggerHaptic('success');
+              if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(`Вы получили ${res.reward} Stars!`);
+          }
+      } catch (e) {
+          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Кулдаун еще не прошел");
+      }
+  };
+
+  const handleClaimPromo = async () => {
+      if (!user?.id || !promoCode) return;
+      try {
+          const res = await claimPromo(user.id, promoCode);
+          if (res.success) {
+              if (res.type === 'stars') {
+                  setBalance(prev => prev + res.reward);
+              }
+              setPromoCode('');
+              triggerHaptic('success');
+              if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(`Промокод активирован! Награда: ${res.reward} ${res.type}`);
+          }
+      } catch (e) {
+          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(e.message || "Ошибка активации промокода");
+      }
+  };
+
+  const triggerHaptic = (type = 'heavy') => {
     if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+        if (type === 'success') {
+            window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+        } else {
+            window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+        }
     }
   };
 
@@ -74,7 +145,7 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
   };
 
   const content = (
-    <div className={`${isPage ? 'min-h-full' : 'max-w-md mx-auto p-6 min-h-screen'}`}>
+    <div className={`${isPage ? 'min-h-full pb-24' : 'max-w-md mx-auto p-6 min-h-screen'}`}>
       {/* Header */}
       {!isPage && onClose && (
         <div className="flex justify-between items-center mb-8">
@@ -104,7 +175,7 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
           </div>
           <div>
             <h3 className="text-white font-black text-2xl font-rounded uppercase tracking-tight">
-              {user?.first_name || 'DIMA_DEV'}
+              {user?.first_name || 'GUEST'}
               {ADMIN_IDS.includes(user?.id) && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 ml-2 align-middle">ADMIN</span>}
             </h3>
             <p className="text-white/50 text-xs flex items-center gap-1.5 font-rounded font-bold mt-1">
@@ -133,6 +204,48 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Daily Reward & Promo */}
+      <div className="grid grid-cols-1 gap-4 mb-6">
+          <div className="glass-panel p-5 relative overflow-hidden group">
+            <h4 className="text-white font-black text-sm mb-3 font-rounded uppercase tracking-widest relative z-10">Ежедневный бонус</h4>
+            {dailyStatus.status === 'ready' ? (
+                <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleClaimDaily}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2"
+                >
+                    ЗАБРАТЬ +10 STARS
+                    <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" />
+                </motion.button>
+            ) : (
+                <div className="w-full py-3 rounded-xl bg-white/5 border border-white/10 text-white/30 font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2">
+                    ДОСТУПНО ЧЕРЕЗ {dailyStatus.remaining ? formatTime(dailyStatus.remaining) : '--:--:--'}
+                </div>
+            )}
+          </div>
+
+          <div className="glass-panel p-5 relative overflow-hidden group">
+            <h4 className="text-white font-black text-sm mb-3 font-rounded uppercase tracking-widest relative z-10">Промокод</h4>
+            <div className="flex gap-2 relative z-10">
+                <input
+                    type="text"
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                    placeholder="ENTER CODE"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white font-bold font-rounded focus:outline-none focus:border-white/30 placeholder:text-white/20 text-sm"
+                />
+                <motion.button
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleClaimPromo}
+                    className="px-6 rounded-xl bg-white text-black font-black uppercase tracking-widest text-[10px]"
+                >
+                    OK
+                </motion.button>
+            </div>
+          </div>
       </div>
 
       {/* Referral System */}
@@ -171,7 +284,7 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
           
           <div className="space-y-4 relative z-10">
             <div className="space-y-2">
-              <p className="text-green-400/50 text-[10px] uppercase font-bold px-1">Команда (+ [число])</p>
+              <p className="text-green-400/50 text-[10px] uppercase font-bold px-1">Команда (в боте: /gen_promo, /clear_cooldown)</p>
               <input
                 type="text"
                 value={adminCommand}
