@@ -197,6 +197,7 @@ export default function App() {
     const saved = localStorage.getItem('balance');
     return saved ? parseInt(saved) : 0;
   });
+  const [tickets, setTickets] = useState(0);
   const [spent, setSpent] = useState(() => {
     const saved = localStorage.getItem('spent');
     return saved ? parseInt(saved) : 0;
@@ -214,33 +215,57 @@ export default function App() {
     localStorage.setItem('donor', donor.toString());
   }, [inventory, transactions, balance, spent, donor]);
 
-  const handleSpinComplete = (item, caseItem) => {
-    const newItem = {
-      id: Date.now(),
-      name: item.name,
-      image: item.image,
-      price: item.price,
-    };
-    setInventory(prev => [...prev, newItem]);
-
-    if (caseItem) {
-      setSpent(prev => prev + caseItem.price);
-    }
-
-    const newTransaction = {
-      id: Date.now(),
-      type: 'win',
-      amount: caseItem ? caseItem.price : 0,
-      description: caseItem ? caseItem.name : 'Wheel Spin',
-      item: item.name,
-    };
-    setTransactions(prev => [newTransaction, ...prev]);
+  const syncBalance = async (userId) => {
+    if (!userId) return;
+    const data = await fetchBalance(userId);
+    setBalance(data.stars || 0);
+    setTickets(data.tickets || 0);
     
-    // Refresh balance from server
-    syncBalance(user?.id);
+    // Also sync leaderboard donor status if possible, or just keep it local/fetch from user info
+    return data;
   };
 
+  const handleChannelLink = () => {
+    triggerHaptic();
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.openTelegramLink(CHANNEL_LINK);
+    } else {
+      window.open(CHANNEL_LINK, '_blank');
+    }
+  };
+
+  // Initialize Telegram User
+  React.useEffect(() => {
+    const init = async () => {
+      if (window.Telegram?.WebApp) {
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
+        const userData = tg.initDataUnsafe?.user;
+        if (userData) {
+          setUser(userData);
+          setIsAdmin(ADMIN_IDS.includes(userData.id));
+          await syncBalance(userData.id);
+          
+          // Track Referral
+          const startParam = tg.initDataUnsafe?.start_param;
+          if (startParam) {
+            console.log('Referrer ID:', startParam);
+          }
+        }
+      }
+      setLoading(false);
+    };
+    init();
+  }, []);
+
   const handleWheelWin = (segment) => {
+    // Refresh balance from server since it was already deducted and prize added there
+    if (user?.id) {
+        syncBalance(user.id);
+    }
+    
+    // Add to local inventory for immediate feedback
     const newItem = {
       id: Date.now(),
       name: segment.label,
@@ -248,20 +273,17 @@ export default function App() {
       price: segment.price || parseInt(segment.label) || 100,
     };
     setInventory(prev => [...prev, newItem]);
-    setSpent(prev => prev + 50);
-
+    
+    // Transactions will be fetched from server in a real app, 
+    // but here we can add it locally too
     const newTransaction = {
       id: Date.now(),
       type: 'win',
       amount: 50,
-      description: 'Wheel of Fortune',
+      description: 'Колесо Фортуны',
       item: segment.label,
     };
-    setTransactions(prev => [...prev, newTransaction]);
-    setBalance(prev => Math.max(0, prev - 50));
-    
-    // Refresh balance from server
-    syncBalance(user?.id);
+    setTransactions(prev => [newTransaction, ...prev]);
   };
 
   const renderContent = () => {
@@ -285,6 +307,7 @@ export default function App() {
               setTransactions={setTransactions}
               balance={balance}
               setBalance={setBalance}
+              tickets={tickets}
               spent={spent}
               donor={donor}
             />

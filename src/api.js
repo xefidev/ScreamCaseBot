@@ -60,21 +60,74 @@ const formatErrorMessage = (errorData) => {
 
 export const fetchBalance = async (userId) => {
   try {
-    if (!userId) return 0;
+    if (!userId) return { stars: 0, tickets: 0 };
     
     const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}`);
     
     if (!response.ok) {
       const error = await handleApiError(response);
       console.error('Balance fetch error:', error);
-      return 0;
+      return { stars: 0, tickets: 0 };
     }
     
     const data = await response.json();
-    return data.stars || 0;
+    return {
+      stars: data.stars || 0,
+      tickets: data.tickets || 0
+    };
   } catch (error) {
     console.error('Error fetching balance:', error);
-    return 0;
+    return { stars: 0, tickets: 0 };
+  }
+};
+
+export const fetchReferrals = async (userId) => {
+  try {
+    if (!userId) return { count: 0, referrals: [] };
+    
+    const response = await fetch(`${BACKEND_URL}/api/referrals?user_id=${userId}`);
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      console.error('Referrals fetch error:', error);
+      return { count: 0, referrals: [] };
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching referrals:', error);
+    return { count: 0, referrals: [] };
+  }
+};
+
+export const spinWheel = async (userId) => {
+  try {
+    if (!userId) throw new Error('Missing user_id');
+    
+    const response = await fetch(`${BACKEND_URL}/api/wheel/spin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      
+      const err = new Error(message);
+      err.status = error.status;
+      err.errorCode = error.error;
+      throw err;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error spinning wheel:', error);
+    if (!(error instanceof Error) || !error.status) {
+      showAlert('❌ Ошибка при прокруте колеса');
+    }
+    throw error;
   }
 };
 

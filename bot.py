@@ -31,10 +31,15 @@ def init_db():
         conn.execute('''CREATE TABLE IF NOT EXISTS users 
                         (user_id INTEGER PRIMARY KEY, 
                          stars INTEGER DEFAULT 0, 
+                         tickets INTEGER DEFAULT 0,
+                         referred_by INTEGER,
                          join_date TEXT, 
                          last_daily TEXT,
                          total_donated_stars INTEGER DEFAULT 0,
-                         total_donated_ton REAL DEFAULT 0.0)''')
+                         total_donated_ton REAL DEFAULT 0.0,
+                         username TEXT,
+                         first_name TEXT,
+                         photo_url TEXT)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS payments 
                         (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount INTEGER, date TEXT)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS promocodes 
@@ -54,24 +59,84 @@ def init_db():
         except: pass
         try: conn.execute("ALTER TABLE users ADD COLUMN last_daily TEXT")
         except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT")
+        except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN photo_url TEXT")
+        except: pass
         try: conn.execute("ALTER TABLE promocodes ADD COLUMN min_donation_24h INTEGER DEFAULT 0")
         except: pass
         try: conn.execute("ALTER TABLE promocodes ADD COLUMN expires_at TEXT")
         except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN tickets INTEGER DEFAULT 0")
+        except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
+        except: pass
 
     print("✅ База данных полностью готова")
 
-def register_or_get(user_id):
+def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
+    """Register user if new, or return existing user data. Always update profile."""
     with sqlite3.connect('database.db') as conn:
         cur = conn.cursor()
         cur.execute("SELECT stars, join_date FROM users WHERE user_id = ?", (user_id,))
         res = cur.fetchone()
+        
         if res:
+            # Update profile info on every call
+            update_user_profile(user_id, username, first_name, photo_url)
             return res, False
+        
+        # New user registration
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cur.execute("INSERT INTO users (user_id, stars, join_date) VALUES (?, 0, ?)", (user_id, date))
+        
+        # Validate referred_by (cannot refer self, must exist)
+        ref_id = None
+        if referred_by and str(referred_by).isdigit():
+            ref_id = int(referred_by)
+            if ref_id == user_id:
+                ref_id = None
+            else:
+                cur.execute("SELECT user_id FROM users WHERE user_id = ?", (ref_id,))
+                if not cur.fetchone():
+                    ref_id = None
+
+        cur.execute("""INSERT INTO users 
+                       (user_id, stars, join_date, username, first_name, photo_url, referred_by, tickets) 
+                       VALUES (?, 0, ?, ?, ?, ?, ?, 0)""", 
+                     (user_id, date, username, first_name, photo_url, ref_id))
+        
+        # If referred, give the referrer a ticket
+        if ref_id:
+            cur.execute("UPDATE users SET tickets = tickets + 1 WHERE user_id = ?", (ref_id,))
+            logger.info(f"User {user_id} joined via referral {ref_id}. Referrer got 1 ticket.")
+            # We will notify referrer in start_cmd
+            
         conn.commit()
         return (0, date), True
+
+def update_user_profile(user_id, username=None, first_name=None, photo_url=None):
+    """Update user profile information."""
+    with sqlite3.connect('database.db') as conn:
+        updates = []
+        params = []
+        
+        if username:
+            updates.append("username = ?")
+            params.append(username)
+        if first_name:
+            updates.append("first_name = ?")
+            params.append(first_name)
+        if photo_url:
+            updates.append("photo_url = ?")
+            params.append(photo_url)
+        
+        if updates:
+            params.append(user_id)
+            query = f"UPDATE users SET {', '.join(updates)} WHERE user_id = ?"
+            conn.execute(query, tuple(params))
+            conn.commit()
 
 def update_balance(user_id, amount, mode="add", is_donation=False):
     with sqlite3.connect('database.db') as conn:
@@ -79,6 +144,19 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
             conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (amount, user_id))
             if is_donation:
                 conn.execute("UPDATE users SET total_donated_stars = total_donated_stars + ? WHERE user_id = ?", (amount, user_id))
+                
+                # Referral reward: 10%
+                user_res = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,)).fetchone()
+                if user_res and user_res[0]:
+                    ref_id = user_res[0]
+                    reward = int(amount * 0.1)
+                    if reward > 0:
+                        conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (reward, ref_id))
+                        conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                                     (ref_id, reward, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                        logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
+                        # Try to notify referrer (async task might be better, but we are inside synchronous db helper)
+                        # We will handle notification in api handlers or bot handlers
         else:
             conn.execute("UPDATE users SET stars = ? WHERE user_id = ?", (amount, user_id))
         
@@ -103,13 +181,23 @@ CASES_PRICES = {
 # --- ОБРАБОТКА КОМАНД ---
 
 @dp.message(Command("start"))
-async def start_cmd(message: types.Message):
+async def start_cmd(message: types.Message, command: CommandObject):
     """Handle /start command - register user and show main menu"""
     try:
-        data, is_new = register_or_get(message.from_user.id)
+        referred_by = command.args if command.args else None
+        
+        # Register/update user profile
+        data, is_new = register_or_get(
+            message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            photo_url=message.from_user.photo_url if hasattr(message.from_user, 'photo_url') else None,
+            referred_by=referred_by
+        )
         
         if is_new:
             logger.info(f"New user registered: {message.from_user.id} - {message.from_user.full_name}")
+            # Notify all admins
             for admin_id in ADMIN_IDS:
                 try:
                     await bot.send_message(admin_id, 
@@ -117,6 +205,15 @@ async def start_cmd(message: types.Message):
                         parse_mode="Markdown")
                 except Exception as e:
                     logger.error(f"Failed to notify admin: {e}")
+            
+            # Notify referrer
+            if referred_by and str(referred_by).isdigit():
+                ref_id = int(referred_by)
+                if ref_id != message.from_user.id:
+                    try:
+                        await bot.send_message(ref_id, f"🎉 По вашей ссылке перешел новый пользователь! Вы получили +1 билет 🎫")
+                    except Exception as e:
+                        logger.error(f"Failed to notify referrer: {e}")
 
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))],
@@ -142,6 +239,7 @@ async def help_cmd(message: types.Message):
             text += "• `/user <ID>` — Информация об игроке\n"
             text += "• `/stats` — Общая статистика\n"
             text += "• `/createpromo <код> <награда> <дни>` — Создать промокод\n"
+            text += "• `/broadcast` — Рассылка сообщений\n"
         
         await message.answer(text, parse_mode="Markdown")
     except Exception as e:
@@ -220,7 +318,7 @@ async def admin_user_info(message: types.Message):
         user_id = int(parts[1])
         with sqlite3.connect('database.db') as conn:
             user = conn.execute(
-                "SELECT user_id, stars, join_date, total_donated_stars, total_donated_ton FROM users WHERE user_id = ?",
+                "SELECT user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets FROM users WHERE user_id = ?",
                 (user_id,)
             ).fetchone()
         
@@ -231,6 +329,7 @@ async def admin_user_info(message: types.Message):
         text = f"""👤 **Информация о пользователе**
 🆔 ID: `{user[0]}`
 ⭐ Баланс: `{user[1]}`
+🎫 Билеты: `{user[5]}`
 📅 Дата присоединения: `{user[2]}`
 💎 Всего пожертвовано звёзд: `{user[3]}`
 💰 Всего пожертвовано TON: `{user[4]:.4f}`"""
@@ -265,43 +364,150 @@ async def admin_stats(message: types.Message):
         logger.error(f"Error in admin_stats: {e}")
         await message.answer("❌ Ошибка при получении статистики.")
 
-@dp.message()
-async def unknown_command(message: types.Message):
-    """Handle unknown commands gracefully"""
-    if message.text and message.text.startswith('/'):
-        await message.answer("❌ Неизвестная команда. Введите `/help` для справки.", parse_mode="Markdown")
-
 # --- API ДЛЯ САЙТА ---
 
 async def api_balance(request):
-    """GET /api/balance - Get user balance (NO AUTHENTICATION - read-only)"""
+    """GET /api/balance - Get user balance and tickets"""
     try:
         uid = request.query.get("user_id")
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
         
         with sqlite3.connect('database.db') as conn:
-            res = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+            res = conn.execute("SELECT stars, tickets FROM users WHERE user_id = ?", (int(uid),)).fetchone()
         
-        return web.json_response({"stars": res[0] if res else 0})
+        if not res:
+            return web.json_response({"stars": 0, "tickets": 0})
+            
+        return web.json_response({"stars": res[0], "tickets": res[1]})
     except ValueError:
         return web.json_response({"error": "invalid_user_id"}, status=400)
     except Exception as e:
         logger.error(f"Error in api_balance: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
-async def api_leaderboard(request):
-    """GET /api/leaderboard - Get top 10 donors (NO AUTHENTICATION - read-only)"""
+async def api_referrals(request):
+    """GET /api/user/referrals - Get user referrals count and list"""
     try:
+        uid = request.query.get("user_id")
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
         with sqlite3.connect('database.db') as conn:
             res = conn.execute(
-                "SELECT user_id, total_donated_stars FROM users ORDER BY total_donated_stars DESC LIMIT 10"
+                "SELECT user_id, username, first_name, photo_url, total_donated_stars FROM users WHERE referred_by = ?",
+                (uid,)
             ).fetchall()
         
-        leaderboard = [{"user_id": r[0], "donated": r[1]} for r in res]
+        referrals = [
+            {
+                "user_id": r[0],
+                "username": r[1],
+                "first_name": r[2],
+                "photo_url": r[3],
+                "donated": r[4]
+            } for r in res
+        ]
+        
+        return web.json_response({
+            "count": len(referrals),
+            "referrals": referrals
+        })
+    except ValueError:
+        return web.json_response({"error": "invalid_user_id"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_referrals: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_leaderboard(request):
+    """GET /api/leaderboard - Get top 10 donors (excluding admins)"""
+    try:
+        # Exclude IDs 7782281997 and 5396975347
+        exclude_ids = ",".join(map(str, ADMIN_IDS))
+        
+        with sqlite3.connect('database.db') as conn:
+            res = conn.execute(
+                f"SELECT user_id, username, first_name, photo_url, total_donated_stars FROM users "
+                f"WHERE user_id NOT IN ({exclude_ids}) "
+                f"ORDER BY total_donated_stars DESC LIMIT 10"
+            ).fetchall()
+        
+        leaderboard = [
+            {
+                "user_id": r[0], 
+                "username": r[1], 
+                "first_name": r[2], 
+                "photo_url": r[3], 
+                "donated": r[4]
+            } for r in res
+        ]
         return web.json_response(leaderboard)
     except Exception as e:
         logger.error(f"Error in api_leaderboard: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_wheel_spin(request):
+    """
+    POST /api/wheel/spin - Spin the wheel of fortune
+    Logic:
+    - Cost: 50 stars
+    - Server determines result based on odds
+    - Rebalance: High prizes (<1% for 500+)
+    """
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        cost = 50
+        
+        with sqlite3.connect('database.db') as conn:
+            user = conn.execute("SELECT stars FROM users WHERE user_id = ?", (uid,)).fetchone()
+            if not user:
+                return web.json_response({"error": "user_not_found"}, status=404)
+            
+            balance = user[0]
+            if balance < cost:
+                return web.json_response({"error": "insufficient_funds"}, status=403)
+            
+            # Odds Logic
+            import random
+            rand = random.random() * 100
+            
+            # Possible prize values (stars)
+            # Rebalanced:
+            # <1% : 500+
+            # 14% : 100-300
+            # 85% : 15-50
+            
+            if rand < 0.8: # <1%
+                prize = random.choice([500, 750, 1000])
+            elif rand < 15: # ~14%
+                prize = random.choice([100, 150, 200, 250, 300])
+            else: # ~85%
+                prize = random.choice([15, 20, 25, 30, 40, 50])
+            
+            # Deduct cost and add prize
+            new_balance = balance - cost + prize
+            conn.execute("UPDATE users SET stars = ? WHERE user_id = ?", (new_balance, uid))
+            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                         (uid, -cost, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                         (uid, prize, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+            
+            logger.info(f"User {uid} spun wheel: spent {cost}, won {prize}. New balance: {new_balance}")
+            
+        return web.json_response({
+            "success": True,
+            "win_amount": prize,
+            "new_balance": new_balance
+        })
+    except Exception as e:
+        logger.error(f"Error in api_wheel_spin: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_open_case(request):
@@ -586,6 +792,19 @@ async def api_ton_success(request):
             
             logger.info(f"TON payment processed: User {uid}, {amount_ton} TON = {stars_to_add} stars, TX: {tx_hash_normalized[:16]}...")
         
+        # Send notification to user
+        try:
+            await bot.send_message(uid, f"✅ Пополнение успешно! +{stars_to_add} ⭐")
+        except Exception as e:
+            logger.error(f"Failed to send user notification: {e}")
+        
+        # Notify admins
+        try:
+            for admin_id in ADMIN_IDS:
+                await bot.send_message(admin_id, f"💰 User {uid} topped up: {amount_ton} TON = {stars_to_add} ⭐")
+        except Exception as e:
+            logger.error(f"Failed to notify admins: {e}")
+        
         return web.json_response({"success": True, "stars_added": stars_to_add})
     
     except ValueError as e:
@@ -727,9 +946,149 @@ async def success_pay(m: types.Message):
         update_balance(user_id, amount, "add", is_donation=True)
         logger.info(f"Payment successful for user {user_id}: +{amount} stars")
         await m.answer(f"✅ Спасибо за покупку! +{amount} ⭐")
+        
+        # Notify admins
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(admin_id, f"💰 **Новое пополнение!**\n👤 Юзер: {m.from_user.full_name} (`{user_id}`)\n⭐ Количество: `{amount}` звёзд", parse_mode="Markdown")
+            except: pass
+            
     except Exception as e:
         logger.error(f"Error in success_pay: {e}")
         await m.answer("❌ Ошибка при обработке платежа.")
+
+# --- BROADCAST SYSTEM ---
+
+broadcast_data = {}
+
+@dp.message(Command("broadcast"))
+async def cmd_broadcast(message: types.Message):
+    """Admin command to start a broadcast"""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    
+    await message.answer("📝 Отправьте сообщение для рассылки (поддерживаются фото, Markdown и кнопки в формате `Текст - URL`).")
+
+@dp.message(F.from_user.id.in_(ADMIN_IDS) & (F.text | F.photo | F.caption))
+async def preview_broadcast(message: types.Message):
+    """Show preview of the broadcast message"""
+    if message.text == "/broadcast" or message.text and message.text.startswith("/"):
+        return
+
+    # Parse buttons from the end of text/caption if they exist
+    content = message.text or message.caption or ""
+    lines = content.split("\n")
+    buttons = []
+    clean_text_lines = []
+    
+    for line in lines:
+        if " - http" in line:
+            parts = line.split(" - ")
+            if len(parts) >= 2:
+                btn_text = parts[0].strip()
+                btn_url = parts[1].strip()
+                buttons.append(InlineKeyboardButton(text=btn_text, url=btn_url))
+        else:
+            clean_text_lines.append(line)
+    
+    clean_text = "\n".join(clean_text_lines).strip()
+    
+    kb_list = []
+    if buttons:
+        # Arrange buttons in rows of 2
+        for i in range(0, len(buttons), 2):
+            kb_list.append(buttons[i:i+2])
+    
+    # Control buttons
+    kb_list.append([
+        InlineKeyboardButton(text="✅ ОТПРАВИТЬ", callback_query_id="send_bc"), # Dummy id for structure
+        InlineKeyboardButton(text="❌ ОТМЕНА", callback_query_id="cancel_bc")
+    ])
+    
+    # We use a custom string for callback_data because InlineKeyboardButton expects it
+    # But wait, aiogram 3.x uses CallbackData objects or simple strings.
+    # I'll use simple strings.
+    
+    control_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ ОТПРАВИТЬ", callback_data="bc_send"),
+         InlineKeyboardButton(text="❌ ОТМЕНА", callback_data="bc_cancel")]
+    ])
+    
+    # Add user buttons to control kb
+    if buttons:
+        user_kb = []
+        for i in range(0, len(buttons), 2):
+            user_kb.append(buttons[i:i+2])
+        full_kb = InlineKeyboardMarkup(inline_keyboard=user_kb + control_kb.inline_keyboard)
+    else:
+        full_kb = control_kb
+
+    # Store message for later
+    broadcast_data[message.from_user.id] = {
+        "text": clean_text,
+        "photo": message.photo[-1].file_id if message.photo else None,
+        "kb": [[{"text": b.text, "url": b.url} for b in buttons]] if buttons else None
+    }
+    
+    await message.answer("👀 **Предпросмотр рассылки:**", parse_mode="Markdown")
+    if message.photo:
+        await message.answer_photo(message.photo[-1].file_id, caption=clean_text, reply_markup=full_kb, parse_mode="Markdown")
+    else:
+        await message.answer(clean_text, reply_markup=full_kb, parse_mode="Markdown")
+
+@dp.callback_query(F.data.startswith("bc_"))
+async def handle_broadcast_callback(callback: types.CallbackQuery):
+    """Handle send/cancel buttons for broadcast"""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Нет доступа")
+        return
+    
+    action = callback.data.split("_")[1]
+    
+    if action == "cancel":
+        broadcast_data.pop(callback.from_user.id, None)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer("❌ Рассылка отменена.")
+        await callback.answer()
+        return
+    
+    data = broadcast_data.get(callback.from_user.id)
+    if not data:
+        await callback.answer("❌ Данные не найдены. Попробуйте снова.")
+        return
+    
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer("🚀 Рассылка запущена...")
+    await callback.answer()
+    
+    # Build keyboard for broadcast
+    kb = None
+    if data["kb"]:
+        buttons = []
+        for row in data["kb"]:
+            row_btns = [InlineKeyboardButton(text=b["text"], url=b["url"]) for b in row]
+            buttons.append(row_btns)
+        kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+    # Get all users
+    with sqlite3.connect('database.db') as conn:
+        users = conn.execute("SELECT user_id FROM users").fetchall()
+    
+    count = 0
+    errors = 0
+    for (user_id,) in users:
+        try:
+            if data["photo"]:
+                await bot.send_photo(user_id, data["photo"], caption=data["text"], reply_markup=kb, parse_mode="Markdown")
+            else:
+                await bot.send_message(user_id, data["text"], reply_markup=kb, parse_mode="Markdown")
+            count += 1
+            await asyncio.sleep(0.05) # Rate limiting
+        except Exception:
+            errors += 1
+    
+    await callback.message.answer(f"✅ Рассылка завершена!\nДоставлено: `{count}`\nОшибок: `{errors}`", parse_mode="Markdown")
+    broadcast_data.pop(callback.from_user.id, None)
 
 async def main():
     """Main bot entry point"""
@@ -740,6 +1099,7 @@ async def main():
     
     # Register API routes
     app.router.add_get('/api/balance', api_balance)
+    app.router.add_get('/api/referrals', api_referrals) # Renamed to match api.js expectations later
     app.router.add_get('/api/leaderboard', api_leaderboard)
     app.router.add_post('/api/open_case', api_open_case)
     app.router.add_post('/api/claim_daily', api_claim_daily)
@@ -747,6 +1107,7 @@ async def main():
     app.router.add_post('/api/create_invoice', api_invoice)
     app.router.add_post('/api/admin/create_promo', api_admin_create_promo)
     app.router.add_post('/api/ton_success', api_ton_success)
+    app.router.add_post('/api/wheel/spin', api_wheel_spin)
     
     # Setup CORS
     cors = aiohttp_cors.setup(app, defaults={

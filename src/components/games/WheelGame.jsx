@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ALL_GIFTS } from '../../giftData';
+import { spinWheel } from '../../api';
 
 const SEGMENT_ANGLE = 360 / 12;
 const SPIN_COST = 50;
@@ -16,83 +17,119 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
   const pendingWinSegment = useRef(null);
 
   function generateWheelSegments() {
-    const commonItems = ALL_GIFTS.filter(g => g.price >= 15 && g.price <= 50);
-    const premiumItems = ALL_GIFTS.filter(g => g.price > 50);
+    // We want a mix of common and rare values to look appealing
+    const commonValues = [15, 20, 25, 30, 40, 50, 100, 150];
+    const rareValues = [200, 250, 300, 500];
 
-    const shuffledPremium = [...premiumItems].sort(() => Math.random() - 0.5);
-    const segments = [
-      ...commonItems.slice(0, 4),
-      ...shuffledPremium.slice(0, 8),
-    ];
+    const segments = [];
+    for (let i = 0; i < 8; i++) {
+        segments.push(commonValues[Math.floor(Math.random() * commonValues.length)]);
+    }
+    for (let i = 0; i < 4; i++) {
+        segments.push(rareValues[Math.floor(Math.random() * rareValues.length)]);
+    }
+    
+    // Shuffle
+    segments.sort(() => Math.random() - 0.5);
 
     const colors = ['#ff0000', '#00ff00', '#0099ff', '#ff00ff', '#ffaa00', '#888888', '#00ffff', '#ff00aa', '#a855f7', '#22c55e', '#f97316', '#3b82f6'];
 
-    return segments.map((segment, idx) => ({
-      id: idx + 1,
-      label: segment.price.toString(),
-      color: colors[idx % colors.length],
-      image: segment.image,
-      price: segment.price,
-    }));
+    return segments.map((val, idx) => {
+        // Find a gift image that matches the price or is closest
+        const gift = ALL_GIFTS.find(g => g.price === val) || ALL_GIFTS[0];
+        return {
+            id: idx + 1,
+            label: val.toString(),
+            color: colors[idx % colors.length],
+            image: gift.image,
+            price: val,
+        };
+    });
   }
 
-  const handleSpin = () => {
+  const handleSpin = async () => {
     if (isSpinning) return;
 
     if (balance < SPIN_COST) {
-      console.error(`Insufficient balance! Need ${SPIN_COST}, have ${balance}`);
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showAlert("❌ Недостаточно средств");
+      }
       return;
     }
 
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+    const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    if (!userId) return;
+
+    try {
+        setIsSpinning(true);
+        setWinSegment(null);
+        
+        // Call server to get result
+        const res = await spinWheel(userId);
+        
+        if (!res.success) {
+            setIsSpinning(false);
+            return;
+        }
+
+        const winAmount = res.win_amount;
+        
+        // Find if we have a segment with this amount, or change one to match
+        let winIndex = wheelSegments.findIndex(s => s.price === winAmount);
+        
+        if (winIndex === -1) {
+            // If not found, forcefully change a random segment to match the server result
+            // This ensures the animation matches the actual prize
+            winIndex = Math.floor(Math.random() * wheelSegments.length);
+            const newSegments = [...wheelSegments];
+            const gift = ALL_GIFTS.find(g => g.price === winAmount) || ALL_GIFTS[0];
+            newSegments[winIndex] = {
+                ...newSegments[winIndex],
+                label: winAmount.toString(),
+                price: winAmount,
+                image: gift.image
+            };
+            setWheelSegments(newSegments);
+        }
+
+        const wonSegment = wheelSegments[winIndex] || {
+            label: winAmount.toString(),
+            price: winAmount,
+            image: (ALL_GIFTS.find(g => g.price === winAmount) || ALL_GIFTS[0]).image,
+            color: '#ffffff'
+        };
+        
+        pendingWinSegment.current = wonSegment;
+
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+            window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+        }
+
+        // Animation logic
+        const fullRotations = 8;
+        const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2);
+        const newTargetRotation = spinRotation + (fullRotations * 360) + segmentOffset;
+
+        setTargetRotation(newTargetRotation);
+        setAnimKey(prev => prev + 1);
+
+    } catch (error) {
+        console.error("Spin error:", error);
+        setIsSpinning(false);
     }
-
-    setIsSpinning(true);
-    setWinSegment(null);
-
-    if (setBalance) {
-      setBalance(prev => Math.max(0, prev - SPIN_COST));
-    }
-    if (setSpent) {
-      setSpent(prev => prev + SPIN_COST);
-    }
-
-    const cheapIndices = wheelSegments.map((s, i) => s.price <= 50 ? i : -1).filter(i => i !== -1);
-    const midIndices = wheelSegments.map((s, i) => s.price > 50 && s.price <= 150 ? i : -1).filter(i => i !== -1);
-    const jackpotIndices = wheelSegments.map((s, i) => s.price > 150 ? i : -1).filter(i => i !== -1);
-
-    const rand = Math.random() * 100;
-    let winIndex;
-
-    if (rand < 85 && cheapIndices.length > 0) {
-      winIndex = cheapIndices[Math.floor(Math.random() * cheapIndices.length)];
-    } else if (rand < 97 && midIndices.length > 0) {
-      winIndex = midIndices[Math.floor(Math.random() * midIndices.length)];
-    } else if (jackpotIndices.length > 0) {
-      winIndex = jackpotIndices[Math.floor(Math.random() * jackpotIndices.length)];
-    } else {
-      winIndex = Math.floor(Math.random() * wheelSegments.length);
-    }
-
-    const wonSegment = wheelSegments[winIndex];
-    pendingWinSegment.current = wonSegment;
-
-    const fullRotations = 5;
-    const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2);
-    const newTargetRotation = spinRotation + (fullRotations * 360) + segmentOffset;
-
-    setTargetRotation(newTargetRotation);
-    setAnimKey(prev => prev + 1);
   };
 
   const handleAnimationComplete = () => {
     setWinSegment(pendingWinSegment.current);
     setIsSpinning(false);
-    setSpinRotation(targetRotation % 360); // Keep it normalized if needed, but cumulative is fine
+    setSpinRotation(targetRotation % 360);
 
     if (onWin && pendingWinSegment.current) {
       onWin(pendingWinSegment.current);
+    }
+    
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
     }
   };
 

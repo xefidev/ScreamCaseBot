@@ -4,11 +4,11 @@ import { claimPromo, fetchBalance, adminCreatePromo, fetchLeaderboard } from '..
 
 const ADMIN_IDS = [7782281997, 5396975347];
 
-export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, spent, donor }) {
+export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, tickets, spent, donor }) {
   const [user, setUser] = React.useState(null);
   const [adminCommand, setAdminCommand] = React.useState('');
-  const [promoCode, setPromoCode] = React.useState('');
   const [leaderboard, setLeaderboard] = React.useState([]);
+  const [referralCount, setReferralCount] = React.useState(0);
   
   // Manager State
   const [mgrCode, setMgrCode] = React.useState('');
@@ -20,6 +20,9 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
     if (window.Telegram?.WebApp) {
       const userData = window.Telegram.WebApp.initDataUnsafe?.user;
       setUser(userData);
+      if (userData?.id) {
+          loadReferrals(userData.id);
+      }
     }
     loadLeaderboard();
   }, []);
@@ -29,41 +32,13 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
       setLeaderboard(data);
   };
 
-  const handleClaimPromo = async () => {
-      if (!user?.id || !promoCode.trim()) {
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert("❌ Введите промокод");
-          }
-          return;
-      }
-
+  const loadReferrals = async (userId) => {
       try {
-          triggerHaptic('impact');
-          const res = await claimPromo(user.id, promoCode.trim());
-          
-          if (!res?.success) {
-              throw new Error("Invalid response from server");
-          }
-
-          if (res.type === 'stars' && res.reward) {
-              setBalance(prev => prev + res.reward);
-          }
-          
-          setPromoCode('');
-          triggerHaptic('success');
-          
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert(`✅ Промокод активирован!\n💎 Награда: ${res.reward} ⭐`);
-          }
-      } catch (error) {
-          console.error("Error claiming promo:", error);
-          // Error message is already shown by api.js
-          // Only show additional alert if error was not from the API
-          if (!error.status) {
-              if (window.Telegram?.WebApp) {
-                  window.Telegram.WebApp.showAlert("❌ Ошибка при активации промокода");
-              }
-          }
+          const { fetchReferrals } = await import('../api');
+          const data = await fetchReferrals(userId);
+          setReferralCount(data.count || 0);
+      } catch (e) {
+          console.error(e);
       }
   };
 
@@ -207,6 +182,8 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
               <span className="mx-1 opacity-30">|</span>
               Donor: {donor || 0}
               <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
+              <span className="mx-1 opacity-30">|</span>
+              Tickets: {tickets || 0} 🎫
             </p>
           </div>
         </div>
@@ -232,26 +209,6 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
 
       {/* Promo & Manager */}
       <div className="grid grid-cols-1 gap-4 mb-6">
-          <div className="glass-panel p-5 relative overflow-hidden group">
-            <h4 className="text-white font-black text-sm mb-3 font-rounded uppercase tracking-widest relative z-10">Промокод</h4>
-            <div className="flex gap-2 relative z-10">
-                <input
-                    type="text"
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                    placeholder="ENTER CODE"
-                    className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white font-bold font-rounded focus:outline-none focus:border-white/30 placeholder:text-white/20 text-sm"
-                />
-                <motion.button
-                    whileTap={{ scale: 0.95 }}
-                    onClick={handleClaimPromo}
-                    className="px-6 rounded-xl bg-white text-black font-black uppercase tracking-widest text-[10px]"
-                >
-                    OK
-                </motion.button>
-            </div>
-          </div>
-
           {ADMIN_IDS.includes(user?.id) && (
             <div className="glass-panel p-6 border-red-500/20 bg-red-500/5 relative overflow-hidden">
                 <h4 className="text-red-400 font-black text-lg mb-4 font-rounded uppercase tracking-widest relative z-10 flex items-center gap-2">
@@ -296,7 +253,18 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
                           <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>
                               {idx + 1}
                           </span>
-                          <span className="text-white font-bold font-rounded">ID: {item.user_id}</span>
+                          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex-shrink-0">
+                              {item.photo_url ? (
+                                  <img src={item.photo_url} alt="" className="w-full h-full object-cover" />
+                              ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-[10px] text-white/30 uppercase font-black">
+                                      {item.first_name ? item.first_name[0] : (item.username ? item.username[0] : '?')}
+                                  </div>
+                              )}
+                          </div>
+                          <span className="text-white font-bold font-rounded truncate max-w-[120px]">
+                              {item.username ? `@${item.username}` : (item.first_name || `ID: ${item.user_id}`)}
+                          </span>
                       </div>
                       <span className="text-yellow-400 font-black font-rounded flex items-center gap-1">
                           {item.donated}
@@ -312,11 +280,16 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
       {/* Referral System */}
       <div className="glass-panel p-6 mb-6 relative overflow-hidden group">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        <h4 className="text-white font-black text-lg mb-4 font-rounded uppercase tracking-widest relative z-10">Реферальная система</h4>
+        <div className="flex justify-between items-start mb-4 relative z-10">
+            <h4 className="text-white font-black text-lg font-rounded uppercase tracking-widest">Реферальная система</h4>
+            <div className="px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-black font-rounded">
+                {referralCount} РЕФ
+            </div>
+        </div>
         
         <div className="space-y-4 relative z-10">
           <p className="text-white/50 text-xs font-rounded leading-relaxed">
-            Приглашайте друзей и получайте <span className="text-white font-bold">10%</span> от их пополнений на свой баланс!
+            Приглашайте друзей и получайте <span className="text-white font-bold">10%</span> от их пополнений и <span className="text-white font-bold">+1 билет</span> 🎫 за каждого вступившего!
           </p>
           
           <motion.button
