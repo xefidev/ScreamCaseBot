@@ -31,6 +31,12 @@ const CHANNEL_LINK = 'https://t.me/ScreamCase';
 const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
 const PRODUCTION_URL = 'https://scream-case-bot.vercel.app';
 
+const formatValue = (val) => {
+  if (val === undefined || val === null) return '0';
+  if (val >= 1000) return (val / 1000).toFixed(1).replace('.0', '') + 'k';
+  return val.toString();
+};
+
 const TAB_COLORS = {
   cases: { bubble: 'rgba(255, 255, 255, 0.15)', icon: '#ffffff' },
   fortune: { bubble: 'rgba(168, 85, 247, 0.15)', icon: '#a855f7' },
@@ -62,13 +68,6 @@ export default function App() {
         window.Telegram.WebApp.HapticFeedback.impactOccurred(type === 'heavy' ? 'heavy' : 'light');
       }
     }
-  };
-
-  const syncBalance = async (userId) => {
-    if (!userId) return;
-    const b = await fetchBalance(userId);
-    setBalance(b);
-    return b;
   };
 
   const handleChannelLink = () => {
@@ -220,18 +219,10 @@ export default function App() {
     const data = await fetchBalance(userId);
     setBalance(data.stars || 0);
     setTickets(data.tickets || 0);
+    setDonor(data.donor || 0);
+    setSpent(data.spent || 0);
     
-    // Also sync leaderboard donor status if possible, or just keep it local/fetch from user info
     return data;
-  };
-
-  const handleChannelLink = () => {
-    triggerHaptic();
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.openTelegramLink(CHANNEL_LINK);
-    } else {
-      window.open(CHANNEL_LINK, '_blank');
-    }
   };
 
   // Initialize Telegram User
@@ -393,14 +384,21 @@ export default function App() {
                 </div>
               </div>
               <div>
-                <h1 className="text-white font-black text-xl font-rounded">{user?.first_name || 'GUEST'} {isAdmin && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 ml-1">ADMIN</span>}</h1>
-                <p className="text-white/50 text-xs flex items-center gap-1.5">
-                  Donor: {donor}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
-                  <span className="mx-1">|</span>
-                  Spent: {spent}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
-                </p>
+                <h1 className="text-white font-black text-xl font-rounded leading-tight">{user?.first_name || 'GUEST'} {isAdmin && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 ml-1">ADMIN</span>}</h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg backdrop-blur-md">
+                    <span className="text-[10px]" role="img" aria-label="donated">🏆</span>
+                    <span className="text-[10px] font-black text-white/90 font-rounded uppercase tracking-tight">
+                      {formatValue(donor)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg backdrop-blur-md">
+                    <span className="text-[10px]" role="img" aria-label="spent">💸</span>
+                    <span className="text-[10px] font-black text-white/90 font-rounded uppercase tracking-tight">
+                      {formatValue(spent)}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
             <motion.button

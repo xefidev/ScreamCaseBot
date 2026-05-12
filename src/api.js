@@ -60,24 +60,26 @@ const formatErrorMessage = (errorData) => {
 
 export const fetchBalance = async (userId) => {
   try {
-    if (!userId) return { stars: 0, tickets: 0 };
+    if (!userId) return { stars: 0, tickets: 0, donor: 0, spent: 0 };
     
     const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}`);
     
     if (!response.ok) {
       const error = await handleApiError(response);
       console.error('Balance fetch error:', error);
-      return { stars: 0, tickets: 0 };
+      return { stars: 0, tickets: 0, donor: 0, spent: 0 };
     }
     
     const data = await response.json();
     return {
       stars: data.stars || 0,
-      tickets: data.tickets || 0
+      tickets: data.tickets || 0,
+      donor: data.donor || 0,
+      spent: data.spent || 0
     };
   } catch (error) {
     console.error('Error fetching balance:', error);
-    return { stars: 0, tickets: 0 };
+    return { stars: 0, tickets: 0, donor: 0, spent: 0 };
   }
 };
 
@@ -126,6 +128,33 @@ export const spinWheel = async (userId) => {
     console.error('Error spinning wheel:', error);
     if (!(error instanceof Error) || !error.status) {
       showAlert('❌ Ошибка при прокруте колеса');
+    }
+    throw error;
+  }
+};
+
+export const upgradeItem = async (userId, cost, chance) => {
+  try {
+    if (!userId) throw new Error('Missing user_id');
+    
+    const response = await fetch(`${BACKEND_URL}/api/upgrade`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, cost, chance }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      throw new Error(message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error upgrading item:', error);
+    if (!(error instanceof Error)) {
+      showAlert('❌ Ошибка при апгрейде');
     }
     throw error;
   }

@@ -10,32 +10,12 @@ const easeOutCirc = [0.12, 0, 0.39, 0];
 export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBalance = null, setSpent = null }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [winSegment, setWinSegment] = useState(null);
-  const [wheelSegments, setWheelSegments] = useState(() => generateWheelSegments());
-  const [spinRotation, setSpinRotation] = useState(0);
-  const [targetRotation, setTargetRotation] = useState(0);
-  const [animKey, setAnimKey] = useState(0);
-  const pendingWinSegment = useRef(null);
-
-  function generateWheelSegments() {
-    // We want a mix of common and rare values to look appealing
-    const commonValues = [15, 20, 25, 30, 40, 50, 100, 150];
-    const rareValues = [200, 250, 300, 500];
-
-    const segments = [];
-    for (let i = 0; i < 8; i++) {
-        segments.push(commonValues[Math.floor(Math.random() * commonValues.length)]);
-    }
-    for (let i = 0; i < 4; i++) {
-        segments.push(rareValues[Math.floor(Math.random() * rareValues.length)]);
-    }
-    
-    // Shuffle
-    segments.sort(() => Math.random() - 0.5);
-
+  const [wheelSegments] = useState(() => {
+    // HARDCODED to match server bot.py SEGMENTS
+    const SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150];
     const colors = ['#ff0000', '#00ff00', '#0099ff', '#ff00ff', '#ffaa00', '#888888', '#00ffff', '#ff00aa', '#a855f7', '#22c55e', '#f97316', '#3b82f6'];
 
-    return segments.map((val, idx) => {
-        // Find a gift image that matches the price or is closest
+    return SEGMENTS.map((val, idx) => {
         const gift = ALL_GIFTS.find(g => g.price === val) || ALL_GIFTS[0];
         return {
             id: idx + 1,
@@ -45,17 +25,14 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             price: val,
         };
     });
-  }
+  });
+  const [spinRotation, setSpinRotation] = useState(0);
+  const [targetRotation, setTargetRotation] = useState(0);
+  const [animKey, setAnimKey] = useState(0);
+  const pendingWinSegment = useRef(null);
 
   const handleSpin = async () => {
     if (isSpinning) return;
-
-    if (balance < SPIN_COST) {
-      if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.showAlert("❌ Недостаточно средств");
-      }
-      return;
-    }
 
     const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
     if (!userId) return;
@@ -64,7 +41,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
         setIsSpinning(true);
         setWinSegment(null);
         
-        // Call server to get result
+        // 1. Call backend /api/wheel/spin
         const res = await spinWheel(userId);
         
         if (!res.success) {
@@ -72,32 +49,9 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             return;
         }
 
-        const winAmount = res.win_amount;
-        
-        // Find if we have a segment with this amount, or change one to match
-        let winIndex = wheelSegments.findIndex(s => s.price === winAmount);
-        
-        if (winIndex === -1) {
-            // If not found, forcefully change a random segment to match the server result
-            // This ensures the animation matches the actual prize
-            winIndex = Math.floor(Math.random() * wheelSegments.length);
-            const newSegments = [...wheelSegments];
-            const gift = ALL_GIFTS.find(g => g.price === winAmount) || ALL_GIFTS[0];
-            newSegments[winIndex] = {
-                ...newSegments[winIndex],
-                label: winAmount.toString(),
-                price: winAmount,
-                image: gift.image
-            };
-            setWheelSegments(newSegments);
-        }
-
-        const wonSegment = wheelSegments[winIndex] || {
-            label: winAmount.toString(),
-            price: winAmount,
-            image: (ALL_GIFTS.find(g => g.price === winAmount) || ALL_GIFTS[0]).image,
-            color: '#ffffff'
-        };
+        // 2. Receive the 'prize_index' from the server
+        const winIndex = res.prize_index;
+        const wonSegment = wheelSegments[winIndex];
         
         pendingWinSegment.current = wonSegment;
 
@@ -105,9 +59,13 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
         }
 
-        // Animation logic
+        // 3. Start the rotation animation, setting the target rotation strictly to that index
         const fullRotations = 8;
-        const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE + SEGMENT_ANGLE / 2);
+        // The rotation is clockwise, segments are arranged clockwise.
+        // Index 0 is at 0 degrees, but the indicator is at the top (-90 deg offset in SVG usually)
+        // In this SVG, segments are drawn from -90.
+        // To win segment winIndex, it must be under the indicator at the top.
+        const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE); 
         const newTargetRotation = spinRotation + (fullRotations * 360) + segmentOffset;
 
         setTargetRotation(newTargetRotation);

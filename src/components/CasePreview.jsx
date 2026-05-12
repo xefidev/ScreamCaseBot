@@ -75,45 +75,41 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           throw new Error("Invalid response from server");
         }
 
+        const actualWonItem = response.item;
+        if (!actualWonItem && !isPromo) {
+           throw new Error("No item returned from server");
+        }
+
         if (isPromo && response.reward) {
           // If it was a promo, the reward was already added to balance on server
           // but we might need to update local balance
           if (setBalance) setBalance(prev => prev + response.reward);
+          
+          // For promos, we don't necessarily spin if it's just a star reward
+          // but let's assume promo cases can also return items
         }
 
         triggerHaptic();
         
         if (!isPromo && setBalance) {
-          setBalance(prev => Math.max(0, prev - cost));
+          // Balance is already updated on server, but we update locally for smoothness
+          // Or we could syncBalance(user.id)
+          setBalance(prev => Math.max(0, prev - (response.deducted !== undefined ? response.deducted : cost)));
         }
         if (!isPromo && setSpent) {
-          setSpent(prev => prev + cost);
+          setSpent(prev => prev + (response.deducted !== undefined ? response.deducted : cost));
         }
         setCurrentStock(prev => Math.max(0, prev - 1));
-
-        const cheapItems = spinItems.filter(i => i.price <= 50);
-        const midTier = spinItems.filter(i => i.price > 50 && i.price <= 150);
-        const jackpotItems = spinItems.filter(i => i.price > 150);
-
-        const rand = Math.random() * 100;
-        let actualWonItem;
-
-        if (rand < 85 && cheapItems.length > 0) {
-          actualWonItem = cheapItems[Math.floor(Math.random() * cheapItems.length)];
-        } else if (rand < 97 && midTier.length > 0) {
-          actualWonItem = midTier[Math.floor(Math.random() * midTier.length)];
-        } else if (jackpotItems.length > 0) {
-          actualWonItem = jackpotItems[Math.floor(Math.random() * jackpotItems.length)];
-        } else {
-          actualWonItem = spinItems[Math.floor(Math.random() * spinItems.length)];
-        }
 
         setWonItem(actualWonItem);
         setHasSpun(false);
         setShowConfetti(false);
         setShowResult(false);
 
-        const winIndex = spinItems.findIndex(i => i.name === actualWonItem.name && i.price === actualWonItem.price);
+        // Find index of won item in spinItems for animation
+        let winIndex = spinItems.findIndex(i => i.name === actualWonItem.name && i.price === actualWonItem.price);
+        if (winIndex === -1) winIndex = 0;
+
         const repetitions = 10;
         const extendedItems = [];
         for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);

@@ -4,6 +4,12 @@ import { claimPromo, fetchBalance, adminCreatePromo, fetchLeaderboard } from '..
 
 const ADMIN_IDS = [7782281997, 5396975347];
 
+const formatValue = (val) => {
+  if (val === undefined || val === null) return '0';
+  if (val >= 1000) return (val / 1000).toFixed(1).replace('.0', '') + 'k';
+  return val.toString();
+};
+
 export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, tickets, spent, donor }) {
   const [user, setUser] = React.useState(null);
   const [adminCommand, setAdminCommand] = React.useState('');
@@ -15,6 +21,7 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
   const [mgrReward, setMgrReward] = React.useState('100');
   const [mgrDays, setMgrDays] = React.useState('7');
   const [mgrMinDonation, setMgrMinDonation] = React.useState('0');
+  const [mgrLuck, setMgrLuck] = React.useState('0');
 
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
@@ -177,14 +184,27 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
               {user?.first_name || 'GUEST'}
               {ADMIN_IDS.includes(user?.id) && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 ml-2 align-middle">ADMIN</span>}
             </h3>
-            <p className="text-white/50 text-xs flex items-center gap-1.5 font-rounded font-bold mt-1">
-              ID: {user?.id || '000000000'}
-              <span className="mx-1 opacity-30">|</span>
-              Donor: {donor || 0}
-              <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
-              <span className="mx-1 opacity-30">|</span>
-              Tickets: {tickets || 0} 🎫
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-white/40 text-[10px] font-bold">ID: {user?.id || '000000000'}</span>
+              <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
+                <span className="text-[10px]" role="img" aria-label="donated">🏆</span>
+                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
+                  {formatValue(donor)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
+                <span className="text-[10px]" role="img" aria-label="spent">💸</span>
+                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
+                  {formatValue(spent)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
+                <span className="text-[10px]" role="img" aria-label="tickets">🎫</span>
+                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
+                  {formatValue(tickets)}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 

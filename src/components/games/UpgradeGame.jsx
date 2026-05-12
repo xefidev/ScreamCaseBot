@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { ALL_GIFTS } from '../../giftData';
+import { upgradeItem, fetchBalance } from '../../api';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
   const [selectedSlot1, setSelectedSlot1] = useState(null);
@@ -35,40 +36,56 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
     return ALL_GIFTS.filter(g => g.price > selectedSlot1.price && g.price >= 15);
   }, [selectedSlot1]);
 
-  const handleUpgrade = () => {
+  const handleUpgrade = async () => {
     if (isUpgrading || !selectedSlot1 || !selectedSlot2) return;
 
     if (balance < upgradeCost) {
-      console.error(`Insufficient balance! Need ${upgradeCost}, have ${balance}`);
+      if (window.Telegram?.WebApp) {
+          window.Telegram.WebApp.showAlert(`❌ Недостаточно средств! Нужно ${upgradeCost} ⭐`);
+      }
       return;
     }
 
-    triggerHaptic();
-    setIsUpgrading(true);
-    setResult(null);
-    setShowConfetti(false);
+    const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    if (!userId) return;
 
-    setBalance(prev => prev - upgradeCost);
-    if (setSpent) {
-      setSpent(prev => prev + upgradeCost);
+    try {
+        triggerHaptic();
+        setIsUpgrading(true);
+        setResult(null);
+        setShowConfetti(false);
+
+        // 1. Call backend /api/upgrade
+        const res = await upgradeItem(userId, upgradeCost, successChance);
+        
+        // 2. Determine success from server (God Mode is handled server-side)
+        const success = res.success;
+        pendingResult.current = success;
+
+        const greenAngle = (successChance / 100) * 360;
+
+        let targetAngle;
+        if (success) {
+          // Point to green area
+          targetAngle = Math.random() * greenAngle;
+        } else {
+          // Point to gray area
+          targetAngle = greenAngle + Math.random() * (360 - greenAngle);
+        }
+
+        const totalRotation = (8 * 360) + targetAngle;
+
+        setArrowRotation(totalRotation);
+        setAnimKey(prev => prev + 1);
+        
+        // Refresh balance
+        const balanceData = await fetchBalance(userId);
+        if (setBalance) setBalance(balanceData.stars);
+
+    } catch (error) {
+        console.error("Upgrade error:", error);
+        setIsUpgrading(false);
     }
-
-    const success = Math.random() * 100 < successChance;
-    pendingResult.current = success;
-
-    const greenAngle = (successChance / 100) * 360;
-
-    let targetAngle;
-    if (success) {
-      targetAngle = Math.random() * greenAngle;
-    } else {
-      targetAngle = greenAngle + Math.random() * (360 - greenAngle);
-    }
-
-    const totalRotation = (5 * 360) + targetAngle;
-
-    setArrowRotation(totalRotation);
-    setAnimKey(prev => prev + 1);
   };
 
   const handleAnimationComplete = () => {
