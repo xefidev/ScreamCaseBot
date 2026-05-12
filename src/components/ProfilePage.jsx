@@ -30,37 +30,93 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
   };
 
   const handleClaimPromo = async () => {
-      if (!user?.id || !promoCode) return;
-      try {
-          const res = await claimPromo(user.id, promoCode);
-          if (res.success) {
-              if (res.type === 'stars') {
-                  setBalance(prev => prev + res.reward);
-              }
-              setPromoCode('');
-              triggerHaptic('success');
-              if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(`Промокод активирован! Награда: ${res.reward} ${res.type}`);
+      if (!user?.id || !promoCode.trim()) {
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert("❌ Введите промокод");
           }
-      } catch (e) {
-          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(e.message || "Ошибка активации промокода");
+          return;
+      }
+
+      try {
+          triggerHaptic('impact');
+          const res = await claimPromo(user.id, promoCode.trim());
+          
+          if (!res?.success) {
+              throw new Error("Invalid response from server");
+          }
+
+          if (res.type === 'stars' && res.reward) {
+              setBalance(prev => prev + res.reward);
+          }
+          
+          setPromoCode('');
+          triggerHaptic('success');
+          
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert(`✅ Промокод активирован!\n💎 Награда: ${res.reward} ⭐`);
+          }
+      } catch (error) {
+          console.error("Error claiming promo:", error);
+          // Error message is already shown by api.js
+          // Only show additional alert if error was not from the API
+          if (!error.status) {
+              if (window.Telegram?.WebApp) {
+                  window.Telegram.WebApp.showAlert("❌ Ошибка при активации промокода");
+              }
+          }
       }
   };
 
   const handleCreatePromo = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !ADMIN_IDS.includes(user.id)) {
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert("❌ Только администраторы могут создавать промокоды");
+          }
+          return;
+      }
+
+      if (!mgrCode.trim()) {
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert("❌ Введите код промокода");
+          }
+          return;
+      }
+
+      if (parseInt(mgrReward) <= 0) {
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert("❌ Награда должна быть > 0");
+          }
+          return;
+      }
+
       try {
+          triggerHaptic('impact');
           await adminCreatePromo(user.id, {
-              code: mgrCode,
+              code: mgrCode.trim().toUpperCase(),
               reward: parseInt(mgrReward),
-              days: parseInt(mgrDays),
-              min_donation: parseInt(mgrMinDonation),
+              days: parseInt(mgrDays) || 7,
+              min_donation: parseInt(mgrMinDonation) || 0,
               type: 'stars'
           });
+          
           setMgrCode('');
+          setMgrReward('100');
+          setMgrDays('7');
+          setMgrMinDonation('0');
           triggerHaptic('success');
-          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Промокод успешно создан!");
-      } catch (e) {
-          if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка при создании промокода");
+          
+          if (window.Telegram?.WebApp) {
+              window.Telegram.WebApp.showAlert("✅ Промокод успешно создан!");
+          }
+      } catch (error) {
+          console.error("Error creating promo:", error);
+          // Error message is already shown by api.js
+          // Only show additional alert if error was not from the API
+          if (!error.status) {
+              if (window.Telegram?.WebApp) {
+                  window.Telegram.WebApp.showAlert("❌ Ошибка при создании промокода");
+              }
+          }
       }
   };
 

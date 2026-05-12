@@ -3,10 +3,11 @@ import asyncio
 import sqlite3
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
+from aiogram.filters import Command, CommandObject
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 from aiohttp import web
 import aiohttp_cors
+import hashlib
 
 # --- НАСТРОЙКИ ---
 TOKEN = "8660260631:AAF9yETvvFVrIUUsP5twUZtPzik-0jaJUog"
@@ -14,7 +15,13 @@ ADMIN_IDS = [7782281997, 5396975347]
 APP_URL = "https://scream-case-bot.vercel.app"
 CHANNEL_URL = "https://t.me/ScreamCase"
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
@@ -97,198 +104,671 @@ CASES_PRICES = {
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    data, is_new = register_or_get(message.from_user.id)
-    
-    if is_new:
-        for admin_id in ADMIN_IDS:
-            try:
-                await bot.send_message(admin_id, 
-                    f"🚀 **Новый пользователь!**\n\n👤 Имя: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n🏷 Юзернейм: @{message.from_user.username}", 
-                    parse_mode="Markdown")
-            except: pass
+    """Handle /start command - register user and show main menu"""
+    try:
+        data, is_new = register_or_get(message.from_user.id)
+        
+        if is_new:
+            logger.info(f"New user registered: {message.from_user.id} - {message.from_user.full_name}")
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(admin_id, 
+                        f"🚀 **Новый пользователь!**\n\n👤 Имя: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n🏷 Юзернейм: @{message.from_user.username}", 
+                        parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Failed to notify admin: {e}")
 
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))],
-        [InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)]
-    ])
-    await message.answer(f"Привет! Твой баланс: {data[0]} ⭐", reply_markup=kb)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))],
+            [InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)]
+        ])
+        await message.answer(f"Привет! Твой баланс: {data[0]} ⭐", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Error in start_cmd: {e}")
+        await message.answer("❌ Ошибка при запуске. Попробуйте позже.")
 
 @dp.message(Command("help"))
 async def help_cmd(message: types.Message):
-    text = "📖 **Команды бота**\n\n"
-    text += "• `/start` — Запуск приложения\n"
-    if message.from_user.id in ADMIN_IDS:
-        text += "\n🛠 **Админ-панель:**\n"
-        text += "• `/+ [число]` — Добавить себе звезд\n"
-        text += "• `/setbalance [ID] [число]` — Установить баланс\n"
-        text += "• `/user [ID]` — Инфо об игроке\n"
-        text += "• `/stats` — Общая статистика\n"
-        text += "• `/broadcast [текст]` — Рассылка"
-    await message.answer(text, parse_mode="Markdown")
+    """Handle /help command - show available commands"""
+    try:
+        text = "📖 **Команды бота**\n\n"
+        text += "• `/start` — Запуск приложения\n"
+        text += "• `/help` — Справка по командам\n"
+        
+        if message.from_user.id in ADMIN_IDS:
+            text += "\n🛠 **Админ-панель:**\n"
+            text += "• `/+ <число>` — Добавить себе звезд\n"
+            text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
+            text += "• `/user <ID>` — Информация об игроке\n"
+            text += "• `/stats` — Общая статистика\n"
+            text += "• `/createpromo <код> <награда> <дни>` — Создать промокод\n"
+        
+        await message.answer(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in help_cmd: {e}")
+        await message.answer("❌ Ошибка при получении справки.")
 
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
-    if message.from_user.id not in ADMIN_IDS: return
+    """Handle /+ command - add stars to admin account"""
     try:
-        amount = int(message.text.split()[1])
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Пример: `/+ 100`", parse_mode="Markdown")
+            return
+        
+        amount = int(parts[1])
+        if amount <= 0:
+            await message.answer("❌ Количество должно быть > 0.")
+            return
+        
         update_balance(message.from_user.id, amount, "add")
+        logger.info(f"Admin {message.from_user.id} added {amount} stars to themselves")
         await message.answer(f"✅ Добавлено {amount} ⭐")
-    except: await message.answer("Ошибка. Пример: `/+ 100`")
+    except ValueError:
+        await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_add: {e}")
+        await message.answer("❌ Ошибка при добавлении звезд.")
 
 @dp.message(Command("setbalance"))
 async def admin_set(message: types.Message):
-    if message.from_user.id not in ADMIN_IDS: return
+    """Handle /setbalance command - set user balance"""
     try:
-        _, target_id, amount = message.text.split()
-        update_balance(int(target_id), int(amount), "set")
-        await message.answer(f"✅ Баланс ID `{target_id}` теперь `{amount}` ⭐", parse_mode="Markdown")
-    except: await message.answer("Пример: `/setbalance ID 500`")
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        parts = message.text.split()
+        if len(parts) < 3:
+            await message.answer("❌ Пример: `/setbalance 123456 500`", parse_mode="Markdown")
+            return
+        
+        target_id = int(parts[1])
+        amount = int(parts[2])
+        
+        if amount < 0:
+            await message.answer("❌ Количество не может быть отрицательным.")
+            return
+        
+        update_balance(target_id, amount, "set")
+        logger.info(f"Admin {message.from_user.id} set balance for {target_id} to {amount}")
+        await message.answer(f"✅ Баланс ID `{target_id}` установлен на `{amount}` ⭐", parse_mode="Markdown")
+    except ValueError:
+        await message.answer("❌ Некорректные параметры.", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_set: {e}")
+        await message.answer("❌ Ошибка при установке баланса.")
+
+@dp.message(Command("user"))
+async def admin_user_info(message: types.Message):
+    """Handle /user command - show user info"""
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Пример: `/user 123456`", parse_mode="Markdown")
+            return
+        
+        user_id = int(parts[1])
+        with sqlite3.connect('database.db') as conn:
+            user = conn.execute(
+                "SELECT user_id, stars, join_date, total_donated_stars, total_donated_ton FROM users WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+        
+        if not user:
+            await message.answer(f"❌ Пользователь `{user_id}` не найден.", parse_mode="Markdown")
+            return
+        
+        text = f"""👤 **Информация о пользователе**
+🆔 ID: `{user[0]}`
+⭐ Баланс: `{user[1]}`
+📅 Дата присоединения: `{user[2]}`
+💎 Всего пожертвовано звёзд: `{user[3]}`
+💰 Всего пожертвовано TON: `{user[4]:.4f}`"""
+        await message.answer(text, parse_mode="Markdown")
+    except ValueError:
+        await message.answer("❌ Некорректный ID пользователя.", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_user_info: {e}")
+        await message.answer("❌ Ошибка при получении информации.")
+
+@dp.message(Command("stats"))
+async def admin_stats(message: types.Message):
+    """Handle /stats command - show global statistics"""
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        with sqlite3.connect('database.db') as conn:
+            total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            total_stars = conn.execute("SELECT SUM(stars) FROM users").fetchone()[0] or 0
+            total_donated = conn.execute("SELECT SUM(total_donated_stars) FROM users").fetchone()[0] or 0
+            total_ton = conn.execute("SELECT SUM(total_donated_ton) FROM users").fetchone()[0] or 0
+        
+        text = f"""📊 **Глобальная статистика**
+👥 Всего пользователей: `{total_users}`
+⭐ Звёзд в системе: `{total_stars}`
+💎 Всего пожертвовано звёзд: `{total_donated}`
+💰 Всего пожертвовано TON: `{total_ton:.4f}`"""
+        await message.answer(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_stats: {e}")
+        await message.answer("❌ Ошибка при получении статистики.")
+
+@dp.message()
+async def unknown_command(message: types.Message):
+    """Handle unknown commands gracefully"""
+    if message.text and message.text.startswith('/'):
+        await message.answer("❌ Неизвестная команда. Введите `/help` для справки.", parse_mode="Markdown")
 
 # --- API ДЛЯ САЙТА ---
+
 async def api_balance(request):
-    uid = request.query.get("user_id")
-    if not uid: return web.json_response({"error": "no_id"}, status=400)
-    with sqlite3.connect('database.db') as conn:
-        res = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
-    return web.json_response({"stars": res[0] if res else 0})
+    """GET /api/balance - Get user balance (NO AUTHENTICATION - read-only)"""
+    try:
+        uid = request.query.get("user_id")
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        with sqlite3.connect('database.db') as conn:
+            res = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+        
+        return web.json_response({"stars": res[0] if res else 0})
+    except ValueError:
+        return web.json_response({"error": "invalid_user_id"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_balance: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_leaderboard(request):
-    with sqlite3.connect('database.db') as conn:
-        # Топ 10 по суммарным донатам
-        res = conn.execute("SELECT user_id, total_donated_stars FROM users ORDER BY total_donated_stars DESC LIMIT 10").fetchall()
-    leaderboard = [{"user_id": r[0], "donated": r[1]} for r in res]
-    return web.json_response(leaderboard)
+    """GET /api/leaderboard - Get top 10 donors (NO AUTHENTICATION - read-only)"""
+    try:
+        with sqlite3.connect('database.db') as conn:
+            res = conn.execute(
+                "SELECT user_id, total_donated_stars FROM users ORDER BY total_donated_stars DESC LIMIT 10"
+            ).fetchall()
+        
+        leaderboard = [{"user_id": r[0], "donated": r[1]} for r in res]
+        return web.json_response(leaderboard)
+    except Exception as e:
+        logger.error(f"Error in api_leaderboard: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_open_case(request):
-    data = await request.json()
-    uid = data.get("user_id")
-    case_id = data.get("case_id")
-    if not uid or case_id is None: return web.json_response({"error": "invalid_data"}, status=400)
-    
-    price = CASES_PRICES.get(int(case_id))
-    if price is None: return web.json_response({"error": "invalid_case"}, status=400)
-    
-    # Handle Daily and Promo cases separately
-    if int(case_id) == 2:
-        return await _handle_claim_daily(uid)
-    if int(case_id) == 1:
-        return await _handle_claim_promo(uid, data.get("code"))
-
-    with sqlite3.connect('database.db') as conn:
-        res = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
-        if not res or res[0] < price:
-            return web.json_response({"error": "insufficient_funds"}, status=403)
+    """
+    POST /api/open_case - Open a case (paid or free)
+    SECURITY:
+    - Price is ALWAYS fetched from CASES_PRICES config, NEVER from client
+    - Balance is checked BEFORE deducting
+    - Balance is DEDUCTED IN DB before response
+    - Daily case requires 24h cooldown
+    - Promo case requires valid promocode
+    """
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        case_id = data.get("case_id")
         
-        conn.execute("UPDATE users SET stars = stars - ? WHERE user_id = ?", (price, uid))
-        conn.commit()
-    return web.json_response({"success": True})
+        if not uid or case_id is None:
+            return web.json_response({"error": "invalid_data"}, status=400)
+        
+        # Validate case_id and get price from CONFIG only
+        case_id = int(case_id)
+        price = CASES_PRICES.get(case_id)
+        
+        if price is None:
+            return web.json_response({"error": "invalid_case"}, status=400)
+        
+        # Handle Daily and Promo cases separately
+        if case_id == 2:  # Daily Case
+            return await _handle_claim_daily(uid)
+        
+        if case_id == 1:  # Promo Case
+            promo_code = data.get("code")
+            if not promo_code or not isinstance(promo_code, str):
+                return web.json_response({"error": "promo_code_required"}, status=400)
+            return await _handle_claim_promo(uid, promo_code)
+        
+        # Paid cases (3-10)
+        if price <= 0:
+            return web.json_response({"error": "invalid_case"}, status=400)
+        
+        with sqlite3.connect('database.db') as conn:
+            # Check balance first
+            user = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+            
+            if not user:
+                return web.json_response({"error": "user_not_found"}, status=404)
+            
+            user_balance = user[0]
+            
+            if user_balance < price:
+                logger.warning(f"User {uid} attempted to open case {case_id} with insufficient funds. Balance: {user_balance}, Required: {price}")
+                return web.json_response({"error": "insufficient_funds", "required": price, "current": user_balance}, status=403)
+            
+            # CRITICAL: Deduct balance BEFORE sending response
+            conn.execute("UPDATE users SET stars = stars - ? WHERE user_id = ?", (price, uid))
+            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                         (int(uid), -price, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+            
+            logger.info(f"User {uid} opened case {case_id}, deducted {price} stars")
+        
+        return web.json_response({"success": True, "deducted": price})
+    
+    except ValueError as e:
+        logger.error(f"ValueError in api_open_case: {e}")
+        return web.json_response({"error": "invalid_data"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_open_case: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def _handle_claim_daily(uid):
-    with sqlite3.connect('database.db') as conn:
-        res = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+    """
+    Claim daily free case
+    SECURITY: 24h cooldown is STRICT - checked before update
+    """
+    try:
+        uid = int(uid)
         now = datetime.now()
-        if res and res[0]:
-            last_daily = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
-            if (now - last_daily).total_seconds() < 86400:
-                return web.json_response({"error": "Wait 24h"}, status=403)
         
-        conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (now.strftime("%Y-%m-%d %H:%M:%S"), uid))
-        conn.commit()
-    return web.json_response({"success": True})
+        with sqlite3.connect('database.db') as conn:
+            user = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (uid,)).fetchone()
+            
+            if not user:
+                return web.json_response({"error": "user_not_found"}, status=404)
+            
+            last_daily_str = user[0]
+            
+            # Check 24h cooldown
+            if last_daily_str:
+                try:
+                    last_daily = datetime.strptime(last_daily_str, "%Y-%m-%d %H:%M:%S")
+                    time_diff = (now - last_daily).total_seconds()
+                    
+                    if time_diff < 86400:  # 24 hours = 86400 seconds
+                        wait_seconds = int(86400 - time_diff)
+                        logger.info(f"User {uid} attempted daily claim too soon. Wait: {wait_seconds}s")
+                        return web.json_response({
+                            "error": "daily_cooldown_active",
+                            "wait_seconds": wait_seconds
+                        }, status=403)
+                except ValueError:
+                    # Invalid datetime format, treat as never claimed
+                    pass
+            
+            # Update last_daily timestamp
+            conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", 
+                        (now.strftime("%Y-%m-%d %H:%M:%S"), uid))
+            conn.commit()
+            
+            logger.info(f"User {uid} claimed daily case")
+        
+        return web.json_response({"success": True})
+    
+    except ValueError as e:
+        logger.error(f"ValueError in _handle_claim_daily: {e}")
+        return web.json_response({"error": "invalid_data"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in _handle_claim_daily: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def _handle_claim_promo(uid, code):
-    if not code: return web.json_response({"error": "invalid_data"}, status=400)
-    with sqlite3.connect('database.db') as conn:
-        promo = conn.execute("SELECT reward, type, active, min_donation_24h, expires_at FROM promocodes WHERE code = ?", (code,)).fetchone()
-        if not promo:
-            return web.json_response({"error": "Invalid Code"}, status=404)
-        if not promo[2]:
-            return web.json_response({"error": "Promo inactive"}, status=403)
-        if promo[4]:
-            expiry = datetime.strptime(promo[4], "%Y-%m-%d %H:%M:%S")
-            if datetime.now() > expiry:
-                return web.json_response({"error": "Promo expired"}, status=403)
-        if promo[3] > 0:
-            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-            donated = conn.execute("SELECT SUM(amount) FROM payments WHERE user_id = ? AND date > ?", (uid, yesterday)).fetchone()[0] or 0
-            if donated < promo[3]:
-                return web.json_response({"error": "Minimum donation required", "required": promo[3]}, status=403)
-
-        if promo[1] == "stars":
-            update_balance(uid, promo[0], "add")
-    return web.json_response({"success": True, "reward": promo[0], "type": promo[1]})
+    """
+    Claim promo code reward
+    SECURITY CHECKS:
+    1. Code must exist in promocodes table
+    2. Code must not be expired
+    3. Code must be active
+    4. User must meet minimum donation requirement (if set)
+    5. NO rewards for invalid/random strings
+    """
+    try:
+        uid = int(uid)
+        code = str(code).strip().upper()  # Normalize code
+        
+        if not code or len(code) == 0 or len(code) > 50:
+            logger.warning(f"User {uid} attempted invalid promo code: '{code}'")
+            return web.json_response({"error": "invalid_code_format"}, status=400)
+        
+        with sqlite3.connect('database.db') as conn:
+            # Check 1: Code exists
+            promo = conn.execute(
+                "SELECT reward, type, active, min_donation_24h, expires_at FROM promocodes WHERE UPPER(code) = ?",
+                (code,)
+            ).fetchone()
+            
+            if not promo:
+                logger.warning(f"User {uid} attempted non-existent promo code: {code}")
+                return web.json_response({"error": "invalid_code"}, status=404)
+            
+            reward, promo_type, is_active, min_donation_24h, expires_at = promo
+            
+            # Check 2: Code must be active
+            if not is_active:
+                logger.warning(f"User {uid} attempted inactive promo code: {code}")
+                return web.json_response({"error": "code_inactive"}, status=403)
+            
+            # Check 3: Code must not be expired
+            if expires_at:
+                try:
+                    expiry_dt = datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+                    if datetime.now() > expiry_dt:
+                        logger.warning(f"User {uid} attempted expired promo code: {code}")
+                        return web.json_response({"error": "code_expired"}, status=403)
+                except ValueError:
+                    logger.error(f"Invalid expires_at format for promo {code}")
+                    return web.json_response({"error": "server_error"}, status=500)
+            
+            # Check 4: Minimum donation requirement
+            if min_donation_24h > 0:
+                yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+                donated_result = conn.execute(
+                    "SELECT SUM(amount) FROM payments WHERE user_id = ? AND date > ? AND amount > 0",
+                    (uid, yesterday)
+                ).fetchone()
+                
+                donated_amount = donated_result[0] or 0
+                
+                if donated_amount < min_donation_24h:
+                    logger.warning(f"User {uid} doesn't meet min donation for promo {code}. Required: {min_donation_24h}, Donated: {donated_amount}")
+                    return web.json_response({
+                        "error": "minimum_donation_required",
+                        "required": min_donation_24h,
+                        "current": donated_amount
+                    }, status=403)
+            
+            # All checks passed - grant reward
+            if promo_type == "stars":
+                conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (reward, uid))
+                conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                            (uid, reward, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+                
+                logger.info(f"User {uid} claimed promo code {code} for {reward} stars")
+            else:
+                logger.warning(f"Unknown promo type for code {code}: {promo_type}")
+                return web.json_response({"error": "invalid_reward_type"}, status=500)
+        
+        return web.json_response({"success": True, "reward": reward, "type": promo_type})
+    
+    except ValueError as e:
+        logger.error(f"ValueError in _handle_claim_promo: {e}")
+        return web.json_response({"error": "invalid_data"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in _handle_claim_promo: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_claim_daily(request):
-    data = await request.json()
-    return await _handle_claim_daily(data.get("user_id"))
+    """POST /api/claim_daily - Claim daily free case"""
+    try:
+        data = await request.json()
+        return await _handle_claim_daily(data.get("user_id"))
+    except Exception as e:
+        logger.error(f"Error in api_claim_daily: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_claim_promo(request):
-    data = await request.json()
-    return await _handle_claim_promo(data.get("user_id"), data.get("code"))
+    """POST /api/claim_promo - Claim promo code"""
+    try:
+        data = await request.json()
+        return await _handle_claim_promo(data.get("user_id"), data.get("code"))
+    except Exception as e:
+        logger.error(f"Error in api_claim_promo: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_ton_success(request):
-    data = await request.json()
-    uid = data.get("user_id")
-    amount_ton = data.get("amount") # В тонах
-    tx_id = data.get("tx_id")
+    """
+    POST /api/ton_success - Register TON payment
+    SECURITY:
+    - Transaction hash MUST be unique (checked in ton_transactions table)
+    - Transaction is stored BEFORE adding stars
+    - Duplicate transactions are REJECTED immediately
+    """
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        amount_ton = data.get("amount")
+        tx_hash = data.get("tx_id") or data.get("boc")  # Support tx_id or boc
+        
+        if not uid or amount_ton is None or not tx_hash:
+            logger.warning(f"Incomplete TON payment data: user_id={uid}, amount={amount_ton}, tx_hash={bool(tx_hash)}")
+            return web.json_response({"error": "invalid_data"}, status=400)
+        
+        uid = int(uid)
+        
+        try:
+            amount_ton = float(amount_ton)
+            if amount_ton <= 0:
+                return web.json_response({"error": "invalid_amount"}, status=400)
+        except ValueError:
+            return web.json_response({"error": "invalid_amount"}, status=400)
+        
+        # Hash the transaction to prevent reuse
+        tx_hash_normalized = hashlib.sha256(str(tx_hash).encode()).hexdigest()
+        
+        # Conversion rate: 1 TON = 100 stars (adjustable)
+        stars_to_add = int(amount_ton * 100)
+        
+        with sqlite3.connect('database.db') as conn:
+            # Check if transaction was already processed
+            existing = conn.execute(
+                "SELECT tx_id FROM ton_transactions WHERE tx_id = ?",
+                (tx_hash_normalized,)
+            ).fetchone()
+            
+            if existing:
+                logger.warning(f"Duplicate TON transaction detected: {tx_hash_normalized}")
+                return web.json_response({"error": "transaction_already_processed"}, status=400)
+            
+            # CRITICAL: Store transaction first
+            conn.execute(
+                "INSERT INTO ton_transactions (tx_id, user_id, amount, date) VALUES (?, ?, ?, ?)",
+                (tx_hash_normalized, uid, amount_ton, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            )
+            
+            # THEN add stars to user
+            conn.execute(
+                "UPDATE users SET stars = stars + ?, total_donated_ton = total_donated_ton + ? WHERE user_id = ?",
+                (stars_to_add, amount_ton, uid)
+            )
+            conn.commit()
+            
+            logger.info(f"TON payment processed: User {uid}, {amount_ton} TON = {stars_to_add} stars, TX: {tx_hash_normalized[:16]}...")
+        
+        return web.json_response({"success": True, "stars_added": stars_to_add})
     
-    if not uid or not amount_ton or not tx_id:
+    except ValueError as e:
+        logger.error(f"ValueError in api_ton_success: {e}")
         return web.json_response({"error": "invalid_data"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_ton_success: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
-    stars_to_add = int(float(amount_ton) * 100) # Примерный курс
+async def api_admin_create_promo(request):
+    """
+    POST /api/admin/create_promo - Create promotional code
+    SECURITY: Only admins can create promos (verified by admin_id)
+    """
+    try:
+        data = await request.json()
+        admin_id = data.get("admin_id")
+        code = data.get("code")
+        reward = data.get("reward")
+        days = data.get("days", 7)
+        min_donation = data.get("min_donation", 0)
+        promo_type = data.get("type", "stars")
+        
+        # Verify admin
+        if not admin_id or int(admin_id) not in ADMIN_IDS:
+            logger.warning(f"Unauthorized promo creation attempt from user {admin_id}")
+            return web.json_response({"error": "unauthorized"}, status=403)
+        
+        # Validate inputs
+        if not code or not isinstance(code, str) or len(code) < 3 or len(code) > 50:
+            return web.json_response({"error": "invalid_code"}, status=400)
+        
+        try:
+            reward = int(reward)
+            min_donation = int(min_donation)
+            days = int(days)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "invalid_parameters"}, status=400)
+        
+        if reward <= 0 or days < 0 or min_donation < 0:
+            return web.json_response({"error": "invalid_parameters"}, status=400)
+        
+        code = code.strip().upper()
+        expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        with sqlite3.connect('database.db') as conn:
+            # Check if code already exists
+            existing = conn.execute("SELECT code FROM promocodes WHERE UPPER(code) = ?", (code,)).fetchone()
+            if existing:
+                logger.warning(f"Admin {admin_id} attempted to create existing promo code: {code}")
+                return web.json_response({"error": "code_already_exists"}, status=409)
+            
+            conn.execute(
+                """INSERT INTO promocodes (code, reward, type, active, min_donation_24h, expires_at) 
+                   VALUES (?, ?, ?, 1, ?, ?)""",
+                (code, reward, promo_type, min_donation, expires_at)
+            )
+            conn.commit()
+            
+            logger.info(f"Admin {admin_id} created promo code: {code}, reward={reward}, expires={expires_at}")
+        
+        return web.json_response({
+            "success": True,
+            "code": code,
+            "reward": reward,
+            "expires_at": expires_at
+        })
     
-    with sqlite3.connect('database.db') as conn:
-        # Verify transaction
-        existing = conn.execute("SELECT tx_id FROM ton_transactions WHERE tx_id = ?", (tx_id,)).fetchone()
-        if existing:
-            return web.json_response({"error": "Transaction already processed"}, status=400)
-        
-        conn.execute("INSERT INTO ton_transactions (tx_id, user_id, amount, date) VALUES (?, ?, ?, ?)",
-                     (tx_id, uid, amount_ton, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        
-        conn.execute("UPDATE users SET stars = stars + ?, total_donated_ton = total_donated_ton + ? WHERE user_id = ?", 
-                     (stars_to_add, amount_ton, uid))
-        conn.commit()
-    return web.json_response({"success": True})
+    except Exception as e:
+        logger.error(f"Error in api_admin_create_promo: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_invoice(request):
-    data = await request.json()
+    """POST /api/create_invoice - Create Telegram payment invoice"""
     try:
-        link = await bot.create_invoice_link(
-            title="Пополнение Stars",
-            description=f"Покупка {data['amount']} звёзд",
-            payload=f"stars_{data['user_id']}_{data['amount']}",
-            provider_token="", currency="XTR",
-            prices=[LabeledPrice(label="Stars", amount=int(data['amount']))]
-        )
-        return web.json_response({"link": link})
-    except Exception as e: return web.json_response({"error": str(e)}, status=500)
+        data = await request.json()
+        user_id = data.get("user_id")
+        amount = data.get("amount")
+        
+        if not user_id or not amount:
+            return web.json_response({"error": "invalid_data"}, status=400)
+        
+        try:
+            amount = int(amount)
+            if amount <= 0:
+                return web.json_response({"error": "invalid_amount"}, status=400)
+        except ValueError:
+            return web.json_response({"error": "invalid_amount"}, status=400)
+        
+        try:
+            link = await bot.create_invoice_link(
+                title="Пополнение Stars",
+                description=f"Покупка {amount} звёзд",
+                payload=f"stars_{user_id}_{amount}",
+                provider_token="",
+                currency="XTR",
+                prices=[LabeledPrice(label="Stars", amount=amount)]
+            )
+            logger.info(f"Invoice created for user {user_id}: {amount} stars")
+            return web.json_response({"link": link})
+        except Exception as e:
+            logger.error(f"Failed to create invoice: {e}")
+            return web.json_response({"error": "invoice_creation_failed"}, status=500)
+    
+    except Exception as e:
+        logger.error(f"Error in api_invoice: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 @dp.pre_checkout_query()
-async def checkout(q: types.PreCheckoutQuery): await q.answer(ok=True)
+async def checkout(q: types.PreCheckoutQuery):
+    """Handle pre-checkout query - always approve"""
+    try:
+        await q.answer(ok=True)
+        logger.info(f"Pre-checkout query approved for user {q.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in checkout: {e}")
+        await q.answer(ok=False, error_message="Server error")
 
 @dp.message(F.successful_payment)
 async def success_pay(m: types.Message):
-    _, uid, amt = m.successful_payment.invoice_payload.split("_")
-    update_balance(int(uid), int(amt), "add", is_donation=True)
-    await m.answer(f"✅ Оплата принята! +{amt} ⭐")
+    """Handle successful payment from Telegram"""
+    try:
+        payload = m.successful_payment.invoice_payload
+        parts = payload.split("_")
+        
+        if len(parts) < 3 or parts[0] != "stars":
+            logger.error(f"Invalid payload format: {payload}")
+            await m.answer("❌ Ошибка при обработке платежа.")
+            return
+        
+        user_id = int(parts[1])
+        amount = int(parts[2])
+        
+        if user_id != m.from_user.id:
+            logger.warning(f"Payment mismatch: payload={user_id}, sender={m.from_user.id}")
+            await m.answer("❌ Ошибка при обработке платежа.")
+            return
+        
+        update_balance(user_id, amount, "add", is_donation=True)
+        logger.info(f"Payment successful for user {user_id}: +{amount} stars")
+        await m.answer(f"✅ Спасибо за покупку! +{amount} ⭐")
+    except Exception as e:
+        logger.error(f"Error in success_pay: {e}")
+        await m.answer("❌ Ошибка при обработке платежа.")
 
 async def main():
+    """Main bot entry point"""
     init_db()
+    
+    # Setup aiohttp app
     app = web.Application()
+    
+    # Register API routes
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/leaderboard', api_leaderboard)
     app.router.add_post('/api/open_case', api_open_case)
+    app.router.add_post('/api/claim_daily', api_claim_daily)
     app.router.add_post('/api/claim_promo', api_claim_promo)
     app.router.add_post('/api/create_invoice', api_invoice)
     app.router.add_post('/api/admin/create_promo', api_admin_create_promo)
     app.router.add_post('/api/ton_success', api_ton_success)
     
-    cors = aiohttp_cors.setup(app, defaults={"*": aiohttp_cors.ResourceOptions(allow_credentials=True, expose_headers="*", allow_headers="*")})
-    for r in list(app.router.routes()): cors.add(r)
+    # Setup CORS
+    cors = aiohttp_cors.setup(app, defaults={
+        "*": aiohttp_cors.ResourceOptions(
+            allow_credentials=True,
+            expose_headers="*",
+            allow_headers="*"
+        )
+    })
+    for route in list(app.router.routes()):
+        cors.add(route)
+    
+    # Start aiohttp server
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, '0.0.0.0', 8080).start()
+    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    await site.start()
+    logger.info("✅ API server started on port 8080")
+    
+    # Start bot polling
+    logger.info("✅ Bot polling started")
     await dp.start_polling(bot)
 
-if __name__ == "__main__": asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

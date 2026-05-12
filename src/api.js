@@ -1,9 +1,75 @@
 const BACKEND_URL = 'https://screamcasebot.onrender.com';
 
+/**
+ * API Error Handler - Extracts error details from response
+ */
+const handleApiError = async (response) => {
+  try {
+    const errData = await response.json();
+    return {
+      status: response.status,
+      error: errData.error || 'Unknown error',
+      message: errData.message || '',
+      ...errData
+    };
+  } catch {
+    return {
+      status: response.status,
+      error: `Server error (${response.status})`,
+      message: response.statusText || 'Unknown error'
+    };
+  }
+};
+
+/**
+ * Show Telegram alert with proper error message
+ */
+const showAlert = (message) => {
+  if (window.Telegram?.WebApp) {
+    window.Telegram.WebApp.showAlert(message);
+  } else {
+    alert(message);
+  }
+};
+
+/**
+ * Format error message for display
+ */
+const formatErrorMessage = (errorData) => {
+  const errorMessages = {
+    'insufficient_funds': '❌ Недостаточно средств',
+    'user_not_found': '❌ Пользователь не найден',
+    'invalid_case': '❌ Неверный ID кейса',
+    'invalid_code': '❌ Неверный промокод',
+    'code_inactive': '❌ Промокод неактивен',
+    'code_expired': '❌ Промокод истёк',
+    'invalid_code_format': '❌ Неверный формат промокода',
+    'minimum_donation_required': `❌ Требуется пожертвование минимум ${errorData.required || 0} звёзд`,
+    'daily_cooldown_active': `❌ Ждите ${Math.ceil((errorData.wait_seconds || 86400) / 3600)} часов перед следующим открытием`,
+    'transaction_already_processed': '❌ Эта транзакция уже обработана',
+    'invalid_amount': '❌ Неверная сумма',
+    'code_already_exists': '❌ Этот код уже существует',
+    'unauthorized': '❌ Вы не авторизованы',
+    'invalid_data': '❌ Некорректные данные',
+    'server_error': '❌ Ошибка сервера. Попробуйте позже',
+    'promo_code_required': '❌ Требуется промокод для прямо-кейса'
+  };
+  
+  return errorMessages[errorData.error] || `❌ ${errorData.error || 'Ошибка'}`;
+};
+
 export const fetchBalance = async (userId) => {
   try {
+    if (!userId) return 0;
+    
     const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}`);
-    if (!response.ok) throw new Error('Failed to fetch balance');
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      console.error('Balance fetch error:', error);
+      return 0;
+    }
+    
     const data = await response.json();
     return data.stars || 0;
   } catch (error) {
@@ -15,7 +81,13 @@ export const fetchBalance = async (userId) => {
 export const fetchLeaderboard = async () => {
   try {
     const response = await fetch(`${BACKEND_URL}/api/leaderboard`);
-    if (!response.ok) throw new Error('Failed to fetch leaderboard');
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      console.error('Leaderboard fetch error:', error);
+      return [];
+    }
+    
     return await response.json();
   } catch (error) {
     console.error('Error fetching leaderboard:', error);
@@ -25,18 +97,37 @@ export const fetchLeaderboard = async () => {
 
 export const claimPromo = async (userId, code) => {
   try {
+    if (!userId || !code) {
+      throw new Error('Missing user_id or code');
+    }
+    
     const response = await fetch(`${BACKEND_URL}/api/claim_promo`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, code }),
+      body: JSON.stringify({ user_id: userId, code: code.trim() }),
     });
+    
     if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.message || errData.error || 'Failed to claim promo');
+      const error = await handleApiError(response);
+      
+      // Show alert to user
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      
+      // Throw structured error
+      const err = new Error(message);
+      err.status = error.status;
+      err.errorCode = error.error;
+      err.details = error;
+      throw err;
     }
+    
     return await response.json();
   } catch (error) {
     console.error('Error claiming promo:', error);
+    if (!(error instanceof Error) || !error.status) {
+      showAlert('❌ Ошибка при активации промокода');
+    }
     throw error;
   }
 };
@@ -48,40 +139,77 @@ export const adminCreatePromo = async (adminId, promoData) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ admin_id: adminId, ...promoData }),
     });
-    if (!response.ok) throw new Error('Failed to create promo');
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      
+      const err = new Error(message);
+      err.status = error.status;
+      err.errorCode = error.error;
+      throw err;
+    }
+    
     return await response.json();
   } catch (error) {
     console.error('Error creating promo:', error);
+    if (!(error instanceof Error) || !error.status) {
+      showAlert('❌ Ошибка при создании промокода');
+    }
     throw error;
   }
 };
 
 export const createInvoice = async (userId, amount) => {
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, amount }),
-      });
-      if (!response.ok) throw new Error('Failed to create invoice');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating invoice:', error);
-      throw error;
+  try {
+    if (!userId || !amount) {
+      throw new Error('Missing userId or amount');
     }
-  };
+    
+    const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, amount }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      showAlert('❌ Ошибка при создании счёта');
+      throw new Error(error.error || 'Failed to create invoice');
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error creating invoice:', error);
+    throw error;
+  }
+};
 
 export const notifyTonSuccess = async (userId, amount, txId) => {
   try {
+    if (!userId || !amount || !txId) {
+      throw new Error('Missing required parameters');
+    }
+    
     const response = await fetch(`${BACKEND_URL}/api/ton_success`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user_id: userId, amount, tx_id: txId }),
     });
+    
     if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to notify TON success');
+      const error = await handleApiError(response);
+      
+      if (error.status === 400 && error.error === 'transaction_already_processed') {
+        console.warn('TON transaction already processed');
+        return { success: true, duplicate: true };
+      }
+      
+      showAlert('❌ Ошибка при обработке платежа');
+      throw new Error(error.error || 'TON payment failed');
     }
+    
     return await response.json();
   } catch (error) {
     console.error('Error notifying TON success:', error);
@@ -90,37 +218,93 @@ export const notifyTonSuccess = async (userId, amount, txId) => {
 };
 
 export const claimDaily = async (userId) => {
-    try {
-        const response = await fetch(`${BACKEND_URL}/api/open_case`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId, case_id: 2 }),
-        });
-        if (!response.ok) {
-            const errData = await response.json();
-            throw new Error(errData.error || 'Failed to claim daily');
-        }
-        return await response.json();
-    } catch (error) {
-        console.error('Error claiming daily:', error);
-        throw error;
+  try {
+    if (!userId) {
+      throw new Error('Missing userId');
     }
+    
+    const response = await fetch(`${BACKEND_URL}/api/open_case`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, case_id: 2 }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      
+      if (error.status === 403 && error.error === 'daily_cooldown_active') {
+        const message = `❌ Ждите ${Math.ceil((error.wait_seconds || 86400) / 3600)} часов`;
+        showAlert(message);
+        const err = new Error(message);
+        err.status = 403;
+        err.errorCode = 'daily_cooldown_active';
+        err.waitSeconds = error.wait_seconds;
+        throw err;
+      }
+      
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      
+      const err = new Error(message);
+      err.status = error.status;
+      err.errorCode = error.error;
+      throw err;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error claiming daily:', error);
+    if (!(error instanceof Error) || !error.status) {
+      showAlert('❌ Ошибка при открытии ежедневного кейса');
+    }
+    throw error;
+  }
 };
 
-export const openCase = async (userId, caseId, price, code = null) => {
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/open_case`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, case_id: caseId, price, code }),
-      });
-      if (!response.ok) {
-          const errData = await response.json();
-          throw new Error(errData.error || 'Insufficient funds or error');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('Error opening case:', error);
-      throw error;
+export const openCase = async (userId, caseId, code = null) => {
+  try {
+    if (!userId || caseId === null) {
+      throw new Error('Missing userId or caseId');
     }
-  };
+    
+    const payload = {
+      user_id: userId,
+      case_id: caseId
+    };
+    
+    // Only add code for promo cases
+    if (caseId === 1) {
+      if (!code) {
+        throw new Error('Promo code required for promo cases');
+      }
+      payload.code = code.trim();
+    }
+    
+    const response = await fetch(`${BACKEND_URL}/api/open_case`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      
+      const err = new Error(message);
+      err.status = error.status;
+      err.errorCode = error.error;
+      err.details = error;
+      throw err;
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error opening case:', error);
+    if (!(error instanceof Error) || !error.status) {
+      showAlert('❌ Ошибка при открытии кейса');
+    }
+    throw error;
+  }
+};

@@ -60,13 +60,21 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
     const cost = getCost;
     if (balance < cost) {
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Недостаточно средств!");
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showAlert("❌ Недостаточно средств!");
+      }
       return;
     }
 
+    setIsSpinning(true);
+
     try {
-        const response = await openCase(user.id, caseItem.id, cost, isPromo ? promoCode : null);
+        const response = await openCase(user.id, caseItem.id, isPromo ? promoCode : null);
         
+        if (!response?.success) {
+          throw new Error("Invalid response from server");
+        }
+
         if (isPromo && response.reward) {
           // If it was a promo, the reward was already added to balance on server
           // but we might need to update local balance
@@ -75,8 +83,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         triggerHaptic();
         
-        if (!isPromo && setBalance) setBalance(prev => Math.max(0, prev - cost));
-        if (!isPromo && setSpent) setSpent(prev => prev + cost);
+        if (!isPromo && setBalance) {
+          setBalance(prev => Math.max(0, prev - cost));
+        }
+        if (!isPromo && setSpent) {
+          setSpent(prev => prev + cost);
+        }
         setCurrentStock(prev => Math.max(0, prev - 1));
 
         const cheapItems = spinItems.filter(i => i.price <= 50);
@@ -97,7 +109,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         }
 
         setWonItem(actualWonItem);
-        setIsSpinning(true);
         setHasSpun(false);
         setShowConfetti(false);
         setShowResult(false);
@@ -115,8 +126,22 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         animationKey.current += 1;
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
+        // isSpinning is already true, animation will start
     } catch (e) {
-        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка: " + e.message);
+        console.error("Error in handleOpen:", e);
+        // STOP animation immediately on error
+        setIsSpinning(false);
+        setHasSpun(false);
+        setShowConfetti(false);
+        setShowResult(false);
+        
+        // Error message is already shown by api.js showAlert()
+        // But if we get here, make sure alert is shown
+        if (!e.status) {
+          if (window.Telegram?.WebApp) {
+            window.Telegram.WebApp.showAlert("❌ Ошибка при открытии кейса");
+          }
+        }
     }
   };
 
