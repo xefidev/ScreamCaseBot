@@ -65,12 +65,18 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     }
 
     try {
-        await openCase(user.id, caseItem.id, cost);
+        const response = await openCase(user.id, caseItem.id, cost, isPromo ? promoCode : null);
         
+        if (isPromo && response.reward) {
+          // If it was a promo, the reward was already added to balance on server
+          // but we might need to update local balance
+          if (setBalance) setBalance(prev => prev + response.reward);
+        }
+
         triggerHaptic();
         
-        if (setBalance) setBalance(prev => Math.max(0, prev - cost));
-        if (setSpent) setSpent(prev => prev + cost);
+        if (!isPromo && setBalance) setBalance(prev => Math.max(0, prev - cost));
+        if (!isPromo && setSpent) setSpent(prev => prev + cost);
         setCurrentStock(prev => Math.max(0, prev - 1));
 
         const cheapItems = spinItems.filter(i => i.price <= 50);

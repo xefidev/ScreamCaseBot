@@ -168,18 +168,18 @@ export default function App() {
     };
 
     try {
-      await tonConnectUI.sendTransaction(transaction);
+      const result = await tonConnectUI.sendTransaction(transaction);
       triggerHaptic('success');
       setShowTopUp(false);
       
       // Sync with backend
-      await notifyTonSuccess(user.id, amount);
+      await notifyTonSuccess(user.id, amount, result.boc);
       await syncBalance(user.id);
       
       if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Транзакция отправлена и баланс обновлен!");
     } catch (e) {
       console.error(e);
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка или отмена транзакции");
+      if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("Ошибка или отмена транзакции: " + e.message);
     }
   };
 

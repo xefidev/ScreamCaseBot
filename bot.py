@@ -1,7 +1,7 @@
 import logging
 import asyncio
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
@@ -25,6 +25,7 @@ def init_db():
                         (user_id INTEGER PRIMARY KEY, 
                          stars INTEGER DEFAULT 0, 
                          join_date TEXT, 
+                         last_daily TEXT,
                          total_donated_stars INTEGER DEFAULT 0,
                          total_donated_ton REAL DEFAULT 0.0)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS payments 
@@ -36,11 +37,15 @@ def init_db():
                          active BOOLEAN DEFAULT 1,
                          min_donation_24h INTEGER DEFAULT 0,
                          expires_at TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS ton_transactions 
+                        (tx_id TEXT PRIMARY KEY, user_id INTEGER, amount REAL, date TEXT)''')
         
         # Миграции
         try: conn.execute("ALTER TABLE users ADD COLUMN total_donated_stars INTEGER DEFAULT 0")
         except: pass
         try: conn.execute("ALTER TABLE users ADD COLUMN total_donated_ton REAL DEFAULT 0.0")
+        except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN last_daily TEXT")
         except: pass
         try: conn.execute("ALTER TABLE promocodes ADD COLUMN min_donation_24h INTEGER DEFAULT 0")
         except: pass
@@ -73,6 +78,20 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
         conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
                      (user_id, amount, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
         conn.commit()
+
+# --- ЦЕНЫ КЕЙСОВ ---
+CASES_PRICES = {
+    1: 0,   # Promo Case
+    2: 0,   # Daily Case
+    3: 667, # Snoop Case
+    4: 599, # Lover's Case
+    5: 199, # Hobo Case
+    6: 50,  # Risky Box
+    7: 111, # Scam Box
+    8: 444, # Ebati Case
+    9: 222, # Pussy Case
+    10: 250 # Skolnik Case
+}
 
 # --- ОБРАБОТКА КОМАНД ---
 
@@ -143,8 +162,18 @@ async def api_leaderboard(request):
 async def api_open_case(request):
     data = await request.json()
     uid = data.get("user_id")
-    price = data.get("price", 0) # Цена кейса должна приходить или определяться на бэкенде
+    case_id = data.get("case_id")
+    if not uid or case_id is None: return web.json_response({"error": "invalid_data"}, status=400)
     
+    price = CASES_PRICES.get(int(case_id))
+    if price is None: return web.json_response({"error": "invalid_case"}, status=400)
+    
+    # Handle Daily and Promo cases separately
+    if int(case_id) == 2:
+        return await _handle_claim_daily(uid)
+    if int(case_id) == 1:
+        return await _handle_claim_promo(uid, data.get("code"))
+
     with sqlite3.connect('database.db') as conn:
         res = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
         if not res or res[0] < price:
@@ -154,63 +183,69 @@ async def api_open_case(request):
         conn.commit()
     return web.json_response({"success": True})
 
-async def api_claim_promo(request):
-    data = await request.json()
-    uid = data.get("user_id")
-    code = data.get("code")
-    if not uid or not code: return web.json_response({"error": "invalid_data"}, status=400)
+async def _handle_claim_daily(uid):
+    with sqlite3.connect('database.db') as conn:
+        res = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+        now = datetime.now()
+        if res and res[0]:
+            last_daily = datetime.strptime(res[0], "%Y-%m-%d %H:%M:%S")
+            if (now - last_daily).total_seconds() < 86400:
+                return web.json_response({"error": "Wait 24h"}, status=403)
+        
+        conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", (now.strftime("%Y-%m-%d %H:%M:%S"), uid))
+        conn.commit()
+    return web.json_response({"success": True})
 
+async def _handle_claim_promo(uid, code):
+    if not code: return web.json_response({"error": "invalid_data"}, status=400)
     with sqlite3.connect('database.db') as conn:
         promo = conn.execute("SELECT reward, type, active, min_donation_24h, expires_at FROM promocodes WHERE code = ?", (code,)).fetchone()
-        if not promo or not promo[2]:
-            return web.json_response({"error": "invalid_promo"}, status=400)
-        
-        # Проверка срока действия
+        if not promo:
+            return web.json_response({"error": "Invalid Code"}, status=404)
+        if not promo[2]:
+            return web.json_response({"error": "Promo inactive"}, status=403)
         if promo[4]:
             expiry = datetime.strptime(promo[4], "%Y-%m-%d %H:%M:%S")
             if datetime.now() > expiry:
-                return web.json_response({"error": "promo_expired"}, status=400)
-
-        # Проверка доната за 24 часа
+                return web.json_response({"error": "Promo expired"}, status=403)
         if promo[3] > 0:
-            yesterday = (datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)).strftime("%Y-%m-%d %H:%M:%S")
+            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
             donated = conn.execute("SELECT SUM(amount) FROM payments WHERE user_id = ? AND date > ?", (uid, yesterday)).fetchone()[0] or 0
             if donated < promo[3]:
-                return web.json_response({"error": "min_donation_required", "required": promo[3]}, status=400)
+                return web.json_response({"error": "Minimum donation required", "required": promo[3]}, status=403)
 
         if promo[1] == "stars":
             update_balance(uid, promo[0], "add")
-            
     return web.json_response({"success": True, "reward": promo[0], "type": promo[1]})
 
-async def api_admin_create_promo(request):
+async def api_claim_daily(request):
     data = await request.json()
-    admin_id = data.get("admin_id")
-    if int(admin_id) not in ADMIN_IDS:
-        return web.json_response({"error": "forbidden"}, status=403)
-    
-    code = data.get("code")
-    reward = data.get("reward")
-    ptype = data.get("type", "stars")
-    min_donation = data.get("min_donation", 0)
-    expires_in_days = data.get("days", 7)
-    
-    from datetime import timedelta
-    expires_at = (datetime.now() + timedelta(days=expires_in_days)).strftime("%Y-%m-%d %H:%M:%S")
+    return await _handle_claim_daily(data.get("user_id"))
 
-    with sqlite3.connect('database.db') as conn:
-        conn.execute("INSERT OR REPLACE INTO promocodes (code, reward, type, active, min_donation_24h, expires_at) VALUES (?, ?, ?, 1, ?, ?)", 
-                     (code, reward, ptype, min_donation, expires_at))
-        conn.commit()
-    return web.json_response({"success": True})
+async def api_claim_promo(request):
+    data = await request.json()
+    return await _handle_claim_promo(data.get("user_id"), data.get("code"))
 
 async def api_ton_success(request):
     data = await request.json()
     uid = data.get("user_id")
     amount_ton = data.get("amount") # В тонах
-    stars_to_add = int(amount_ton * 100) # Примерный курс
+    tx_id = data.get("tx_id")
+    
+    if not uid or not amount_ton or not tx_id:
+        return web.json_response({"error": "invalid_data"}, status=400)
+
+    stars_to_add = int(float(amount_ton) * 100) # Примерный курс
     
     with sqlite3.connect('database.db') as conn:
+        # Verify transaction
+        existing = conn.execute("SELECT tx_id FROM ton_transactions WHERE tx_id = ?", (tx_id,)).fetchone()
+        if existing:
+            return web.json_response({"error": "Transaction already processed"}, status=400)
+        
+        conn.execute("INSERT INTO ton_transactions (tx_id, user_id, amount, date) VALUES (?, ?, ?, ?)",
+                     (tx_id, uid, amount_ton, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
         conn.execute("UPDATE users SET stars = stars + ?, total_donated_ton = total_donated_ton + ? WHERE user_id = ?", 
                      (stars_to_add, amount_ton, uid))
         conn.commit()
@@ -255,7 +290,5 @@ async def main():
     await runner.setup()
     await web.TCPSite(runner, '0.0.0.0', 8080).start()
     await dp.start_polling(bot)
-
-if __name__ == "__main__": asyncio.run(main())
 
 if __name__ == "__main__": asyncio.run(main())

@@ -71,14 +71,17 @@ export const createInvoice = async (userId, amount) => {
     }
   };
 
-export const notifyTonSuccess = async (userId, amount) => {
+export const notifyTonSuccess = async (userId, amount, txId) => {
   try {
     const response = await fetch(`${BACKEND_URL}/api/ton_success`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, amount }),
+      body: JSON.stringify({ user_id: userId, amount, tx_id: txId }),
     });
-    if (!response.ok) throw new Error('Failed to notify TON success');
+    if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to notify TON success');
+    }
     return await response.json();
   } catch (error) {
     console.error('Error notifying TON success:', error);
@@ -86,14 +89,35 @@ export const notifyTonSuccess = async (userId, amount) => {
   }
 };
 
-export const openCase = async (userId, caseId, price) => {
+export const claimDaily = async (userId) => {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/open_case`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, case_id: 2 }),
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Failed to claim daily');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error claiming daily:', error);
+        throw error;
+    }
+};
+
+export const openCase = async (userId, caseId, price, code = null) => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/open_case`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId, case_id: caseId, price }),
+        body: JSON.stringify({ user_id: userId, case_id: caseId, price, code }),
       });
-      if (!response.ok) throw new Error('Insufficient funds or error');
+      if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Insufficient funds or error');
+      }
       return await response.json();
     } catch (error) {
       console.error('Error opening case:', error);
