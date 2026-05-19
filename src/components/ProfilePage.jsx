@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { claimPromo, fetchBalance, adminCreatePromo, fetchLeaderboard } from '../api';
+import { claimPromo, fetchBalance, adminCreatePromo, fetchLeaderboard, fetchReferrals } from '../api';
 
 const ADMIN_IDS = [7782281997, 5396975347];
 
@@ -41,9 +41,8 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
 
   const loadReferrals = async (userId) => {
       try {
-          const { fetchReferrals } = await import('../api');
           const data = await fetchReferrals(userId);
-          setReferralCount(data.count || 0);
+          setReferralCount(data?.count || 0);
       } catch (e) {
           console.error(e);
       }
