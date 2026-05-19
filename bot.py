@@ -8,6 +8,8 @@ from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
 import aiohttp_cors
 import hashlib
+import string
+import random
 
 # --- НАСТРОЙКИ ---
 TOKEN = "8660260631:AAF9yETvvFVrIUUsP5twUZtPzik-0jaJUog"
@@ -51,6 +53,18 @@ def init_db():
                          expires_at TEXT)''')
         conn.execute('''CREATE TABLE IF NOT EXISTS ton_transactions 
                         (tx_id TEXT PRIMARY KEY, user_id INTEGER, amount REAL, date TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
+                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                         title TEXT, 
+                         reward INTEGER, 
+                         type TEXT, 
+                         url TEXT, 
+                         chat_id TEXT)''')
+        conn.execute('''CREATE TABLE IF NOT EXISTS user_tasks 
+                        (user_id INTEGER, 
+                         task_id INTEGER, 
+                         status TEXT DEFAULT 'completed', 
+                         PRIMARY KEY (user_id, task_id))''')
         
         # Миграции
         try: conn.execute("ALTER TABLE users ADD COLUMN total_donated_stars INTEGER DEFAULT 0")
@@ -77,6 +91,16 @@ def init_db():
         except: pass
         try: conn.execute("ALTER TABLE users ADD COLUMN total_spent INTEGER DEFAULT 0")
         except: pass
+        
+        # Ensure default tasks exist
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM tasks")
+        if cur.fetchone()[0] == 0:
+            cur.execute("INSERT INTO tasks (title, reward, type, url, chat_id) VALUES (?, ?, ?, ?, ?)",
+                        ("Подписка на канал", 100, "channel", CHANNEL_URL, "@ScreamCase"))
+            cur.execute("INSERT INTO tasks (title, reward, type, url) VALUES (?, ?, ?, ?)",
+                        ("Пригласить 5 друзей", 500, "referral", ""))
+            conn.commit()
 
     print("✅ База данных полностью готова")
 
@@ -354,13 +378,58 @@ async def help_cmd(message: types.Message):
             text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
             text += "• `/user <ID>` — Информация об игроке\n"
             text += "• `/stats` — Общая статистика\n"
-            text += "• `/createpromo <код> <награда> <дни>` — Создать промокод\n"
+            text += "• `/addpromo <код|random> <часы> <мин_звезд_24ч> <награда>` — Создать промокод\n"
             text += "• `/broadcast` — Рассылка сообщений\n"
         
         await message.answer(text, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error in help_cmd: {e}")
         await message.answer("❌ Ошибка при получении справки.")
+
+@dp.message(Command("addpromo"))
+async def admin_add_promo(message: types.Message, command: CommandObject):
+    """
+    Handle /addpromo [название ИЛИ word random] [длительность в часах] [мин. сумма пополнения в звёздах] [награда]
+    """
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            return
+        
+        if not command.args:
+            await message.answer("❌ Пример: `/addpromo mypromo 24 100 500` (код, часы, мин. звезды за 24ч, награда)", parse_mode="Markdown")
+            return
+            
+        args = command.args.split()
+        if len(args) < 4:
+            await message.answer("❌ Недостаточно аргументов. Пример: `/addpromo random 24 100 500`", parse_mode="Markdown")
+            return
+            
+        code_input = args[0]
+        hours = int(args[1])
+        min_stars = int(args[2])
+        reward = int(args[3])
+        
+        if code_input.lower() == "random":
+            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        else:
+            code = code_input.upper()
+            
+        expires_at = (datetime.now() + timedelta(hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
+        
+        with sqlite3.connect('database.db') as conn:
+            conn.execute(
+                "INSERT INTO promocodes (code, reward, type, active, min_donation_24h, expires_at) VALUES (?, ?, 'stars', 1, ?, ?)",
+                (code, reward, min_stars, expires_at)
+            )
+            conn.commit()
+            
+        await message.answer(f"✅ Промокод создан!\n\n🎫 Код: `{code}`\n💰 Награда: `{reward}` ⭐\n⏳ Длительность: `{hours}` ч.\n⭐ Мин. пополнение: `{min_stars}` (за 24ч)", parse_mode="Markdown")
+        
+    except sqlite3.IntegrityError:
+        await message.answer("❌ Такой промокод уже существует.")
+    except Exception as e:
+        logger.error(f"Error in admin_add_promo: {e}")
+        await message.answer(f"❌ Ошибка: {e}")
 
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
@@ -510,7 +579,98 @@ async def admin_chance(message: types.Message):
         logger.error(f"Error in admin_chance: {e}")
         await message.answer("❌ Ошибка при установке удачи.")
 
+async def check_membership(user_id: int):
+    """Check if user is a member of the linked channel"""
+    try:
+        member = await bot.get_chat_member(chat_id="@ScreamCase", user_id=user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        logger.error(f"Error checking membership for {user_id}: {e}")
+        return False
+
 # --- API ДЛЯ САЙТА ---
+
+async def api_check_sub(request):
+    """GET /api/check_sub?user_id=... - Check if user is subscribed to channel"""
+    try:
+        uid = request.query.get("user_id")
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        is_member = await check_membership(int(uid))
+        return web.json_response({"is_subscribed": is_member})
+    except Exception as e:
+        logger.error(f"Error in api_check_sub: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_get_tasks(request):
+    """GET /api/tasks?user_id=... - Get available tasks for user"""
+    try:
+        uid = request.query.get("user_id")
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        with sqlite3.connect('database.db') as conn:
+            # Get tasks not completed by user
+            res = conn.execute("""
+                SELECT id, title, reward, type, url FROM tasks 
+                WHERE id NOT IN (SELECT task_id FROM user_tasks WHERE user_id = ?)
+            """, (uid,)).fetchall()
+            
+        tasks = [{"id": r[0], "title": r[1], "reward": r[2], "type": r[3], "url": r[4]} for r in res]
+        return web.json_response(tasks)
+    except Exception as e:
+        logger.error(f"Error in api_get_tasks: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_verify_task(request):
+    """POST /api/tasks/verify - Verify task completion and give reward"""
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        tid = data.get("task_id")
+        
+        if not uid or not tid: return web.json_response({"error": "invalid_data"}, status=400)
+        
+        uid, tid = int(uid), int(tid)
+        
+        with sqlite3.connect('database.db') as conn:
+            # Check if already completed
+            completed = conn.execute("SELECT 1 FROM user_tasks WHERE user_id = ? AND task_id = ?", (uid, tid)).fetchone()
+            if completed:
+                return web.json_response({"error": "already_completed"}, status=400)
+            
+            task = conn.execute("SELECT title, reward, type, chat_id FROM tasks WHERE id = ?", (tid,)).fetchone()
+            if not task:
+                return web.json_response({"error": "task_not_found"}, status=404)
+            
+            title, reward, ttype, chat_id = task
+            is_valid = False
+            
+            if ttype == "channel":
+                is_valid = await check_membership(uid)
+            elif ttype == "referral":
+                # Check if user has at least 5 referrals
+                ref_count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (uid,)).fetchone()[0]
+                if ref_count >= 5:
+                    is_valid = True
+            else:
+                # Custom or simple tasks (just click)
+                is_valid = True
+                
+            if is_valid:
+                conn.execute("INSERT INTO user_tasks (user_id, task_id) VALUES (?, ?)", (uid, tid))
+                conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (reward, uid))
+                conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                             (uid, reward, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+                conn.commit()
+                logger.info(f"User {uid} completed task {tid} ({title}) and got {reward} stars")
+                return web.json_response({"success": True, "reward": reward})
+            else:
+                return web.json_response({"error": "task_not_met"}, status=400)
+                
+    except Exception as e:
+        logger.error(f"Error in api_verify_task: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 async def api_balance(request):
     """GET /api/balance - Get user balance and tickets"""
@@ -624,7 +784,6 @@ async def api_wheel_spin(request):
             if balance < cost:
                 return web.json_response({"error": "insufficient_funds"}, status=403)
             
-            import random
             is_god_mode = False
             if uid in ADMIN_IDS and admin_luck > 0:
                 if random.random() * 100 < admin_luck:
@@ -703,7 +862,6 @@ async def api_open_case(request):
             if balance < price:
                 return web.json_response({"error": "insufficient_funds"}, status=403)
             
-            import random
             is_god_mode = False
             if int(uid) in ADMIN_IDS and admin_luck > 0:
                 if random.random() * 100 < admin_luck:
@@ -776,7 +934,6 @@ async def api_upgrade(request):
             if balance < cost:
                 return web.json_response({"error": "insufficient_funds"}, status=403)
             
-            import random
             is_god_mode = False
             if int(uid) in ADMIN_IDS and admin_luck > 0:
                 if random.random() * 100 < admin_luck:
@@ -1004,6 +1161,11 @@ async def api_ton_success(request):
             conn.execute(
                 "UPDATE users SET stars = stars + ?, total_donated_ton = total_donated_ton + ? WHERE user_id = ?",
                 (stars_to_add, amount_ton, uid)
+            )
+            # Add to payments for promo code checks
+            conn.execute(
+                "INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)",
+                (uid, stars_to_add, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             )
             conn.commit()
             
@@ -1315,6 +1477,9 @@ async def main():
     app = web.Application()
     
     # Register API routes
+    app.router.add_get('/api/check_sub', api_check_sub)
+    app.router.add_get('/api/tasks', api_get_tasks)
+    app.router.add_post('/api/tasks/verify', api_verify_task)
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/referrals', api_referrals) # Renamed to match api.js expectations later
     app.router.add_get('/api/leaderboard', api_leaderboard)

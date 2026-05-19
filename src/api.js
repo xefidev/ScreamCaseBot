@@ -52,10 +52,62 @@ const formatErrorMessage = (errorData) => {
     'unauthorized': '❌ Вы не авторизованы',
     'invalid_data': '❌ Некорректные данные',
     'server_error': '❌ Ошибка сервера. Попробуйте позже',
-    'promo_code_required': '❌ Требуется промокод для прямо-кейса'
+    'promo_code_required': '❌ Требуется промокод для прямо-кейса',
+    'already_completed': '❌ Задание уже выполнено',
+    'task_not_found': '❌ Задание не найдено',
+    'task_not_met': '❌ Условия задания не выполнены'
   };
   
   return errorMessages[errorData.error] || `❌ ${errorData.error || 'Ошибка'}`;
+};
+
+export const checkSubscription = async (userId) => {
+  try {
+    if (!userId) return false;
+    const response = await fetch(`${BACKEND_URL}/api/check_sub?user_id=${userId}`);
+    if (!response.ok) return false;
+    const data = await response.json();
+    return data.is_subscribed || false;
+  } catch (error) {
+    console.error('Error checking subscription:', error);
+    return false;
+  }
+};
+
+export const fetchTasks = async (userId) => {
+  try {
+    if (!userId) return [];
+    const response = await fetch(`${BACKEND_URL}/api/tasks?user_id=${userId}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    return [];
+  }
+};
+
+export const verifyTask = async (userId, taskId) => {
+  try {
+    if (!userId || !taskId) throw new Error('Missing user_id or task_id');
+    const response = await fetch(`${BACKEND_URL}/api/tasks/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, task_id: taskId }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      throw new Error(message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error verifying task:', error);
+    if (!(error instanceof Error)) showAlert('❌ Ошибка при проверке задания');
+    throw error;
+  }
 };
 
 export const fetchBalance = async (userId) => {

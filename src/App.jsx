@@ -6,7 +6,7 @@ import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import { useTonConnectUI } from '@tonconnect/ui-react';
-import { fetchBalance, addStars, createInvoice, notifyTonSuccess } from './api';
+import { fetchBalance, addStars, createInvoice, notifyTonSuccess, checkSubscription, fetchTasks, verifyTask } from './api';
 
 const LoadingSpinner = () => (
   <div className="flex flex-col items-center justify-center h-full">
@@ -21,6 +21,7 @@ const LoadingSpinner = () => (
 
 const TABS = {
   cases: 'Cases',
+  tasks: 'Tasks',
   fortune: 'Fortune',
   upgrade: 'Upgrade',
   profile: 'Profile',
@@ -39,6 +40,7 @@ const formatValue = (val) => {
 
 const TAB_COLORS = {
   cases: { bubble: 'rgba(255, 255, 255, 0.15)', icon: '#ffffff' },
+  tasks: { bubble: 'rgba(234, 179, 8, 0.15)', icon: '#eab308' },
   fortune: { bubble: 'rgba(168, 85, 247, 0.15)', icon: '#a855f7' },
   upgrade: { bubble: 'rgba(34, 197, 94, 0.15)', icon: '#22c55e' },
   profile: { bubble: 'rgba(59, 130, 246, 0.15)', icon: '#3b82f6' },
@@ -51,10 +53,8 @@ export default function App() {
   const [tonAmount, setTonAmount] = useState('1');
   const [tonConnectUI] = useTonConnectUI();
   const [showSubscriptionPopup, setShowSubscriptionPopup] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(() => {
-    const saved = localStorage.getItem('isSubscribed');
-    return saved === 'true';
-  });
+  const [isSubscribed, setIsSubscribed] = useState(true);
+  const [tasks, setTasks] = useState([]);
 
   const [user, setUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -92,6 +92,11 @@ export default function App() {
           setIsAdmin(ADMIN_IDS.includes(userData.id));
           await syncBalance(userData.id);
           
+          // Check Subscription
+          const sub = await checkSubscription(userData.id);
+          setIsSubscribed(sub);
+          if (!sub) setShowSubscriptionPopup(true);
+          
           // Track Referral
           const startParam = tg.initDataUnsafe?.start_param;
           if (startParam) {
@@ -104,35 +109,23 @@ export default function App() {
     init();
   }, []);
 
-  // Check subscription on mount
-  React.useEffect(() => {
-    if (!isSubscribed) {
-      const timer = setTimeout(() => {
-        setShowSubscriptionPopup(true);
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [isSubscribed]);
-
   const handleCheckSubscription = async () => {
     triggerHaptic();
-    // In a real app, you'd fetch this from your backend which uses the bot token
-    // Example: const res = await fetch(`${API_URL}/check-sub?user_id=${user.id}`)
+    if (!user?.id) return;
     
-    // Simulate check
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showConfirm("Вы действительно подписаны на @ScreamCase?", (ok) => {
-        if (ok) {
-          setIsSubscribed(true);
-          localStorage.setItem('isSubscribed', 'true');
-          setShowSubscriptionPopup(false);
-          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        }
-      });
-    } else {
+    const sub = await checkSubscription(user.id);
+    if (sub) {
       setIsSubscribed(true);
-      localStorage.setItem('isSubscribed', 'true');
       setShowSubscriptionPopup(false);
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      }
+    } else {
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showAlert("Вы ещё не подписались на канал @ScreamCase!");
+      } else {
+        alert("Вы ещё не подписались!");
+      }
     }
   };
 
@@ -225,30 +218,35 @@ export default function App() {
     return data;
   };
 
-  // Initialize Telegram User
+  const loadTasks = async () => {
+    if (!user?.id) return;
+    const data = await fetchTasks(user.id);
+    setTasks(data);
+  };
+
   React.useEffect(() => {
-    const init = async () => {
-      if (window.Telegram?.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        const userData = tg.initDataUnsafe?.user;
-        if (userData) {
-          setUser(userData);
-          setIsAdmin(ADMIN_IDS.includes(userData.id));
-          await syncBalance(userData.id);
-          
-          // Track Referral
-          const startParam = tg.initDataUnsafe?.start_param;
-          if (startParam) {
-            console.log('Referrer ID:', startParam);
-          }
+    if (activeTab === 'tasks') {
+      loadTasks();
+    }
+  }, [activeTab]);
+
+  const handleVerifyTask = async (taskId) => {
+    triggerHaptic();
+    try {
+      const res = await verifyTask(user.id, taskId);
+      if (res.success) {
+        if (window.Telegram?.WebApp?.HapticFeedback) {
+          window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
         }
+        // Remove task from list
+        setTasks(prev => prev.filter(t => t.id !== taskId));
+        // Sync balance
+        await syncBalance(user.id);
       }
-      setLoading(false);
-    };
-    init();
-  }, []);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const handleWheelWin = (segment) => {
     // Refresh balance from server since it was already deducted and prize added there
@@ -283,6 +281,61 @@ export default function App() {
     switch (activeTab) {
       case 'cases':
         return <CasesGrid user={user} onBuy={handleBuy} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} />;
+      case 'tasks':
+        return (
+          <div className="p-6 space-y-4 pb-24">
+            <h2 className="text-2xl font-black font-rounded uppercase tracking-tight mb-6">Задания</h2>
+            {tasks.length === 0 ? (
+              <div className="glass-panel p-8 text-center">
+                <p className="text-white/30 font-rounded uppercase tracking-widest text-xs">Все задания выполнены!</p>
+              </div>
+            ) : (
+              tasks.map(task => (
+                <motion.div
+                  key={task.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="glass-panel p-4 flex items-center justify-between gap-4"
+                >
+                  <div className="flex-1">
+                    <h3 className="font-bold text-sm text-white/90">{task.title}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <img src="/asset/Icons/TelegramStar.png" className="w-4 h-4" alt="Reward" />
+                      <span className="text-yellow-400 font-bold text-xs">+{task.reward}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {task.url && (
+                      <motion.button
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => {
+                          triggerHaptic();
+                          if (window.Telegram?.WebApp) {
+                            window.Telegram.WebApp.openTelegramLink(task.url);
+                          } else {
+                            window.open(task.url, '_blank');
+                          }
+                        }}
+                        className="glass-button p-2 border-white/10"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3" />
+                        </svg>
+                      </motion.button>
+                    )}
+                    <motion.button
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => handleVerifyTask(task.id)}
+                      className="glass-button px-4 py-2 bg-white/5 border-white/20 text-[10px] font-black uppercase tracking-widest"
+                    >
+                      ПРОВЕРИТЬ
+                    </motion.button>
+                  </div>
+                </motion.div>
+              ))
+            )}
+          </div>
+        );
       case 'fortune':
         return <WheelGame isPage={true} onWin={handleWheelWin} balance={balance} setBalance={setBalance} />;
       case 'upgrade':
@@ -476,6 +529,12 @@ export default function App() {
                         <rect x="14" y="3" width="7" height="7" rx="1" />
                         <rect x="14" y="14" width="7" height="7" rx="1" />
                         <rect x="3" y="14" width="7" height="7" rx="1" />
+                      </svg>
+                    )}
+                    {key === 'tasks' && (
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M9 11l3 3L22 4" />
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
                       </svg>
                     )}
                     {key === 'fortune' && (
