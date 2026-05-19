@@ -1,14 +1,32 @@
 import { ALL_GIFTS } from './giftData';
 
-// Utility to parse gift filename: "1200S_Diamond Rings.png" → { price: 1200, name: "Diamond Rings", image: "/asset/Gifts/1200S_Diamond Rings.png" }
+export const DEFAULT_GIFT_IMAGE = '/asset/Gifts/default.webp';
+
+export function normalizeGiftImage(image) {
+  if (!image || typeof image !== 'string') return DEFAULT_GIFT_IMAGE;
+
+  const fileName = image
+    .replaceAll('\\', '/')
+    .split('/')
+    .filter(Boolean)
+    .pop();
+
+  if (!fileName || fileName.includes('..')) return DEFAULT_GIFT_IMAGE;
+  return `/asset/Gifts/${fileName}`;
+}
+
+export function useDefaultGiftImage(event) {
+  if (event.currentTarget.src.endsWith(DEFAULT_GIFT_IMAGE)) return;
+  event.currentTarget.src = DEFAULT_GIFT_IMAGE;
+}
 
 export function parseGiftFile(filename) {
-  const match = filename.match(/^(\d+)S_(.+)\.png$/);
+  const match = filename.match(/^(\d+)S_(.+)\.(png|webp|jpg|jpeg)$/i);
   if (!match) return null;
   return {
     price: parseInt(match[1]),
     name: match[2].replace(/_/g, ' '),
-    image: `/asset/Gifts/${filename}`
+    image: normalizeGiftImage(filename)
   };
 }
 
@@ -16,7 +34,7 @@ export function parseGiftFile(filename) {
 export function getFileAsset(giftName) {
   if (!ALL_GIFTS || ALL_GIFTS.length === 0) {
     console.warn(`getFileAsset: ALL_GIFTS is empty or undefined`);
-    return `/asset/Gifts/15S_Bear.png`; // Fallback
+    return DEFAULT_GIFT_IMAGE;
   }
 
   // Find gift by name (case-insensitive)
@@ -26,12 +44,12 @@ export function getFileAsset(giftName) {
     console.warn(`getFileAsset: Gift "${giftName}" not found in database`);
     // Try to find any gift that contains the name
     const partialMatch = ALL_GIFTS.find(g => g.name.toLowerCase().includes(giftName.toLowerCase()));
-    if (partialMatch) return partialMatch.image;
+    if (partialMatch) return normalizeGiftImage(partialMatch.image);
     
-    return `/asset/Gifts/15S_Bear.png`; // Hard fallback
+    return DEFAULT_GIFT_IMAGE;
   }
 
-  return gift.image;
+  return normalizeGiftImage(gift.image);
 }
 
 // Get gift asset by name - alias for getFileAsset

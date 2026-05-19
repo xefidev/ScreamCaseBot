@@ -2,9 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CasePreview from './CasePreview';
 import { ALL_GIFTS, getGiftsInRange, getTopGift } from '../giftData';
+import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
 
 const CASES_DATA = [
-  { id: 1, name: 'Promo Case', price: 0, glowColor: '#ffffff', badge: 'Free', minPrice: 0, maxPrice: 667, stock: 999 },
   { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: 'Free', minPrice: 0, maxPrice: 100, stock: 50 },
   { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Random', minPrice: 100, maxPrice: 667, stock: 100 },
   { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Random', minPrice: 200, maxPrice: 599, stock: 80 },
@@ -106,10 +106,11 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                     }}
                   >
                     <img
-                      src={gift.image}
+                      src={normalizeGiftImage(gift.image)}
                       alt={gift.name}
                       className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
                       loading="lazy"
+                      onError={useDefaultGiftImage}
                       style={{
                         filter: `drop-shadow(0 0 8px ${caseItem.glowColor}70)`,
                       }}
@@ -132,10 +133,11 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                   }}
                 >
                   <img
-                    src={previewGift.image}
+                    src={normalizeGiftImage(previewGift.image)}
                     alt={previewGift.name}
                     className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
                     loading="lazy"
+                    onError={useDefaultGiftImage}
                     style={{
                       filter: `drop-shadow(0 0 10px ${caseItem.glowColor}70)`,
                     }}

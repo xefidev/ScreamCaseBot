@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
+import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
 
 const LOOT_ITEMS = [
   { id: 1, name: 'Xmas Stockings', color: '#ff0000', rarity: 'common', image: '/asset/Gifts/300S_Xmas Stockings.png' },
@@ -134,9 +135,10 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                     }}
                   >
                     <img
-                      src={item.image}
+                      src={normalizeGiftImage(item.image)}
                       alt={item.name}
                       className="w-14 h-14 object-contain mb-1"
+                      onError={useDefaultGiftImage}
                     />
                     <span className="text-white/70 text-[10px] text-center font-semibold uppercase">{item.rarity}</span>
                   </div>
@@ -160,9 +162,10 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
               >
                 <p className="text-white/50 text-xs mb-2 uppercase tracking-wider">You Won!</p>
                 <img
-                  src={selectedItem.image}
+                  src={normalizeGiftImage(selectedItem.image)}
                   alt={selectedItem.name}
                   className="h-24 w-24 object-contain mx-auto mb-3"
+                  onError={useDefaultGiftImage}
                   style={{
                     filter: `drop-shadow(0 0 20px ${selectedItem.color}80)`,
                   }}

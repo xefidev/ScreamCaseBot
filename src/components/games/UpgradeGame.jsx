@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
+import { normalizeGiftImage, useDefaultGiftImage } from '../../giftUtils';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
   const [selectedSlot1, setSelectedSlot1] = useState(null);
@@ -58,7 +59,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
         // 1. Call backend /api/upgrade
         const res = await upgradeItem(userId, upgradeCost, successChance);
         
-        // 2. Determine success from server (God Mode is handled server-side)
+        // 2. Determine success from server
         const success = res.success;
         pendingResult.current = success;
 
@@ -242,7 +243,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                     </div>
                   ) : (
                     <div className="p-3 rounded-3xl bg-white/10 border border-white/20">
-                      <img src={selectedSlot1.image} alt={selectedSlot1.name} className="w-24 h-24 object-contain mx-auto" />
+                      <img src={normalizeGiftImage(selectedSlot1.image)} alt={selectedSlot1.name} className="w-24 h-24 object-contain mx-auto" onError={useDefaultGiftImage} />
                       <div className="flex items-center justify-center gap-1.5 text-sm text-white/70 mt-2 font-black font-rounded">
                         {selectedSlot1.price}
                         <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
@@ -269,7 +270,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                     </motion.button>
                   ) : (
                     <div className="p-3 rounded-3xl bg-green-500/10 border border-green-500/30">
-                      <img src={selectedSlot2.image} alt={selectedSlot2.name} className="w-24 h-24 object-contain mx-auto" />
+                      <img src={normalizeGiftImage(selectedSlot2.image)} alt={selectedSlot2.name} className="w-24 h-24 object-contain mx-auto" onError={useDefaultGiftImage} />
                       <div className="flex items-center justify-center gap-1.5 text-sm text-green-400 mt-2 font-black font-rounded">
                         {selectedSlot2.price}
                         <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
@@ -337,7 +338,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                         : 'border-white/10 bg-white/5 hover:border-white/20'
                     }`}
                   >
-                    <img src={item.image} alt={item.name} className="w-16 h-16 object-contain mb-1 mx-auto" />
+                    <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-16 h-16 object-contain mb-1 mx-auto" onError={useDefaultGiftImage} />
                     <span className="text-white text-[10px] font-semibold text-center truncate block font-rounded">{item.name}</span>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[10px] mt-1 font-rounded">
                       <span className="font-bold flex items-center gap-0.5">
@@ -393,7 +394,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                           : 'border-white/10 bg-white/5 hover:border-white/20'
                       }`}
                     >
-                      <img src={gift.image} alt={gift.name} className="w-20 h-20 object-contain mb-2 mx-auto" />
+                      <img src={normalizeGiftImage(gift.image)} alt={gift.name} className="w-20 h-20 object-contain mb-2 mx-auto" onError={useDefaultGiftImage} />
                       <p className="text-white text-[10px] font-semibold text-center truncate block font-rounded">{gift.name}</p>
                       <div className="flex items-center justify-center gap-1 text-white/50 text-[10px] mt-1 font-rounded">
                         <span className="font-bold flex items-center gap-0.5">

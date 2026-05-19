@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
+import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
@@ -10,15 +11,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
   const [showResult, setShowResult] = useState(false);
   const [wonItem, setWonItem] = useState(null);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
   const [currentStock, setCurrentStock] = useState(caseItem.stock || 0);
   const animationKey = useRef(0);
 
-  const isPromo = caseItem.id === 1;
-  const canOpen = (!isPromo || promoCode.trim().length > 0) && currentStock > 0;
+  const canOpen = currentStock > 0;
 
   const getCost = useMemo(() => {
     if (!flashDiscount || caseItem.price === 0) return caseItem.price;
@@ -69,34 +68,25 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     setIsSpinning(true);
 
     try {
-        const response = await openCase(user.id, caseItem.id, isPromo ? promoCode : null);
+        const response = await openCase(user.id, caseItem.id);
         
         if (!response?.success) {
           throw new Error("Invalid response from server");
         }
 
         const actualWonItem = response.item;
-        if (!actualWonItem && !isPromo) {
+        if (!actualWonItem) {
            throw new Error("No item returned from server");
-        }
-
-        if (isPromo && response.reward) {
-          // If it was a promo, the reward was already added to balance on server
-          // but we might need to update local balance
-          if (setBalance) setBalance(prev => prev + response.reward);
-          
-          // For promos, we don't necessarily spin if it's just a star reward
-          // but let's assume promo cases can also return items
         }
 
         triggerHaptic();
         
-        if (!isPromo && setBalance) {
+        if (setBalance) {
           // Balance is already updated on server, but we update locally for smoothness
           // Or we could syncBalance(user.id)
           setBalance(prev => Math.max(0, prev - (response.deducted !== undefined ? response.deducted : cost)));
         }
-        if (!isPromo && setSpent) {
+        if (setSpent) {
           setSpent(prev => prev + (response.deducted !== undefined ? response.deducted : cost));
         }
         setCurrentStock(prev => Math.max(0, prev - 1));
@@ -196,25 +186,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           <div className="w-8" />
         </div>
 
-        <AnimatePresence>
-          {isPromo && !isSpinning && !hasSpun && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="mx-4 mb-4 mt-4"
-            >
-              <input
-                type="text"
-                value={promoCode}
-                onChange={(e) => setPromoCode(e.target.value)}
-                placeholder="Введите промокод"
-                className="glass-input w-full px-6 py-4 text-sm font-rounded flex items-center justify-center text-center"
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         <div className="relative h-64 mx-4 mb-4">
           <div
             className="absolute inset-0 rounded-3xl"
@@ -251,9 +222,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   style={{ backgroundColor: `${caseItem.glowColor}15` }}
                 >
                   <img
-                    src={gift.image}
+                    src={normalizeGiftImage(gift.image)}
                     alt={gift.name}
                     className="w-28 h-28 object-contain"
+                    onError={useDefaultGiftImage}
                     style={{ filter: `drop-shadow(0 0 15px ${caseItem.glowColor}80)` }}
                   />
                 </div>
@@ -307,7 +279,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               backgroundColor: `${caseItem.glowColor}10`,
                             }}
                           >
-                            <img src={item.image} alt={item.name} className="w-28 h-28 object-contain mb-1" />
+                            <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-28 h-28 object-contain mb-1" onError={useDefaultGiftImage} />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
                               <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">
                                 {item.price}
@@ -347,9 +319,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     <div className="relative z-10">
                       <p className="text-white/50 text-xs mb-2 uppercase tracking-wider font-rounded">Вы выиграли!</p>
                       <motion.img
-                        src={wonItem.image}
+                        src={normalizeGiftImage(wonItem.image)}
                         alt={wonItem.name}
                         className="h-48 w-48 object-contain mx-auto mb-4"
+                        onError={useDefaultGiftImage}
                         style={{ filter: `drop-shadow(0 0 35px ${caseItem.glowColor}90)` }}
                         animate={{
                           scale: [1, 1.1, 1],
@@ -406,7 +379,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     transition={{ delay: idx * 0.05 }}
                     className="glass-panel p-2 flex flex-col items-center"
                   >
-                    <img src={item.image} alt={item.name} className="w-12 h-12 object-contain mb-1" />
+                    <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-12 h-12 object-contain mb-1" onError={useDefaultGiftImage} />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item.name}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
                       <img src="/asset/Icons/TelegramStar.png" alt="Star" className="w-3 h-3" />

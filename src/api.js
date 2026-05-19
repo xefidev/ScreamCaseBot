@@ -40,19 +40,13 @@ const formatErrorMessage = (errorData) => {
     'insufficient_funds': '❌ Недостаточно средств',
     'user_not_found': '❌ Пользователь не найден',
     'invalid_case': '❌ Неверный ID кейса',
-    'invalid_code': '❌ Неверный промокод',
-    'code_inactive': '❌ Промокод неактивен',
-    'code_expired': '❌ Промокод истёк',
-    'invalid_code_format': '❌ Неверный формат промокода',
     'minimum_donation_required': `❌ Требуется пожертвование минимум ${errorData.required || 0} звёзд`,
     'daily_cooldown_active': `❌ Ждите ${Math.ceil((errorData.wait_seconds || 86400) / 3600)} часов перед следующим открытием`,
     'transaction_already_processed': '❌ Эта транзакция уже обработана',
     'invalid_amount': '❌ Неверная сумма',
-    'code_already_exists': '❌ Этот код уже существует',
     'unauthorized': '❌ Вы не авторизованы',
     'invalid_data': '❌ Некорректные данные',
     'server_error': '❌ Ошибка сервера. Попробуйте позже',
-    'promo_code_required': '❌ Требуется промокод для прямо-кейса',
     'already_completed': '❌ Задание уже выполнено',
     'task_not_found': '❌ Задание не найдено',
     'task_not_met': '❌ Условия задания не выполнены'
@@ -212,89 +206,6 @@ export const upgradeItem = async (userId, cost, chance) => {
   }
 };
 
-export const fetchLeaderboard = async () => {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/leaderboard`);
-    
-    if (!response.ok) {
-      const error = await handleApiError(response);
-      console.error('Leaderboard fetch error:', error);
-      return [];
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching leaderboard:', error);
-    return [];
-  }
-};
-
-export const claimPromo = async (userId, code) => {
-  try {
-    if (!userId || !code) {
-      throw new Error('Missing user_id or code');
-    }
-    
-    const response = await fetch(`${BACKEND_URL}/api/claim_promo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, code: code.trim() }),
-    });
-    
-    if (!response.ok) {
-      const error = await handleApiError(response);
-      
-      // Show alert to user
-      const message = formatErrorMessage(error);
-      showAlert(message);
-      
-      // Throw structured error
-      const err = new Error(message);
-      err.status = error.status;
-      err.errorCode = error.error;
-      err.details = error;
-      throw err;
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error claiming promo:', error);
-    if (!(error instanceof Error) || !error.status) {
-      showAlert('❌ Ошибка при активации промокода');
-    }
-    throw error;
-  }
-};
-
-export const adminCreatePromo = async (adminId, promoData) => {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/admin/create_promo`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ admin_id: adminId, ...promoData }),
-    });
-    
-    if (!response.ok) {
-      const error = await handleApiError(response);
-      const message = formatErrorMessage(error);
-      showAlert(message);
-      
-      const err = new Error(message);
-      err.status = error.status;
-      err.errorCode = error.error;
-      throw err;
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('Error creating promo:', error);
-    if (!(error instanceof Error) || !error.status) {
-      showAlert('❌ Ошибка при создании промокода');
-    }
-    throw error;
-  }
-};
-
 export const createInvoice = async (userId, amount) => {
   try {
     if (!userId || !amount) {
@@ -395,7 +306,7 @@ export const claimDaily = async (userId) => {
   }
 };
 
-export const openCase = async (userId, caseId, code = null) => {
+export const openCase = async (userId, caseId) => {
   try {
     if (!userId || caseId === null) {
       throw new Error('Missing userId or caseId');
@@ -405,14 +316,6 @@ export const openCase = async (userId, caseId, code = null) => {
       user_id: userId,
       case_id: caseId
     };
-    
-    // Only add code for promo cases
-    if (caseId === 1) {
-      if (!code) {
-        throw new Error('Promo code required for promo cases');
-      }
-      payload.code = code.trim();
-    }
     
     const response = await fetch(`${BACKEND_URL}/api/open_case`, {
       method: 'POST',

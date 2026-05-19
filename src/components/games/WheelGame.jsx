@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ALL_GIFTS } from '../../giftData';
 import { spinWheel } from '../../api';
+import { normalizeGiftImage, useDefaultGiftImage } from '../../giftUtils';
 
 const SEGMENT_ANGLE = 360 / 12;
 const SPIN_COST = 50;
@@ -129,7 +130,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             fill={`${segment.color}25`}
           />
           <image
-            href={segment.image}
+            href={normalizeGiftImage(segment.image)}
             x={contentX - 16}
             y={contentY - 16}
             width="32"
@@ -275,9 +276,10 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             >
               <p className="text-white/50 text-xs mb-2 uppercase tracking-wider font-rounded">Вы выиграли!</p>
               <img
-                src={winSegment.image}
+                src={normalizeGiftImage(winSegment.image)}
                 alt={winSegment.label}
                 className="h-28 w-28 object-contain mx-auto mb-3"
+                onError={useDefaultGiftImage}
                 style={{ filter: `drop-shadow(0 0 25px ${winSegment.color}70)` }}
               />
               <p
