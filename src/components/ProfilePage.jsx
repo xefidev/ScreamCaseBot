@@ -12,16 +12,13 @@ const formatValue = (val) => {
 
 export default function ProfilePage({ onClose, isPage, inventory, setInventory, transactions, setTransactions, balance, setBalance, tickets, spent, donor }) {
   const [user, setUser] = React.useState(null);
-  const [adminCommand, setAdminCommand] = React.useState('');
   const [leaderboard, setLeaderboard] = React.useState([]);
   const [referralCount, setReferralCount] = React.useState(0);
   
-  // Manager State
   const [mgrCode, setMgrCode] = React.useState('');
   const [mgrReward, setMgrReward] = React.useState('100');
-  const [mgrDays, setMgrDays] = React.useState('7');
+  const [mgrHours, setMgrHours] = React.useState('24');
   const [mgrMinDonation, setMgrMinDonation] = React.useState('0');
-  const [mgrLuck, setMgrLuck] = React.useState('0');
 
   React.useEffect(() => {
     if (window.Telegram?.WebApp) {
@@ -35,70 +32,22 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
   }, []);
 
   const loadLeaderboard = async () => {
+    try {
       const data = await fetchLeaderboard();
-      setLeaderboard(data);
+      setLeaderboard(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setLeaderboard([]);
+    }
   };
 
   const loadReferrals = async (userId) => {
-      try {
-          const data = await fetchReferrals(userId);
-          setReferralCount(data?.count || 0);
-      } catch (e) {
-          console.error(e);
-      }
-  };
-
-  const handleCreatePromo = async () => {
-      if (!user?.id || !ADMIN_IDS.includes(user.id)) {
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert("❌ Только администраторы могут создавать промокоды");
-          }
-          return;
-      }
-
-      if (!mgrCode.trim()) {
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert("❌ Введите код промокода");
-          }
-          return;
-      }
-
-      if (parseInt(mgrReward) <= 0) {
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert("❌ Награда должна быть > 0");
-          }
-          return;
-      }
-
-      try {
-          triggerHaptic('impact');
-          await adminCreatePromo(user.id, {
-              code: mgrCode.trim().toUpperCase(),
-              reward: parseInt(mgrReward),
-              days: parseInt(mgrDays) || 7,
-              min_donation: parseInt(mgrMinDonation) || 0,
-              type: 'stars'
-          });
-          
-          setMgrCode('');
-          setMgrReward('100');
-          setMgrDays('7');
-          setMgrMinDonation('0');
-          triggerHaptic('success');
-          
-          if (window.Telegram?.WebApp) {
-              window.Telegram.WebApp.showAlert("✅ Промокод успешно создан!");
-          }
-      } catch (error) {
-          console.error("Error creating promo:", error);
-          // Error message is already shown by api.js
-          // Only show additional alert if error was not from the API
-          if (!error.status) {
-              if (window.Telegram?.WebApp) {
-                  window.Telegram.WebApp.showAlert("❌ Ошибка при создании промокода");
-              }
-          }
-      }
+    try {
+        const data = await fetchReferrals(userId);
+        setReferralCount(data?.count || 0);
+    } catch (e) {
+        console.error(e);
+    }
   };
 
   const triggerHaptic = (type = 'heavy') => {
@@ -111,67 +60,98 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
     }
   };
 
+  const handleCreatePromo = async () => {
+      if (!user?.id || !ADMIN_IDS.includes(user.id)) return;
+      if (!mgrCode.trim()) {
+          window.Telegram?.WebApp?.showAlert?.("❌ Введите код промокода");
+          return;
+      }
+
+      try {
+          triggerHaptic('impact');
+          // Using bot command logic simulation via API if exists, 
+          // but usually this is done via bot. Here we use the existing API function.
+          await adminCreatePromo(user.id, {
+              code: mgrCode.trim().toUpperCase(),
+              reward: parseInt(mgrReward),
+              hours: parseInt(mgrHours) || 24,
+              min_donation: parseInt(mgrMinDonation) || 0,
+              type: 'stars'
+          });
+          
+          setMgrCode('');
+          setMgrReward('100');
+          setMgrHours('24');
+          setMgrMinDonation('0');
+          triggerHaptic('success');
+          window.Telegram?.WebApp?.showAlert?.("✅ Промокод успешно создан!");
+      } catch (error) {
+          console.error("Error creating promo:", error);
+      }
+  };
+
   const handleSell = (item) => {
     triggerHaptic();
     if (!setInventory || !setBalance) return;
-
     setInventory(prev => prev.filter(i => i.id !== item.id));
     setBalance(prev => prev + item.price);
-
     if (setTransactions) {
-      const newTransaction = {
+      setTransactions(prev => [{
         id: Date.now(),
         type: 'sell',
         amount: item.price,
         description: 'Продажа предмета',
         item: item.name,
-      };
-      setTransactions(prev => [newTransaction, ...prev]);
+      }, ...prev]);
     }
-    
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-    }
+    triggerHaptic('success');
   };
 
   const handleCopyReferral = () => {
     triggerHaptic();
     const userId = user?.id || 'guest';
     const refLink = `https://t.me/ScreamCase_bot?start=${userId}`;
-    navigator.clipboard.writeText(refLink);
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.showPopup({
-        title: 'Успех',
-        message: 'Реферальная ссылка скопирована!',
-        buttons: [{ type: 'ok' }]
-      });
-      window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(refLink).then(() => {
+            window.Telegram?.WebApp?.showPopup?.({
+                title: 'Успех',
+                message: 'Реферальная ссылка скопирована!',
+                buttons: [{ type: 'ok' }]
+            });
+            triggerHaptic('success');
+        });
+    } else {
+        // Fallback
+        const textArea = document.createElement("textarea");
+        textArea.value = refLink;
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+            window.Telegram?.WebApp?.showPopup?.({
+                title: 'Успех',
+                message: 'Реферальная ссылка скопирована!',
+                buttons: [{ type: 'ok' }]
+            });
+            triggerHaptic('success');
+        } catch (err) {
+            console.error('Fallback: Oops, unable to copy', err);
+        }
+        document.body.removeChild(textArea);
     }
   };
 
   const content = (
     <div className={`${isPage ? 'min-h-full pb-24' : 'max-w-md mx-auto p-6 min-h-screen'}`}>
-      {/* Header */}
-      {!isPage && onClose && (
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-2xl font-black text-white">ПРОФИЛЬ</h2>
-          <button onClick={onClose} className="text-white/50 hover:text-white text-xl">
-            ✕
-          </button>
-        </div>
-      )}
-      {isPage && (
-        <div className="mb-8">
-          <h2 className="text-2xl font-black text-white uppercase tracking-widest">Профиль</h2>
-        </div>
-      )}
+      <div className="mb-8">
+        <h2 className="text-2xl font-black text-white uppercase tracking-widest">Профиль</h2>
+      </div>
 
-      {/* User Info */}
       <div className="glass-panel p-6 mb-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full -mr-16 -mt-16" />
-        
         <div className="flex items-center gap-4 mb-6 relative z-10">
-          <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-white/5 backdrop-blur-xl flex items-center justify-center overflow-hidden">
+          <div className="w-20 h-20 rounded-full border-2 border-white/10 bg-white/5 flex items-center justify-center overflow-hidden">
             {user?.photo_url ? (
               <img src={user.photo_url} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
@@ -180,244 +160,98 @@ export default function ProfilePage({ onClose, isPage, inventory, setInventory, 
           </div>
           <div>
             <h3 className="text-white font-black text-2xl font-rounded uppercase tracking-tight">
-              {user?.first_name || 'GUEST'}
+              {user?.first_name || 'ИГРОК'}
               {ADMIN_IDS.includes(user?.id) && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded border border-green-500/30 ml-2 align-middle">ADMIN</span>}
             </h3>
             <div className="flex items-center gap-2 mt-1">
-              <span className="text-white/40 text-[10px] font-bold">ID: {user?.id || '000000000'}</span>
+              <span className="text-white/40 text-[10px] font-bold">ID: {user?.id || '0'}</span>
               <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
-                <span className="text-[10px]" role="img" aria-label="donated">🏆</span>
-                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
-                  {formatValue(donor)}
-                </span>
+                <span className="text-[10px]">🏆</span>
+                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">{formatValue(donor)}</span>
               </div>
               <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
-                <span className="text-[10px]" role="img" aria-label="spent">💸</span>
-                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
-                  {formatValue(spent)}
-                </span>
-              </div>
-              <div className="flex items-center gap-1 bg-white/5 border border-white/10 px-2 py-0.5 rounded-lg">
-                <span className="text-[10px]" role="img" aria-label="tickets">🎫</span>
-                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">
-                  {formatValue(tickets)}
-                </span>
+                <span className="text-[10px]">💸</span>
+                <span className="text-[10px] font-black text-white/90 uppercase tracking-tight">{formatValue(spent)}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 gap-4 relative z-10">
-          <div className="p-5 rounded-3xl bg-white/5 border border-white/10 flex flex-col items-center justify-center">
-            <p className="text-white/50 text-[10px] mb-1 uppercase tracking-[0.2em] font-rounded font-bold">Баланс</p>
-            <p className="text-white font-black text-2xl flex items-center gap-2 font-rounded">
-              {balance || 0}
-              <img src="/asset/Icons/TelegramStar.png" className="h-7 w-7" alt="Stars" />
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 text-center">
+            <p className="text-white/50 text-[10px] mb-1 uppercase tracking-widest font-bold">Баланс</p>
+            <p className="text-white font-black text-xl flex items-center justify-center gap-1">
+              {balance} <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
             </p>
           </div>
-          <div className="p-5 rounded-3xl bg-white/5 border border-white/10 flex flex-col items-center justify-center">
-            <p className="text-white/50 text-[10px] mb-1 uppercase tracking-[0.2em] font-rounded font-bold">Потрачено</p>
-            <p className="text-white font-black text-2xl flex items-center gap-2 font-rounded">
-              {spent || 0}
-              <img src="/asset/Icons/TelegramStar.png" className="h-7 w-7" alt="Stars" />
+          <div className="p-4 rounded-3xl bg-white/5 border border-white/10 text-center">
+            <p className="text-white/50 text-[10px] mb-1 uppercase tracking-widest font-bold">Потрачено</p>
+            <p className="text-white font-black text-xl flex items-center justify-center gap-1">
+              {spent} <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
             </p>
           </div>
         </div>
       </div>
 
-      {/* Promo & Manager */}
-      <div className="grid grid-cols-1 gap-4 mb-6">
-          {ADMIN_IDS.includes(user?.id) && (
-            <div className="glass-panel p-6 border-red-500/20 bg-red-500/5 relative overflow-hidden">
-                <h4 className="text-red-400 font-black text-lg mb-4 font-rounded uppercase tracking-widest relative z-10 flex items-center gap-2">
-                    MANAGER PANEL
-                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                </h4>
-                <div className="space-y-3 relative z-10">
-                    <input type="text" value={mgrCode} onChange={e => setMgrCode(e.target.value.toUpperCase())} placeholder="PROMO CODE" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white font-bold text-sm" />
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="flex flex-col gap-1">
-                            <span className="text-[8px] text-white/40 uppercase ml-1">Reward</span>
-                            <input type="number" value={mgrReward} onChange={e => setMgrReward(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <span className="text-[8px] text-white/40 uppercase ml-1">Days</span>
-                            <input type="number" value={mgrDays} onChange={e => setMgrDays(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
-                        </div>
-                        <div className="flex flex-col gap-1">
-                            <span className="text-[8px] text-white/40 uppercase ml-1">Min Donat</span>
-                            <input type="number" value={mgrMinDonation} onChange={e => setMgrMinDonation(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" />
-                        </div>
-                    </div>
-                    <motion.button
-                        whileTap={{ scale: 0.95 }}
-                        onClick={handleCreatePromo}
-                        className="w-full py-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 font-black uppercase tracking-widest text-xs"
-                    >
-                        CREATE PROMO
-                    </motion.button>
+      {ADMIN_IDS.includes(user?.id) && (
+        <div className="glass-panel p-6 border-red-500/20 bg-red-500/5 mb-6">
+            <h4 className="text-red-400 font-black text-lg mb-4 uppercase tracking-widest flex items-center gap-2">
+                MANAGER PANEL <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            </h4>
+            <div className="space-y-3">
+                <input type="text" value={mgrCode} onChange={e => setMgrCode(e.target.value.toUpperCase())} placeholder="PROMO CODE" className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-white font-bold text-sm" />
+                <div className="grid grid-cols-3 gap-2">
+                    <input type="number" value={mgrReward} onChange={e => setMgrReward(e.target.value)} placeholder="Reward" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" title="Награда" />
+                    <input type="number" value={mgrHours} onChange={e => setMgrHours(e.target.value)} placeholder="Hours" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" title="Часы" />
+                    <input type="number" value={mgrMinDonation} onChange={e => setMgrMinDonation(e.target.value)} placeholder="Min Don" className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-white text-xs" title="Мин. пополнение" />
                 </div>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={handleCreatePromo} className="w-full py-3 rounded-xl bg-red-500/20 border border-red-500/30 text-red-400 font-black uppercase tracking-widest text-xs">CREATE PROMO</motion.button>
             </div>
-          )}
-      </div>
+        </div>
+      )}
 
-      {/* Leaderboard */}
       <div className="glass-panel p-6 mb-6">
-          <h4 className="text-white font-black text-xl mb-4 font-rounded uppercase tracking-widest">Таблица лидеров</h4>
+          <h4 className="text-white font-black text-xl mb-4 uppercase tracking-widest">Таблица лидеров</h4>
           <div className="space-y-3">
-              {leaderboard.length > 0 ? leaderboard.map((item, idx) => (
+              {leaderboard.length > 0 ? leaderboard.slice(0, 10).map((item, idx) => (
                   <div key={idx} className="flex justify-between items-center p-3 rounded-2xl bg-white/5 border border-white/5">
                       <div className="flex items-center gap-3">
-                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>
-                              {idx + 1}
-                          </span>
-                          <div className="w-8 h-8 rounded-full bg-white/10 overflow-hidden flex-shrink-0">
-                              {item.photo_url ? (
-                                  <img src={item.photo_url} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-[10px] text-white/30 uppercase font-black">
-                                      {item.first_name ? item.first_name[0] : (item.username ? item.username[0] : '?')}
-                                  </div>
-                              )}
-                          </div>
-                          <span className="text-white font-bold font-rounded truncate max-w-[120px]">
-                              {item.username ? `@${item.username}` : (item.first_name || `ID: ${item.user_id}`)}
-                          </span>
+                          <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${idx === 0 ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white'}`}>{idx + 1}</span>
+                          <span className="text-white font-bold truncate max-w-[120px]">{item.username ? `@${item.username}` : (item.first_name || `ID: ${item.user_id}`)}</span>
                       </div>
-                      <span className="text-yellow-400 font-black font-rounded flex items-center gap-1">
-                          {item.donated}
-                          <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
-                      </span>
+                      <span className="text-yellow-400 font-black flex items-center gap-1">{item.donated} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" /></span>
                   </div>
-              )) : (
-                  <p className="text-white/30 text-center py-4 text-sm font-rounded">Загрузка...</p>
-              )}
+              )) : <p className="text-white/30 text-center py-4 text-sm">Загрузка...</p>}
           </div>
       </div>
 
-      {/* Referral System */}
       <div className="glass-panel p-6 mb-6 relative overflow-hidden group">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         <div className="flex justify-between items-start mb-4 relative z-10">
-            <h4 className="text-white font-black text-lg font-rounded uppercase tracking-widest">Реферальная система</h4>
-            <div className="px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-black font-rounded">
-                {referralCount} РЕФ
-            </div>
+            <h4 className="text-white font-black text-lg uppercase tracking-widest">Рефералы</h4>
+            <div className="px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-400 text-[10px] font-black">{referralCount} РЕФ</div>
         </div>
-        
-        <div className="space-y-4 relative z-10">
-          <p className="text-white/50 text-xs font-rounded leading-relaxed">
-            Приглашайте друзей и получайте <span className="text-white font-bold">10%</span> от их пополнений и <span className="text-white font-bold">+1 билет</span> 🎫 за каждого вступившего!
-          </p>
-          
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleCopyReferral}
-            className="w-full py-4 rounded-2xl bg-white text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 shadow-lg shadow-white/5"
-          >
-            СКОПИРОВАТЬ ССЫЛКУ
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-          </motion.button>
-        </div>
+        <p className="text-white/50 text-xs mb-4 relative z-10">Получайте <span className="text-white font-bold">10%</span> от пополнений друзей и <span className="text-white font-bold">+1 билет</span> 🎫 за каждого!</p>
+        <motion.button whileTap={{ scale: 0.98 }} onClick={handleCopyReferral} className="w-full py-4 rounded-2xl bg-white text-black font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2">СКОПИРОВАТЬ ССЫЛКУ</motion.button>
       </div>
 
-      {/* Inventory */}
       <div className="glass-panel p-6 mb-6">
-        <h4 className="text-white font-black text-xl mb-4 font-rounded uppercase tracking-widest">Инвентарь ({inventory ? inventory.length : 0})</h4>
-
+        <h4 className="text-white font-black text-xl mb-4 uppercase tracking-widest">Инвентарь ({inventory?.length || 0})</h4>
         {!inventory || inventory.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-white/5 flex items-center justify-center">
-              <span className="text-3xl">📦</span>
-            </div>
-            <p className="text-white/50 font-rounded text-lg">Инвентарь пуст</p>
-            <p className="text-white/30 text-sm mt-1 font-rounded">Открывайте ящики!</p>
-          </div>
+          <div className="text-center py-8 opacity-30"><p className="text-white">Пусто</p></div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            {inventory.map((item, index) => (
-              <motion.div
-                key={item.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="p-4 rounded-3xl bg-white/5 border border-white/10 flex flex-col items-center relative group"
-              >
-                <img src={item.image} alt={item.name} className="w-20 h-20 object-contain mb-3" />
-                <p className="text-white text-sm font-bold text-center truncate w-full font-rounded mb-1">{item.name}</p>
-                <div className="flex items-center gap-1.5 text-white/50 text-xs mb-3 font-rounded font-bold">
-                  {item.price}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
-                </div>
-
-                {/* Exchange Button */}
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => handleSell(item)}
-                  className="w-full py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-1.5"
-                  style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#ef4444',
-                  }}
-                >
-                  ОБМЕНЯТЬ ЗА {item.price}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
-                </motion.button>
-              </motion.div>
+            {inventory.map((item) => (
+              <div key={item.id} className="p-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col items-center">
+                <img src={item.image} alt={item.name} className="w-16 h-16 object-contain mb-2" />
+                <p className="text-white text-[10px] font-bold text-center truncate w-full mb-2">{item.name}</p>
+                <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleSell(item)} className="w-full py-2 rounded-xl text-[8px] font-black uppercase bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center gap-1">ПРОДАТЬ ЗА {item.price} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" /></motion.button>
+              </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* Transactions */}
-      <div className="glass-panel p-6">
-        <h4 className="text-white font-black text-xl mb-4 font-rounded uppercase tracking-widest">Транзакции</h4>
-        <div className="space-y-4">
-          {transactions && transactions.length > 0 ? (
-            transactions.map(tx => (
-              <div key={tx.id} className="flex justify-between items-center p-3 rounded-2xl bg-white/5 border border-white/5">
-                <div>
-                  <p className="text-white text-sm font-bold font-rounded uppercase tracking-wide">{tx.description}</p>
-                  <p className="text-white/50 text-[10px] font-rounded">
-                    {tx.type === 'spend' ? 'Потрачено' : tx.type === 'win' ? 'Выиграно' : 'Пополнение'}
-                    {tx.item && ` - ${tx.item}`}
-                  </p>
-                </div>
-                <span className={`font-black text-lg font-rounded flex items-center gap-1.5 ${
-                  tx.type === 'spend' ? 'text-red-400' : 'text-green-400'
-                }`}>
-                  {tx.type === 'spend' ? '-' : '+'}{tx.amount}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
-                </span>
-              </div>
-            ))
-          ) : (
-            <p className="text-white/50 text-sm text-center py-4 font-rounded">Нет транзакций</p>
-          )}
-        </div>
-      </div>
     </div>
   );
 
-  if (isPage) {
-    return <div className="p-4 min-h-full overflow-y-auto">{content}</div>;
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: '100%' }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: '100%' }}
-      className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm overflow-y-auto"
-    >
-      {content}
-    </motion.div>
-  );
+  return <div className="p-4 h-full overflow-y-auto">{content}</div>;
 }

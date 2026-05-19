@@ -95,11 +95,19 @@ def init_db():
         # Ensure default tasks exist
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM tasks")
-        if cur.fetchone()[0] == 0:
+        if cur.fetchone()[0] <= 2: # Check if we need to add more or refresh
+            # Clear and re-insert for consistency in this update
+            cur.execute("DELETE FROM tasks")
             cur.execute("INSERT INTO tasks (title, reward, type, url, chat_id) VALUES (?, ?, ?, ?, ?)",
-                        ("Подписка на канал", 100, "channel", CHANNEL_URL, "@ScreamCase"))
+                        ("Подписка на канал", 100, "channel", "https://t.me/ScreamCase", "@ScreamCase"))
             cur.execute("INSERT INTO tasks (title, reward, type, url) VALUES (?, ?, ?, ?)",
-                        ("Пригласить 5 друзей", 500, "referral", ""))
+                        ("Пригласить 5 друзей", 500, "referral_5", ""))
+            cur.execute("INSERT INTO tasks (title, reward, type, url, chat_id) VALUES (?, ?, ?, ?, ?)",
+                        ("Вступить в наш чат", 1, "chat", "https://t.me/ScreamCaseChat", "@ScreamCaseChat"))
+            cur.execute("INSERT INTO tasks (title, reward, type, url) VALUES (?, ?, ?, ?)",
+                        ("Открыть 1 бесплатный кейс", 1, "open_free", ""))
+            cur.execute("INSERT INTO tasks (title, reward, type, url) VALUES (?, ?, ?, ?)",
+                        ("Пригласить 1 друга", 1, "referral_1", ""))
             conn.commit()
 
     print("✅ База данных полностью готова")
@@ -648,10 +656,28 @@ async def api_verify_task(request):
             
             if ttype == "channel":
                 is_valid = await check_membership(uid)
-            elif ttype == "referral":
+            elif ttype == "chat":
+                # Check membership in chat
+                try:
+                    member = await bot.get_chat_member(chat_id=chat_id or "@ScreamCaseChat", user_id=uid)
+                    is_valid = member.status in ["member", "administrator", "creator"]
+                except:
+                    is_valid = False
+            elif ttype == "referral_5":
                 # Check if user has at least 5 referrals
                 ref_count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (uid,)).fetchone()[0]
                 if ref_count >= 5:
+                    is_valid = True
+            elif ttype == "referral_1":
+                # Check if user has at least 1 referral
+                ref_count = conn.execute("SELECT COUNT(*) FROM users WHERE referred_by = ?", (uid,)).fetchone()[0]
+                if ref_count >= 1:
+                    is_valid = True
+            elif ttype == "open_free":
+                # Check if user has opened at least 1 case (free cases have price 0 or 1)
+                # We can check transactions or payments
+                opened = conn.execute("SELECT COUNT(*) FROM payments WHERE user_id = ? AND amount = 0", (uid,)).fetchone()[0]
+                if opened >= 1:
                     is_valid = True
             else:
                 # Custom or simple tasks (just click)
