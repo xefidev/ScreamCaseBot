@@ -56,3 +56,17 @@ export function getFileAsset(giftName) {
 export function getGiftAsset(giftName) {
   return getFileAsset(giftName);
 }
+
+// Robust helper to get dynamic image from item object
+export function getDynamicGiftImage(item) {
+  if (!item) return DEFAULT_GIFT_IMAGE;
+  
+  // Try to find by name first for "dynamic" binding as requested
+  if (item.name) {
+    const asset = getGiftAsset(item.name);
+    if (asset !== DEFAULT_GIFT_IMAGE) return asset;
+  }
+  
+  // Fallback to item.image if name search failed
+  return normalizeGiftImage(item.image);
+}

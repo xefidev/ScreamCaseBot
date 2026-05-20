@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
+import { normalizeGiftImage, useDefaultGiftImage, getDynamicGiftImage } from '../giftUtils';
 
 const PAGE_BG = '#22242a';
 
@@ -86,7 +86,7 @@ export default function ProfilePage({
 
   return (
     <div
-      className={`${isPage ? 'min-h-full p-6 pb-24' : 'min-h-screen w-full p-6'}`}
+      className={`${isPage ? 'h-full overflow-y-auto p-6 pb-24' : 'min-h-screen w-full overflow-y-auto p-6'}`}
       style={{ backgroundColor: PAGE_BG }}
     >
       {!isPage && onClose && (
@@ -221,7 +221,7 @@ export default function ProfilePage({
         style={{ backgroundColor: 'rgba(34, 36, 42, 0.92)', borderColor: 'rgba(255, 255, 255, 0.1)' }}
       >
         <h4 className="mb-6 text-lg font-black uppercase tracking-widest text-white">
-          Инвентарь ({inventory?.length || 0})
+          Мои подарки ({inventory?.length || 0})
         </h4>
 
         {!inventory || inventory.length === 0 ? (

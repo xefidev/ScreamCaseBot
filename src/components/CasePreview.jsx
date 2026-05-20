@@ -12,17 +12,21 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showResult, setShowResult] = useState(false);
-  const [wonItem, setWonItem] = useState(null);
+  const [wonItems, setWonItems] = useState([]);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
   const [currentStock, setCurrentStock] = useState(caseItem.stock || 0);
+  const [quantity, setQuantity] = useState(1);
   const animationKey = useRef(0);
 
-  const canOpen = currentStock > 0;
+  const canOpen = currentStock >= quantity;
 
   const getCost = useMemo(() => {
-    if (!flashDiscount || caseItem.price === 0) return caseItem.price;
-    return Math.floor(caseItem.price * (1 - flashDiscount));
-  }, [caseItem.price, flashDiscount]);
+    let basePrice = caseItem.price;
+    if (flashDiscount && basePrice > 0) {
+      basePrice = Math.floor(basePrice * (1 - flashDiscount));
+    }
+    return basePrice * quantity;
+  }, [caseItem.price, flashDiscount, quantity]);
 
   const dropItems = useMemo(() =>
     getGiftsInRange(caseItem.minPrice, caseItem.maxPrice),
@@ -48,17 +52,17 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const FULL_ITEM_WIDTH = ITEM_SIZE + GAP;
   const viewportRef = useRef(null);
 
-  const triggerHaptic = () => {
+  const triggerHaptic = (type = 'heavy') => {
     if (window.Telegram?.WebApp?.HapticFeedback) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
+      window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
     }
   };
 
   const handleOpen = async () => {
     if (isSpinning || !canOpen || !user?.id) return;
 
-    const cost = getCost;
-    if (balance < cost) {
+    const totalCost = getCost;
+    if (balance < totalCost) {
       if (window.Telegram?.WebApp) {
         window.Telegram.WebApp.showAlert("❌ Недостаточно средств!");
       }
@@ -66,38 +70,40 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     }
 
     setIsSpinning(true);
+    setWonItems([]);
 
     try {
-        const response = await openCase(user.id, caseItem.id);
-        
-        if (!response?.success) {
-          throw new Error("Invalid response from server");
-        }
+        const results = [];
+        let totalDeducted = 0;
 
-        const actualWonItem = response.item;
-        if (!actualWonItem) {
-           throw new Error("No item returned from server");
+        // Perform multiple openings
+        for (let i = 0; i < quantity; i++) {
+          const response = await openCase(user.id, caseItem.id);
+          if (!response?.success || !response.item) {
+            throw new Error(`Failed to open case ${i+1}`);
+          }
+          results.push(response.item);
+          totalDeducted += (response.deducted !== undefined ? response.deducted : (totalCost / quantity));
         }
 
         triggerHaptic();
         
         if (setBalance) {
-          // Balance is already updated on server, but we update locally for smoothness
-          // Or we could syncBalance(user.id)
-          setBalance(prev => Math.max(0, prev - (response.deducted !== undefined ? response.deducted : cost)));
+          setBalance(prev => Math.max(0, prev - totalDeducted));
         }
         if (setSpent) {
-          setSpent(prev => prev + (response.deducted !== undefined ? response.deducted : cost));
+          setSpent(prev => prev + totalDeducted);
         }
-        setCurrentStock(prev => Math.max(0, prev - 1));
+        setCurrentStock(prev => Math.max(0, prev - quantity));
 
-        setWonItem(actualWonItem);
+        setWonItems(results);
         setHasSpun(false);
         setShowConfetti(false);
         setShowResult(false);
 
-        // Find index of won item in spinItems for animation
-        let winIndex = spinItems.findIndex(i => i.name === actualWonItem.name && i.price === actualWonItem.price);
+        // Animation logic (based on the last item for visual effect)
+        const lastWonItem = results[results.length - 1];
+        let winIndex = spinItems.findIndex(i => i.name === lastWonItem.name && i.price === lastWonItem.price);
         if (winIndex === -1) winIndex = 0;
 
         const repetitions = 10;
@@ -112,21 +118,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         animationKey.current += 1;
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
-        // isSpinning is already true, animation will start
     } catch (e) {
         console.error("Error in handleOpen:", e);
-        // STOP animation immediately on error
         setIsSpinning(false);
-        setHasSpun(false);
-        setShowConfetti(false);
-        setShowResult(false);
-        
-        // Error message is already shown by api.js showAlert()
-        // But if we get here, make sure alert is shown
-        if (!e.status) {
-          if (window.Telegram?.WebApp) {
-            window.Telegram.WebApp.showAlert("❌ Ошибка при открытии кейса");
-          }
+        if (window.Telegram?.WebApp) {
+          window.Telegram.WebApp.showAlert("❌ Ошибка при открытии кейса");
         }
     }
   };
@@ -138,8 +134,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       setShowConfetti(true);
       setShowResult(true);
 
-      if (onWin && wonItem) {
-        onWin(wonItem, caseItem);
+      if (onWin && wonItems.length > 0) {
+        wonItems.forEach(item => onWin(item, caseItem));
       }
 
       setTimeout(() => setShowConfetti(false), 3000);
@@ -293,54 +289,50 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   </div>
                 </div>
 
-                {hasSpun && wonItem && showResult && (
+                {hasSpun && wonItems.length > 0 && showResult && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    className="text-center p-4 rounded-3xl relative overflow-hidden mt-4"
-                    style={{
-                      borderColor: `${caseItem.glowColor}30`,
-                      backgroundColor: `${caseItem.glowColor}10`,
-                    }}
+                    className="mt-4"
                   >
-                    <motion.div
-                      animate={{
-                        scale: [1, 1.2, 1],
-                        opacity: [0.3, 0.6, 0.3],
-                      }}
-                      transition={{ duration: 2, repeat: Infinity }}
-                      className="absolute inset-0 rounded-2xl"
-                      style={{
-                        backgroundColor: `${caseItem.glowColor}20`,
-                        filter: 'blur(20px)',
-                      }}
-                    />
-
-                    <div className="relative z-10">
-                      <p className="text-white/50 text-xs mb-2 uppercase tracking-wider font-rounded">Вы выиграли!</p>
-                      <motion.img
-                        src={normalizeGiftImage(wonItem.image)}
-                        alt={wonItem.name}
-                        className="h-48 w-48 object-contain mx-auto mb-4"
-                        onError={useDefaultGiftImage}
-                        style={{ filter: `drop-shadow(0 0 35px ${caseItem.glowColor}90)` }}
-                        animate={{
-                          scale: [1, 1.1, 1],
-                        }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                      />
-                      <p
-                        className="text-white font-black text-3xl mb-3 font-rounded"
-                        style={{ color: caseItem.glowColor }}
-                      >
-                        {wonItem.name}
-                      </p>
-                      <div className="flex items-center justify-center gap-2 text-white/70 text-lg">
-                        <span className="flex items-center gap-1.5 font-black font-rounded">
-                          {wonItem.price}
-                          <img src="/asset/Icons/TelegramStar.png" className="h-7 w-7" alt="Stars" />
-                        </span>
-                      </div>
+                    <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-wider font-rounded">Вы выиграли!</p>
+                    
+                    <div className={`grid gap-4 ${wonItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {wonItems.map((wonItem, idx) => (
+                        <motion.div
+                          key={`${wonItem.name}-${idx}`}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: idx * 0.1 }}
+                          className="text-center p-4 rounded-3xl relative overflow-hidden border"
+                          style={{
+                            borderColor: `${caseItem.glowColor}30`,
+                            backgroundColor: `${caseItem.glowColor}10`,
+                          }}
+                        >
+                          <div className="relative z-10">
+                            <motion.img
+                              src={getDynamicGiftImage(wonItem)}
+                              alt={wonItem.name}
+                              className={`${wonItems.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`}
+                              onError={useDefaultGiftImage}
+                              style={{ filter: `drop-shadow(0 0 25px ${caseItem.glowColor}90)` }}
+                            />
+                            <p
+                              className={`${wonItems.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded`}
+                              style={{ color: caseItem.glowColor }}
+                            >
+                              {wonItem.name}
+                            </p>
+                            <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
+                              <span className="flex items-center gap-1 font-black font-rounded">
+                                {wonItem.price}
+                                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
+                              </span>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
                     </div>
                   </motion.div>
                 )}
@@ -353,7 +345,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                         className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
                       />
-                      <span className="text-sm">Открываем...</span>
+                      <span className="text-sm">Открываем... ({wonItems.length}/{quantity})</span>
                     </div>
                   </div>
                 )}
@@ -369,6 +361,29 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               exit={{ opacity: 0 }}
               className="mx-4 mb-6"
             >
+              {/* Quantity Selector */}
+              <div className="mb-6">
+                <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
+                <div className="flex gap-2">
+                  {[1, 3, 5, 10].map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => {
+                        setQuantity(q);
+                        triggerHaptic('light');
+                      }}
+                      className={`flex-1 py-3 rounded-xl border font-black transition-all ${
+                        quantity === q 
+                          ? 'bg-white/10 border-white/40 text-white' 
+                          : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
+                      }`}
+                    >
+                      x{q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <h3 className="text-white/50 text-xs uppercase tracking-wider mb-3">Возможный дроп</h3>
               <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {dropItems.map((item, idx) => (
@@ -382,7 +397,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-12 h-12 object-contain mb-1" onError={useDefaultGiftImage} />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item.name}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
-                      <img src="/asset/Icons/TelegramStar.png" alt="Star" className="w-3 h-3" />
                       <span className="flex items-center gap-0.5">
                         {item.price}
                         <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" />
@@ -402,7 +416,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {flashDiscount && caseItem.price > 0 && (
               <div className="text-center mb-2">
                 <span className="text-red-500 text-xs font-rounded line-through opacity-50">
-                  {caseItem.price}
+                  {caseItem.price * quantity}
                 </span>
                 <span className="text-red-500 text-sm font-black ml-2 font-rounded">
                   -{Math.round(flashDiscount * 100)}% FLASH SALE!
@@ -423,7 +437,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             >
               {caseItem.price === 0 ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
                 <span className="flex items-center justify-center gap-2">
-                  ОТКРЫТЬ ЗА {getCost}
+                  ОТКРЫТЬ x{quantity} ЗА {getCost}
                   <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
                 </span>
               )}
@@ -439,7 +453,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ЗАБРАТЬ
           </motion.button>
         ) : (
-          <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие кейса...</div>
+          <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие {quantity} {quantity === 1 ? 'кейса' : 'кейсов'}...</div>
         )}
       </div>
     </div>
