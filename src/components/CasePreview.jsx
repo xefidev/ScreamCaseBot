@@ -78,8 +78,15 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         // Perform multiple openings
         for (let i = 0; i < quantity; i++) {
-          const response = await openCase(user.id, caseItem.id);
-          if (!response?.success || !response.item) {
+          const response = await openCase(user?.id, caseItem?.id);
+          
+          if (!response?.success || !response?.item) {
+            // Check for daily cooldown error specifically
+            if (response?.errorCode === 'daily_cooldown_active' || response?.details?.error === 'daily_cooldown_active') {
+               const wait = response?.waitSeconds || response?.details?.wait_seconds || 86400;
+               const hours = Math.ceil(wait / 3600);
+               throw new Error(`daily_cooldown_active:${hours}`);
+            }
             throw new Error(`Failed to open case ${i+1}`);
           }
           results.push(response.item);
@@ -103,7 +110,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         // Animation logic (based on the last item for visual effect)
         const lastWonItem = results[results.length - 1];
-        let winIndex = spinItems.findIndex(i => i.name === lastWonItem.name && i.price === lastWonItem.price);
+        if (!lastWonItem) throw new Error("No winning item data");
+
+        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name && i?.price === lastWonItem?.price);
         if (winIndex === -1) winIndex = 0;
 
         const repetitions = 10;
@@ -121,8 +130,15 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     } catch (e) {
         console.error("Error in handleOpen:", e);
         setIsSpinning(false);
+        
+        let errorMsg = "❌ Ошибка при открытии кейса";
+        if (e.message?.startsWith('daily_cooldown_active:')) {
+          const hours = e.message.split(':')[1];
+          errorMsg = `⏳ Кейс будет доступен через ${hours} ч.`;
+        }
+
         if (window.Telegram?.WebApp) {
-          window.Telegram.WebApp.showAlert("❌ Ошибка при открытии кейса");
+          window.Telegram.WebApp.showAlert(errorMsg);
         }
     }
   };
@@ -218,11 +234,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   style={{ backgroundColor: `${caseItem.glowColor}15` }}
                 >
                   <img
-                    src={normalizeGiftImage(gift.image)}
-                    alt={gift.name}
+                    src={getDynamicGiftImage(gift)}
+                    alt={gift?.name || 'Gift'}
                     className="w-28 h-28 object-contain"
                     onError={useDefaultGiftImage}
-                    style={{ filter: `drop-shadow(0 0 15px ${caseItem.glowColor}80)` }}
+                    style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }}
                   />
                 </div>
               </motion.div>
@@ -365,10 +381,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               <div className="mb-6">
                 <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
-                  {[1, 3, 5, 10].map((q) => (
+                  {[1, 3, 6, 10].map((q) => (
                     <button
                       key={q}
-                      disabled={caseItem.name === 'Daily Case' && q > 1}
+                      disabled={caseItem?.name === 'Daily Case' && q > 1}
                       onClick={() => {
                         setQuantity(q);
                         triggerHaptic('light');
@@ -377,7 +393,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         quantity === q 
                           ? 'bg-white/10 border-white/40 text-white' 
                           : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
-                      } ${caseItem.name === 'Daily Case' && q > 1 ? 'opacity-0 pointer-events-none' : ''}`}
+                      } ${caseItem?.name === 'Daily Case' && q > 1 ? 'opacity-0 pointer-events-none' : ''}`}
                     >
                       x{q}
                     </button>
@@ -395,7 +411,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     transition={{ delay: idx * 0.05 }}
                     className="glass-panel p-2 flex flex-col items-center"
                   >
-                    <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-12 h-12 object-contain mb-1" onError={useDefaultGiftImage} />
+                    <img src={getDynamicGiftImage(item)} alt={item?.name || 'Gift'} className="w-12 h-12 object-contain mb-1" onError={useDefaultGiftImage} />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item.name}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
                       <span className="flex items-center gap-0.5">

@@ -1,57 +1,39 @@
 import os
-import requests
+import shutil
 
-# Идеальные ссылки, которые ты нашёл
-REAL_URLS = {
-    "B-day Candle": ("500S_B_day_Candle_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/B-Day%20Candle.webp"),
-    "Chill Flame": ("50S_Chill_Flame_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Torch%20of%20Freedom.webp"),
-    "Durov's Boots": ("41000S_Durovs_Boots_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Durovs%20Boots.webp"),
-    "Durov's Cap": ("72792S_Durovs_Cap_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Durovs%20Cap.webp"),
-    "Durov's Coat": ("10000S_Durovs_Coat_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Durovs%20Coat.webp"),
-    "Durov's Figurine": ("10000S_Durovs_Figurine_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Durovs%20Figurine.webp"),
-    "Khabib's Papakha": ("34S_Khabibs_Papakha_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Khabibs%20Papakha.webp"),
-    "Mood Pack": ("3S_Mood_Pack_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Backpack.webp"),
-    "New Year's Bear": ("355S_New_Years_Bear_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Bear%20New%20Year.webp"),
-    "Pool Float": ("243S_Pool_Float_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Pink%20Flamingo.webp"),
-    "Rare Bird": ("7S_Rare_Bird_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Plane.webp"),
-    "Timeless Book": ("570S_Timeless_Book_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Book.webp"),
-    "Vice Cream": ("2S_Vice_Cream_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Ice%20Cream%20Cone.webp"),
-    "Victory Medal": ("23S_Victory_Medal_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Medal.webp"),
-    "Telegram Pin": ("2S_Telegram_Pin_Original.webp", "https://telegifter.ru/wp-content/themes/gifts/assets/img/gifts/noupdate/Crystal%20Eagle.webp")
-}
+# Целевая папка — прямо корень, где лежит скрипт
+OUTPUT_FOLDER = os.getcwd() 
 
-def run_final_fix():
-    main_dir = "Scream_Gifts_Perfect"
-    os.makedirs(main_dir, exist_ok=True)
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-    
-    print("[+] Начинаем финальный засыл по твоим секретным ссылкам...\n")
-    
-    for original_name, (file_name, url) in REAL_URLS.items():
-        # Формируем красивое имя папки без мусора
-        folder_name = file_name.split('S_')[1].replace('_Original.webp', '')
-        gift_folder_path = os.path.join(main_dir, folder_name)
-        os.makedirs(gift_folder_path, exist_ok=True)
-        
-        save_path = os.path.join(gift_folder_path, file_name)
-        
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-            if res.status_code == 200:
-                with open(save_path, 'wb') as f:
-                    f.write(res.content)
-                print(f"[+] УСПЕШНО ДОБИТ: {file_name}")
-            else:
-                if not os.listdir(gift_folder_path):
-                    os.rmdir(gift_folder_path)
-                print(f"[!] Чёрт, сервер ответил {res.status_code} на: {url}")
-        except Exception as e:
-            if not os.listdir(gift_folder_path):
-                os.rmdir(gift_folder_path)
-            print(f"[!] Ошибка сети для {original_name}: {e}")
+current_dir = os.getcwd()
+moved_count = 0
 
-if __name__ == "__main__":
-    run_final_fix()
+for item in os.listdir(current_dir):
+    item_path = os.path.join(current_dir, item)
+    
+    # Ищем только папки с гифтами
+    if os.path.isdir(item_path) and item != "flattened_gifts" and not item.startswith('.'):
+        for root, dirs, files in os.walk(item_path):
+            for file in files:
+                if file.lower().endswith(('.webp', '.png', '.jpg', '.jpeg', '.gif')):
+                    source_file = os.path.join(root, file)
+                    
+                    # Вариант 1: Если оригинальный файл уже содержит ЦЕНАS (например, "50S.webp")
+                    # Скрипт сделает имя типа "50S_Artisan_Brick.webp"
+                    name_without_ext, file_extension = os.path.splitext(file)
+                    
+                    if "S" in name_without_ext:
+                        # Если в файле уже есть цена, просто склеиваем её с красивым именем папки
+                        new_file_name = f"{name_without_ext}_{item}{file_extension}"
+                    else:
+                        # Если цены внутри файла не было, оставляем имя папки
+                        new_file_name = f"{item}{file_extension}"
+                    
+                    dest_file = os.path.join(OUTPUT_FOLDER, new_file_name)
+                    
+                    # Копируем в корень папки Gifts
+                    shutil.copy2(source_file, dest_file)
+                    print(f"Скопирован по формуле: {file} -> {new_file_name}")
+                    moved_count += 1
+                    break 
+
+print(f"\nГотово! Все файлы ({moved_count} шт.) собраны по формуле цены прямо в '{OUTPUT_FOLDER}'")

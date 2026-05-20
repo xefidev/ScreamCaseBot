@@ -172,7 +172,7 @@ export default function ProfilePage({
                 className="flex flex-col items-center justify-between rounded-2xl border border-white/10 bg-white/5 p-4"
               >
                 <img
-                  src={normalizeGiftImage(item.image)}
+                  src={getDynamicGiftImage(item)}
                   alt={item.name || 'Gift'}
                   className="mb-3 h-20 w-20 object-contain"
                   onError={useDefaultGiftImage}
