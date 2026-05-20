@@ -368,6 +368,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   {[1, 3, 5, 10].map((q) => (
                     <button
                       key={q}
+                      disabled={caseItem.name === 'Daily Case' && q > 1}
                       onClick={() => {
                         setQuantity(q);
                         triggerHaptic('light');
@@ -376,7 +377,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         quantity === q 
                           ? 'bg-white/10 border-white/40 text-white' 
                           : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
-                      }`}
+                      } ${caseItem.name === 'Daily Case' && q > 1 ? 'opacity-0 pointer-events-none' : ''}`}
                     >
                       x{q}
                     </button>

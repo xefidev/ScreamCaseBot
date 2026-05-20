@@ -5,6 +5,7 @@ import { ALL_GIFTS, getGiftsInRange, getTopGift } from '../giftData';
 import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
 
 const CASES_DATA = [
+  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Promo', minPrice: 15, maxPrice: 500, stock: 100 },
   { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: 'Free', minPrice: 0, maxPrice: 100, stock: 50 },
   { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Random', minPrice: 100, maxPrice: 667, stock: 100 },
   { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Random', minPrice: 200, maxPrice: 599, stock: 80 },
