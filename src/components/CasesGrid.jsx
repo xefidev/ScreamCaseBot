@@ -76,6 +76,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
             src={caseItem.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
             alt={caseItem.name}
             className={caseItem.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
+            onError={(e) => { e.currentTarget.src = '/asset/Case/CaseBlack.png'; }}
             style={{
               filter: `drop-shadow(0 0 20px ${caseItem.glowColor}80)`,
             }}
@@ -91,7 +92,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                     animate={{
                       y: [0, -12, 0],
                       rotate: [0, 4, -4, 0],
-                      scale: [1, 1.05, 1],
+                      scale: [1.05, 1.1, 1.05],
                     }}
                     transition={{
                       duration: 3 + idx * 0.4,
@@ -111,7 +112,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                       alt={gift?.name || 'Gift'}
                       className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
                       loading="lazy"
-                      onError={useDefaultGiftImage}
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                       style={{
                         filter: `drop-shadow(0 0 8px ${caseItem.glowColor}70)`,
                       }}
@@ -138,7 +139,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                     alt={previewGift?.name || 'Gift'}
                     className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
                     loading="lazy"
-                    onError={useDefaultGiftImage}
+                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                     style={{
                       filter: `drop-shadow(0 0 10px ${caseItem.glowColor}70)`,
                     }}

@@ -49,9 +49,12 @@ export function getGiftAsset(giftName, price = 0) {
 export function getDynamicGiftImage(item) {
   if (!item) return DEFAULT_GIFT_IMAGE;
   
-  const price = item.price || 0;
+  // Try different possible price fields to avoid undefined
+  const price = item.price ?? item.cost ?? 0;
+  
   // Handle names that might have spaces or underscores consistently
-  const name = (item.name || 'gift').replace(/\s+/g, '_');
+  const rawName = item.name || 'gift';
+  const name = rawName.replace(/\s+/g, '_');
   
   return `/asset/Gifts/${price}S_${name}.webp`;
 }

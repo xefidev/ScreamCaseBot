@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
-import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
+import { normalizeGiftImage, useDefaultGiftImage, getDynamicGiftImage } from '../giftUtils';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
@@ -14,23 +14,26 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [showResult, setShowResult] = useState(false);
   const [wonItems, setWonItems] = useState([]);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
-  const [currentStock, setCurrentStock] = useState(caseItem.stock || 0);
+  const [currentStock, setCurrentStock] = useState(caseItem?.stock || 0);
   const [quantity, setQuantity] = useState(1);
   const animationKey = useRef(0);
+
+  // Safety return if caseItem is missing
+  if (!caseItem) return null;
 
   const canOpen = currentStock >= quantity;
 
   const getCost = useMemo(() => {
-    let basePrice = caseItem.price;
+    let basePrice = caseItem?.price || 0;
     if (flashDiscount && basePrice > 0) {
       basePrice = Math.floor(basePrice * (1 - flashDiscount));
     }
     return basePrice * quantity;
-  }, [caseItem.price, flashDiscount, quantity]);
+  }, [caseItem?.price, flashDiscount, quantity]);
 
   const dropItems = useMemo(() =>
-    getGiftsInRange(caseItem.minPrice, caseItem.maxPrice),
-    [caseItem.minPrice, caseItem.maxPrice]
+    getGiftsInRange(caseItem?.minPrice || 0, caseItem?.maxPrice || 0),
+    [caseItem?.minPrice, caseItem?.maxPrice]
   );
 
   const previewGifts = useMemo(() => {
@@ -112,7 +115,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         const lastWonItem = results[results.length - 1];
         if (!lastWonItem) throw new Error("No winning item data");
 
-        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name && i?.price === lastWonItem?.price);
+        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name && (i?.price ?? i?.cost) === (lastWonItem?.price ?? lastWonItem?.cost));
         if (winIndex === -1) winIndex = 0;
 
         const repetitions = 10;
@@ -150,8 +153,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       setShowConfetti(true);
       setShowResult(true);
 
-      if (onWin && wonItems.length > 0) {
-        wonItems.forEach(item => onWin(item, caseItem));
+      if (onWin && wonItems?.length > 0) {
+        wonItems.forEach(item => {
+           if (item) onWin(item, caseItem);
+        });
       }
 
       setTimeout(() => setShowConfetti(false), 3000);
@@ -192,7 +197,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ←
           </button>
           <div className="flex flex-col items-center">
-            <h2 className="text-white font-bold text-lg leading-tight">{caseItem.name}</h2>
+            <h2 className="text-white font-bold text-lg leading-tight">{caseItem?.name || 'Case'}</h2>
             <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">Available: {currentStock}</p>
           </div>
           <div className="w-8" />
@@ -202,14 +207,14 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           <div
             className="absolute inset-0 rounded-3xl"
             style={{
-              background: `radial-gradient(ellipse at center, ${caseItem.glowColor}20, transparent 70%)`,
+              background: `radial-gradient(ellipse at center, ${caseItem?.glowColor || '#ffffff'}20, transparent 70%)`,
             }}
           />
 
           <div className="absolute inset-0 flex items-center justify-center">
-            {previewGifts.map((gift, idx) => (
+            {previewGifts?.map((gift, idx) => (
               <motion.div
-                key={gift.price + idx}
+                key={`${gift?.price || gift?.cost || idx}-${idx}`}
                 animate={{
                   y: [0, -12, 0],
                   rotate: [0, 4, -4, 0],
@@ -223,7 +228,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 }}
                 className="absolute"
                 style={{
-                  left: previewGifts.length === 1 ? '50%' : idx === 0 ? '35%' : '65%',
+                  left: previewGifts?.length === 1 ? '50%' : idx === 0 ? '35%' : '65%',
                   top: '15%',
                   transform: 'translateX(-50%)',
                   zIndex: 10,
@@ -231,13 +236,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               >
                 <div
                   className="rounded-3xl p-4"
-                  style={{ backgroundColor: `${caseItem.glowColor}15` }}
+                  style={{ backgroundColor: `${caseItem?.glowColor || '#ffffff'}15` }}
                 >
                   <img
                     src={getDynamicGiftImage(gift)}
                     alt={gift?.name || 'Gift'}
                     className="w-28 h-28 object-contain"
-                    onError={useDefaultGiftImage}
+                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                     style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }}
                   />
                 </div>
@@ -247,10 +252,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
             <img
-              src={caseItem.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
-              alt={caseItem.name}
-              className={caseItem.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"}
-              style={{ filter: `drop-shadow(0 0 30px ${caseItem.glowColor}80)` }}
+              src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
+              alt={caseItem?.name || 'Case'}
+              className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"}
+              onError={(e) => { e.currentTarget.src = '/asset/Case/CaseBlack.png'; }}
+              style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }}
             />
           </div>
         </div>
@@ -270,31 +276,36 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   <div className="absolute left-1/2 top-2 transform -translate-x-1/2 w-0.5 h-40 bg-white/30 z-20 pointer-events-none" />
 
                   <div ref={viewportRef} className="overflow-hidden rounded-2xl bg-white/[0.02] border border-white/10 p-4">
-                    {spinData.items.length > 0 && (
+                    {spinData?.items?.length > 0 && (
                       <motion.div
-                        key={spinData.animKey}
+                        key={spinData?.animKey}
                         className="flex gap-3"
                         initial={{ x: 0 }}
-                        animate={{ x: spinData.targetX }}
+                        animate={{ x: spinData?.targetX }}
                         transition={{
                           duration: 4,
                           ease: [0.12, 0, 0.39, 0],
                         }}
                         onAnimationComplete={handleAnimationComplete}
                       >
-                        {spinData.items.map((item, idx) => (
+                        {spinData?.items?.map((item, idx) => (
                           <div
-                            key={`${item.price}-${idx}-${spinData.animKey}`}
+                            key={`${item?.price || item?.cost || idx}-${idx}-${spinData?.animKey}`}
                             className="flex-shrink-0 w-36 h-36 rounded-2xl border-2 flex flex-col items-center justify-center p-2"
                             style={{
-                              borderColor: `${caseItem.glowColor}40`,
-                              backgroundColor: `${caseItem.glowColor}10`,
+                              borderColor: `${caseItem?.glowColor || '#ffffff'}40`,
+                              backgroundColor: `${caseItem?.glowColor || '#ffffff'}10`,
                             }}
                           >
-                            <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-28 h-28 object-contain mb-1" onError={useDefaultGiftImage} />
+                            <img 
+                              src={getDynamicGiftImage(item)} 
+                              alt={item?.name || 'Gift'} 
+                              className="w-28 h-28 object-contain mb-1" 
+                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
+                            />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
                               <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">
-                                {item.price}
+                                {item?.price ?? item?.cost ?? 0}
                                 <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
                               </span>
                             </div>
@@ -305,7 +316,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   </div>
                 </div>
 
-                {hasSpun && wonItems.length > 0 && showResult && (
+                {hasSpun && wonItems?.length > 0 && showResult && (
                   <motion.div
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -313,36 +324,36 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   >
                     <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-wider font-rounded">Вы выиграли!</p>
                     
-                    <div className={`grid gap-4 ${wonItems.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                      {wonItems.map((wonItem, idx) => (
+                    <div className={`grid gap-4 ${wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                      {wonItems?.map((wonItem, idx) => wonItem && (
                         <motion.div
-                          key={`${wonItem.name}-${idx}`}
+                          key={`${wonItem?.name || idx}-${idx}`}
                           initial={{ opacity: 0, y: 20 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: idx * 0.1 }}
                           className="text-center p-4 rounded-3xl relative overflow-hidden border"
                           style={{
-                            borderColor: `${caseItem.glowColor}30`,
-                            backgroundColor: `${caseItem.glowColor}10`,
+                            borderColor: `${caseItem?.glowColor || '#ffffff'}30`,
+                            backgroundColor: `${caseItem?.glowColor || '#ffffff'}10`,
                           }}
                         >
                           <div className="relative z-10">
                             <motion.img
                               src={getDynamicGiftImage(wonItem)}
-                              alt={wonItem.name}
-                              className={`${wonItems.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`}
-                              onError={useDefaultGiftImage}
-                              style={{ filter: `drop-shadow(0 0 25px ${caseItem.glowColor}90)` }}
+                              alt={wonItem?.name || 'Gift'}
+                              className={`${wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`}
+                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                              style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }}
                             />
                             <p
-                              className={`${wonItems.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded`}
-                              style={{ color: caseItem.glowColor }}
+                              className={`${wonItems?.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded`}
+                              style={{ color: caseItem?.glowColor || '#ffffff' }}
                             >
-                              {wonItem.name}
+                              {wonItem?.name || 'Gift'}
                             </p>
                             <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
                               <span className="flex items-center gap-1 font-black font-rounded">
-                                {wonItem.price}
+                                {wonItem?.price ?? wonItem?.cost ?? 0}
                                 <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
                               </span>
                             </div>
@@ -361,7 +372,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                         className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
                       />
-                      <span className="text-sm">Открываем... ({wonItems.length}/{quantity})</span>
+                      <span className="text-sm">Открываем... ({wonItems?.length || 0}/{quantity})</span>
                     </div>
                   </div>
                 )}
@@ -384,7 +395,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   {[1, 3, 6, 10].map((q) => (
                     <button
                       key={q}
-                      disabled={caseItem?.name === 'Daily Case' && q > 1}
+                      disabled={caseItem?.name?.toLowerCase()?.includes('daily') && q > 1}
                       onClick={() => {
                         setQuantity(q);
                         triggerHaptic('light');
@@ -393,7 +404,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         quantity === q 
                           ? 'bg-white/10 border-white/40 text-white' 
                           : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
-                      } ${caseItem?.name === 'Daily Case' && q > 1 ? 'opacity-0 pointer-events-none' : ''}`}
+                      } ${caseItem?.name?.toLowerCase()?.includes('daily') && q > 1 ? 'hidden' : ''}`}
                     >
                       x{q}
                     </button>
@@ -403,19 +414,24 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
               <h3 className="text-white/50 text-xs uppercase tracking-wider mb-3">Возможный дроп</h3>
               <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                {dropItems.map((item, idx) => (
+                {dropItems?.map((item, idx) => (
                   <motion.div
-                    key={idx}
+                    key={`${item?.price || item?.cost || idx}-${idx}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
                     className="glass-panel p-2 flex flex-col items-center"
                   >
-                    <img src={getDynamicGiftImage(item)} alt={item?.name || 'Gift'} className="w-12 h-12 object-contain mb-1" onError={useDefaultGiftImage} />
-                    <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item.name}</p>
+                    <img 
+                      src={getDynamicGiftImage(item)} 
+                      alt={item?.name || 'Gift'} 
+                      className="w-12 h-12 object-contain mb-1" 
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
+                    />
+                    <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
                       <span className="flex items-center gap-0.5">
-                        {item.price}
+                        {item?.price ?? item?.cost ?? 0}
                         <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" />
                       </span>
                     </div>
@@ -430,10 +446,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       <div className="glass-panel border-t border-white/10 p-4">
         {!isSpinning && !hasSpun ? (
           <div className="space-y-3">
-            {flashDiscount && caseItem.price > 0 && (
+            {flashDiscount && caseItem?.price > 0 && (
               <div className="text-center mb-2">
                 <span className="text-red-500 text-xs font-rounded line-through opacity-50">
-                  {caseItem.price * quantity}
+                  {(caseItem?.price || 0) * quantity}
                 </span>
                 <span className="text-red-500 text-sm font-black ml-2 font-rounded">
                   -{Math.round(flashDiscount * 100)}% FLASH SALE!
@@ -447,12 +463,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               disabled={!canOpen || balance < getCost || isSpinning}
               className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               style={{
-                backgroundColor: canOpen && balance >= getCost && !isSpinning ? `${caseItem.glowColor}20` : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${canOpen && balance >= getCost && !isSpinning ? `${caseItem.glowColor}40` : 'rgba(255,255,255,0.1)'}`,
-                color: canOpen && balance >= getCost && !isSpinning ? caseItem.glowColor : 'rgba(255,255,255,0.3)',
+                backgroundColor: canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}20` : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}40` : 'rgba(255,255,255,0.1)'}`,
+                color: canOpen && balance >= getCost && !isSpinning ? caseItem?.glowColor || '#ffffff' : 'rgba(255,255,255,0.3)',
               }}
             >
-              {caseItem.price === 0 ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
+              {caseItem?.price === 0 ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
                 <span className="flex items-center justify-center gap-2">
                   ОТКРЫТЬ x{quantity} ЗА {getCost}
                   <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />

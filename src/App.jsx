@@ -293,7 +293,10 @@ export default function App() {
               <h3 className="font-rounded text-xl font-black uppercase">Колесо Фортуны</h3>
               <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-purple-400">Выигрыш до 500 звезд</p>
             </div>
-            <span className="text-xs font-black uppercase text-white/60">Играть</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-white/60">Играть</span>
+              <img src="/asset/Icons/WheelIcon.png" className="h-12 w-12 opacity-50" alt="" onError={(e) => e.currentTarget.style.display='none'} />
+            </div>
           </div>
         </motion.button>
 
@@ -312,7 +315,10 @@ export default function App() {
               <h3 className="font-rounded text-xl font-black uppercase">Апгрейд</h3>
               <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-green-400">Улучшай свои предметы</p>
             </div>
-            <span className="text-xs font-black uppercase text-white/60">Играть</span>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black uppercase text-white/60">Играть</span>
+              <img src="/asset/Icons/UpgradeIcon.png" className="h-12 w-12 opacity-50" alt="" onError={(e) => e.currentTarget.style.display='none'} />
+            </div>
           </div>
         </motion.button>
       </div>
