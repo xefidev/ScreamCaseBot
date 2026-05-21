@@ -85,6 +85,17 @@ def init_db():
         except: pass
         try: conn.execute("ALTER TABLE users ADD COLUMN promo_opened INTEGER DEFAULT 0")
         except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN cases_opened_count INTEGER DEFAULT 0")
+        except: pass
+        try: conn.execute("ALTER TABLE users ADD COLUMN successful_upgrades_count INTEGER DEFAULT 0")
+        except: pass
+
+        conn.execute('''CREATE TABLE IF NOT EXISTS user_achievements 
+                        (user_id INTEGER, 
+                         achievement_id TEXT, 
+                         progress INTEGER DEFAULT 0,
+                         claimed INTEGER DEFAULT 0,
+                         PRIMARY KEY (user_id, achievement_id))''')
         
         cur = conn.cursor()
         cur.execute("DELETE FROM user_tasks")
@@ -807,12 +818,22 @@ async def api_open_case(request):
             return web.json_response({"error": "invalid_data"}, status=400)
         
         case_id = int(case_id)
-        price = CASES_PRICES.get(case_id)
         
+        # 1. Handle Daily Case (id 2)
+        if case_id == 2: 
+            res = await _handle_claim_daily(uid)
+            if res.status == 200: # Success
+                # For Daily, we return a gift from its range
+                case_info = CASES_DATA.get(2)
+                won_item = _get_random_gift(case_info['min'], case_info['max'])
+                _increment_achievement_progress(uid, 'cases_opened')
+                return web.json_response({"success": True, "item": won_item, "deducted": 1})
+            return res
+
+        # 2. Get Price
+        price = CASES_PRICES.get(case_id)
         if price is None:
             return web.json_response({"error": "invalid_case"}, status=400)
-        
-        if case_id == 2: return await _handle_claim_daily(uid)
         
         with sqlite3.connect('database.db') as conn:
             user = conn.execute("SELECT stars, promo_opened FROM users WHERE user_id = ?", (int(uid),)).fetchone()
@@ -820,42 +841,33 @@ async def api_open_case(request):
             
             balance, promo_opened = user
             
+            # 3. Handle Promo Case (id 1)
             if case_id == 1:
                 if promo_opened:
                     return web.json_response({"error": "already_opened"}, status=403)
                 conn.execute("UPDATE users SET promo_opened = 1 WHERE user_id = ?", (uid,))
+                price = 0 # Promo is free
 
             if balance < price:
                 return web.json_response({"error": "insufficient_funds"}, status=403)
             
-            # Get case range
+            # 4. Determine Drop
             case_info = CASES_DATA.get(case_id)
             if not case_info:
                 return web.json_response({"error": "case_data_missing"}, status=500)
             
-            drop_items = get_gifts_in_range(case_info['min'], case_info['max'])
-            if not drop_items:
-                drop_items = ALL_GIFTS[:10] # Fallback
-            
-            cheap = [i for i in drop_items if i['price'] <= 50]
-            mid = [i for i in drop_items if 50 < i['price'] <= 150]
-            jackpot = [i for i in drop_items if i['price'] > 150]
-            
-            rand = random.random() * 100
-            if rand < 85 and cheap:
-                won_item = random.choice(cheap)
-            elif rand < 97 and mid:
-                won_item = random.choice(mid)
-            elif jackpot:
-                won_item = random.choice(jackpot)
-            else:
-                won_item = random.choice(drop_items)
+            won_item = _get_random_gift(case_info['min'], case_info['max'])
 
-            conn.execute("UPDATE users SET stars = stars - ?, total_spent = total_spent + ? WHERE user_id = ?", (price, price, uid))
+            # 5. Deduct Balance and Stats
+            conn.execute("UPDATE users SET stars = stars - ?, total_spent = total_spent + ?, cases_opened_count = cases_opened_count + 1 WHERE user_id = ?", (price, price, uid))
             conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
                          (int(uid), -price, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             
             conn.commit()
+            
+            # 6. Update Achievements
+            _increment_achievement_progress(uid, 'cases_opened')
+            
             logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
         
         return web.json_response({
@@ -867,6 +879,42 @@ async def api_open_case(request):
         logger.error(f"Error in api_open_case: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
+def _get_random_gift(min_p, max_p):
+    drop_items = get_gifts_in_range(min_p, max_p)
+    if not drop_items:
+        drop_items = ALL_GIFTS[:10] # Fallback
+    
+    cheap = [i for i in drop_items if i['price'] <= 50]
+    mid = [i for i in drop_items if 50 < i['price'] <= 150]
+    jackpot = [i for i in drop_items if i['price'] > 150]
+    
+    rand = random.random() * 100
+    if rand < 85 and cheap:
+        return random.choice(cheap)
+    elif rand < 97 and mid:
+        return random.choice(mid)
+    elif jackpot:
+        return random.choice(jackpot)
+    else:
+        return random.choice(drop_items)
+
+def _increment_achievement_progress(user_id, achievement_type):
+    # achievement_type: 'cases_opened' or 'upgrades_successful'
+    mapping = {
+        'cases_opened': ['first_step', 'true_gambler'],
+        'upgrades_successful': ['upgrade_master']
+    }
+    
+    a_ids = mapping.get(achievement_type, [])
+    with sqlite3.connect('database.db') as conn:
+        for aid in a_ids:
+            conn.execute("""
+                INSERT INTO user_achievements (user_id, achievement_id, progress) 
+                VALUES (?, ?, 1)
+                ON CONFLICT(user_id, achievement_id) DO UPDATE SET progress = progress + 1
+            """, (user_id, aid))
+        conn.commit()
+
 async def api_upgrade(request):
     """
     POST /api/upgrade - Upgrade item
@@ -876,6 +924,7 @@ async def api_upgrade(request):
         uid = data.get("user_id")
         cost = int(data.get("cost", 0))
         chance = float(data.get("chance", 0))
+        item_price = int(data.get("item_price", 0)) # Cost of the item being upgraded
         
         if not uid: return web.json_response({"error": "no_id"}, status=400)
         
@@ -889,15 +938,103 @@ async def api_upgrade(request):
             
             success = random.random() * 100 < chance
             
+            consolation = None
+            if not success and item_price > 100:
+                # Give "Poor Case" - random item < 100 stars
+                consolation_item = _get_random_gift(0, 100)
+                consolation = {
+                    "type": "poor_case",
+                    "item": consolation_item
+                }
+
             conn.execute("UPDATE users SET stars = stars - ?, total_spent = total_spent + ? WHERE user_id = ?", (cost, cost, uid))
+            if success:
+                conn.execute("UPDATE users SET successful_upgrades_count = successful_upgrades_count + 1 WHERE user_id = ?", (uid,))
+                _increment_achievement_progress(uid, 'upgrades_successful')
+
             conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
                          (int(uid), -cost, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             
             conn.commit()
             
-        return web.json_response({"success": success})
+        return web.json_response({"success": success, "consolation": consolation})
     except Exception as e:
         logger.error(f"Error in api_upgrade: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_get_achievements(request):
+    """GET /api/achievements?user_id=..."""
+    try:
+        uid = request.query.get("user_id")
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        # 1. Ensure user has rows for achievements
+        ACHIEVEMENTS = [
+            {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
+            {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
+            {'id': 'true_gambler', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+        ]
+        
+        with sqlite3.connect('database.db') as conn:
+            # Sync user rows
+            for a in ACHIEVEMENTS:
+                conn.execute("INSERT OR IGNORE INTO user_achievements (user_id, achievement_id) VALUES (?, ?)", (uid, a['id']))
+            
+            res = conn.execute("SELECT achievement_id, progress, claimed FROM user_achievements WHERE user_id = ?", (uid,)).fetchall()
+            
+        data = []
+        for r in res:
+            aid, prog, claimed = r
+            info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
+            if info:
+                data.append({
+                    **info,
+                    "progress": prog,
+                    "claimed": bool(claimed)
+                })
+        
+        return web.json_response(data)
+    except Exception as e:
+        logger.error(f"Error in api_get_achievements: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_achievement(request):
+    """POST /api/claim_achievement"""
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        aid = data.get("achievement_id")
+        
+        if not uid or not aid: return web.json_response({"error": "invalid_data"}, status=400)
+        
+        ACHIEVEMENTS = [
+            {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
+            {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
+            {'id': 'true_gambler', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+        ]
+        
+        info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
+        if not info: return web.json_response({"error": "achievement_not_found"}, status=404)
+
+        uid = int(uid)
+        with sqlite3.connect('database.db') as conn:
+            res = conn.execute("SELECT progress, claimed FROM user_achievements WHERE user_id = ? AND achievement_id = ?", (uid, aid)).fetchone()
+            if not res: return web.json_response({"error": "not_found"}, status=404)
+            
+            prog, claimed = res
+            if claimed: return web.json_response({"error": "already_claimed"}, status=400)
+            if prog < info['goal']: return web.json_response({"error": "not_reached"}, status=400)
+            
+            conn.execute("UPDATE user_achievements SET claimed = 1 WHERE user_id = ? AND achievement_id = ?", (uid, aid))
+            conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (info['reward'], uid))
+            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
+                         (uid, info['reward'], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+            
+        return web.json_response({"success": True, "reward": info['reward']})
+    except Exception as e:
+        logger.error(f"Error in api_claim_achievement: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
 async def _handle_claim_daily(uid):
@@ -1276,6 +1413,8 @@ async def main():
     app.router.add_post('/api/ton_success', api_ton_success)
     app.router.add_post('/api/wheel/spin', api_wheel_spin)
     app.router.add_post('/api/upgrade', api_upgrade)
+    app.router.add_get('/api/achievements', api_get_achievements)
+    app.router.add_post('/api/achievements/claim', api_claim_achievement)
     
     # Setup CORS
     cors = aiohttp_cors.setup(app, defaults={

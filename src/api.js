@@ -49,7 +49,8 @@ const formatErrorMessage = (errorData) => {
     'server_error': '❌ Ошибка сервера. Попробуйте позже',
     'already_completed': '❌ Задание уже выполнено',
     'task_not_found': '❌ Задание не найдено',
-    'task_not_met': '❌ Условия задания не выполнены'
+    'task_not_met': '❌ Условия задания не выполнены',
+    'already_opened': '❌ Вы уже открывали этот кейс!'
   };
   
   return errorMessages[errorData.error] || `❌ ${errorData.error || 'Ошибка'}`;
@@ -106,14 +107,14 @@ export const verifyTask = async (userId, taskId) => {
 
 export const fetchBalance = async (userId) => {
   try {
-    if (!userId) return { stars: 0, tickets: 0, donor: 0, spent: 0 };
+    if (!userId) return { stars: 0, tickets: 0, donor: 0, spent: 0, promo_opened: 0 };
     
     const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}`);
     
     if (!response.ok) {
       const error = await handleApiError(response);
       console.error('Balance fetch error:', error);
-      return { stars: 0, tickets: 0, donor: 0, spent: 0 };
+      return { stars: 0, tickets: 0, donor: 0, spent: 0, promo_opened: 0 };
     }
     
     const data = await response.json();
@@ -121,11 +122,12 @@ export const fetchBalance = async (userId) => {
       stars: data.stars || 0,
       tickets: data.tickets || 0,
       donor: data.donor || 0,
-      spent: data.spent || 0
+      spent: data.spent || 0,
+      promo_opened: data.promo_opened || 0
     };
   } catch (error) {
     console.error('Error fetching balance:', error);
-    return { stars: 0, tickets: 0, donor: 0, spent: 0 };
+    return { stars: 0, tickets: 0, donor: 0, spent: 0, promo_opened: 0 };
   }
 };
 
@@ -179,14 +181,14 @@ export const spinWheel = async (userId) => {
   }
 };
 
-export const upgradeItem = async (userId, cost, chance) => {
+export const upgradeItem = async (userId, cost, chance, itemPrice) => {
   try {
     if (!userId) throw new Error('Missing user_id');
     
     const response = await fetch(`${BACKEND_URL}/api/upgrade`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, cost, chance }),
+      body: JSON.stringify({ user_id: userId, cost, chance, item_price: itemPrice }),
     });
     
     if (!response.ok) {
@@ -202,6 +204,41 @@ export const upgradeItem = async (userId, cost, chance) => {
     if (!(error instanceof Error)) {
       showAlert('❌ Ошибка при апгрейде');
     }
+    throw error;
+  }
+};
+
+export const fetchAchievements = async (userId) => {
+  try {
+    if (!userId) return [];
+    const response = await fetch(`${BACKEND_URL}/api/achievements?user_id=${userId}`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching achievements:', error);
+    return [];
+  }
+};
+
+export const claimAchievement = async (userId, achievementId) => {
+  try {
+    if (!userId || !achievementId) throw new Error('Missing data');
+    const response = await fetch(`${BACKEND_URL}/api/achievements/claim`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, achievement_id: achievementId }),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      throw new Error(message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error claiming achievement:', error);
     throw error;
   }
 };
