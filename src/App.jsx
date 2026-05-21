@@ -404,10 +404,15 @@ export default function App() {
   };
 
   return (
-    <div className="h-screen w-full overflow-hidden flex justify-center items-center text-white font-rounded" style={{ backgroundColor: PAGE_BG }}>
-      <div className="max-w-md w-full h-screen relative flex flex-col overflow-hidden" style={{ backgroundColor: PAGE_BG }}>
-        {/* Header */}
-        <div className="shrink-0 glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
+    /* Главный контейнер на всю высоту — скролл тут запрещен */
+    <div className="h-screen w-full overflow-hidden flex justify-center items-center bg-[#050505] text-white font-rounded select-none">
+      
+      {/* Адаптивное окно: на ПК max-w-md по центру, на смартфонах во весь экран. Скролл тут тоже запрещен */}
+      <div className="relative z-10 flex flex-col h-screen w-full max-w-md bg-black md:border-x md:border-white/10 overflow-hidden">
+        
+        {/* Шапка — жестко зафиксирована, не сжимается */}
+        <div className="shrink-0">
+          <div className="glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
@@ -449,15 +454,17 @@ export default function App() {
               <span className="text-xs font-bold text-yellow-400/50">+</span>
             </button>
           </div>
+          </div>
         </div>
 
-        {/* Main Content */}
-        <div className="relative flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+        {/* Контентная часть — единственный блок, которому РАЗРЕШЕН вертикальный скролл. Скроллбар скрыт */}
+        <div className="flex-1 overflow-y-auto px-4 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
           {renderContent()}
         </div>
 
-        {/* Navigation Bar */}
-        <div className="shrink-0 glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
+        {/* Нижнее меню (Navbar) — жестко зафиксировано снизу, не сжимается */}
+        <div className="shrink-0 pb-safe">
+          <div className="glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex h-16 items-center justify-around">
             {Object.entries(TABS).map(([key, label]) => (
               <button
@@ -485,6 +492,7 @@ export default function App() {
               </button>
             ))}
           </div>
+        </div>
         </div>
       </div>
 

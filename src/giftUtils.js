@@ -86,13 +86,8 @@ export function getDynamicGiftImage(item) {
   if (!item || (!item.name && item.price === undefined && item.cost === undefined)) {
     return DEFAULT_GIFT_IMAGE;
   }
-
   const price = item.price ?? item.cost ?? 0;
   const name = item.name || 'Gift';
-
-  // Очищаем от пробелов по краям и заменяем пробелы внутри на подчеркивания
   const formattedName = name.trim().replace(/\s+/g, '_');
-
-  // Строго собираем путь по шаблону
   return `/asset/Gifts/${price}S_${formattedName}_Original_${formattedName}.webp`;
 }
