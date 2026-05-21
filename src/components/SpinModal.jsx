@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
-import { normalizeGiftImage, useDefaultGiftImage } from '../giftUtils';
+import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 
 const LOOT_ITEMS = [
-  { id: 1, name: 'Xmas Stockings', color: '#ff0000', rarity: 'common', image: '/asset/Gifts/300S_Xmas Stockings.png' },
-  { id: 2, name: 'Witch Hats', color: '#00ff00', rarity: 'uncommon', image: '/asset/Gifts/400S_Witch Hats.png' },
-  { id: 3, name: 'Diamond Rings', color: '#0099ff', rarity: 'rare', image: '/asset/Gifts/1200S_Diamond Rings.png' },
-  { id: 4, name: 'Easter Eggs', color: '#ff00ff', rarity: 'epic', image: '/asset/Gifts/400S_Easter Eggs.png' },
-  { id: 5, name: 'Victory Medals', color: '#ffaa00', rarity: 'legendary', image: '/asset/Gifts/600S_Victory Medals.png' },
-  { id: 6, name: 'Toy Bears', color: '#888888', rarity: 'common', image: '/asset/Gifts/4799S_Toy Bears.png' },
-  { id: 7, name: 'Top Hats', color: '#00ff00', rarity: 'uncommon', image: '/asset/Gifts/450S_Top Hats.png' },
-  { id: 8, name: 'Swiss Watches', color: '#0099ff', rarity: 'rare', image: '/asset/Gifts/500S_Swiss Watches.png' },
+  { id: 1, name: 'Xmas Stocking', color: '#ff0000', rarity: 'common', price: 325 },
+  { id: 2, name: 'Witch Hat', color: '#00ff00', rarity: 'uncommon', price: 550 },
+  { id: 3, name: 'Diamond Ring', color: '#0099ff', rarity: 'rare', price: 1200 },
+  { id: 4, name: 'Easter Egg', color: '#ff00ff', rarity: 'epic', price: 420 },
+  { id: 5, name: 'Victory Medal', color: '#ffaa00', rarity: 'legendary', price: 2300 },
+  { id: 6, name: 'Toy Bear', color: '#888888', rarity: 'common', price: 50 },
+  { id: 7, name: 'Top Hat', color: '#00ff00', rarity: 'uncommon', price: 450 },
+  { id: 8, name: 'Swiss Watch', color: '#0099ff', rarity: 'rare', price: 5284 },
 ];
 
 // Triple the ribbon for seamless infinite loop
@@ -32,9 +32,8 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
   const ribbonRef = useRef(null);
 
   useEffect(() => {
-    if (isSpinning && !hasSpun) {
+    if (isSpinning && !hasSpun && caseItem) {
       // "Truth First" logic: Determine winning item BEFORE animation
-      // In a real app, this should come from backend
       const items = caseItem?.items || LOOT_ITEMS;
       const winIndex = Math.floor(Math.random() * items.length);
       const wonItem = items[winIndex];
@@ -70,7 +69,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
 
       return () => clearTimeout(timer);
     }
-  }, [isSpinning, hasSpun, caseItem]);
+  }, [isSpinning, hasSpun, caseItem, controls, onSpinComplete]);
 
   // Reset when modal closes
   useEffect(() => {
@@ -79,6 +78,18 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
       setSelectedItem(null);
     }
   }, [isSpinning]);
+
+  if (!caseItem && isSpinning) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+          className="w-12 h-12 border-4 border-white/20 border-t-white rounded-full"
+        />
+      </div>
+    );
+  }
 
   return (
     <motion.div
@@ -104,7 +115,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
         <div className="glass-panel p-6 space-y-6">
           {/* Header */}
           <div className="text-center">
-            <h2 className="text-2xl font-black text-white mb-1">{caseItem.name}</h2>
+            <h2 className="text-2xl font-black text-white mb-1">{caseItem?.name || 'Opening Case...'}</h2>
             <p className="text-white/50 text-sm">{isSpinning && !hasSpun ? 'Spinning...' : 'Opening Complete!'}</p>
           </div>
 
@@ -130,15 +141,15 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                     key={`${item.id}-${idx}`}
                     className="flex-shrink-0 w-28 h-28 rounded-xl border-2 flex flex-col items-center justify-center p-2"
                     style={{
-                      borderColor: item.color + '40',
-                      backgroundColor: item.color + '10',
+                      borderColor: (item.color || '#ffffff') + '40',
+                      backgroundColor: (item.color || '#ffffff') + '10',
                     }}
                   >
                     <img
-                      src={normalizeGiftImage(item.image)}
+                      src={getDynamicGiftImage(item)}
                       alt={item.name}
                       className="w-14 h-14 object-contain mb-1"
-                      onError={useDefaultGiftImage}
+                      onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                     />
                     <span className="text-white/70 text-[10px] text-center font-semibold uppercase">{item.rarity}</span>
                   </div>
@@ -156,18 +167,18 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                 exit={{ opacity: 0, scale: 0.8 }}
                 className="text-center p-4 rounded-xl border"
                 style={{
-                  borderColor: selectedItem.color + '30',
-                  backgroundColor: selectedItem.color + '10',
+                  borderColor: (selectedItem.color || '#ffffff') + '30',
+                  backgroundColor: (selectedItem.color || '#ffffff') + '10',
                 }}
               >
                 <p className="text-white/50 text-xs mb-2 uppercase tracking-wider">You Won!</p>
                 <img
-                  src={normalizeGiftImage(selectedItem.image)}
+                  src={getDynamicGiftImage(selectedItem)}
                   alt={selectedItem.name}
                   className="h-24 w-24 object-contain mx-auto mb-3"
-                  onError={useDefaultGiftImage}
+                  onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                   style={{
-                    filter: `drop-shadow(0 0 20px ${selectedItem.color}80)`,
+                    filter: `drop-shadow(0 0 20px ${(selectedItem.color || '#ffffff')}80)`,
                   }}
                 />
                 <p
@@ -179,9 +190,9 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                 <span
                   className="inline-block px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider"
                   style={{
-                    backgroundColor: selectedItem.color + '20',
+                    backgroundColor: (selectedItem.color || '#ffffff') + '20',
                     color: selectedItem.color,
-                    border: `1px solid ${selectedItem.color}40`,
+                    border: `1px solid ${(selectedItem.color || '#ffffff')}40`,
                   }}
                 >
                   {selectedItem.rarity}

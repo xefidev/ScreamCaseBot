@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
-import { normalizeGiftImage, useDefaultGiftImage } from '../../giftUtils';
+import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
   const [selectedSlot1, setSelectedSlot1] = useState(null);
@@ -23,18 +23,21 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
   };
 
   const successChance = useMemo(() => {
-    if (!selectedSlot1 || !selectedSlot2 || selectedSlot2.price <= selectedSlot1.price || selectedSlot2.price === 0) return 0;
-    return parseFloat(((selectedSlot1.price / selectedSlot2.price) * 100).toFixed(2));
+    if (!selectedSlot1 || !selectedSlot2 || (selectedSlot2?.price || selectedSlot2?.cost || 0) <= (selectedSlot1?.price || selectedSlot1?.cost || 0) || (selectedSlot2?.price || selectedSlot2?.cost || 0) === 0) return 0;
+    const p1 = selectedSlot1?.price || selectedSlot1?.cost || 0;
+    const p2 = selectedSlot2?.price || selectedSlot2?.cost || 0;
+    return parseFloat(((p1 / p2) * 100).toFixed(2));
   }, [selectedSlot1, selectedSlot2]);
 
   const upgradeCost = useMemo(() => {
     if (!selectedSlot1) return 0;
-    return Math.ceil(selectedSlot1.price * 0.5);
+    return Math.ceil((selectedSlot1?.price || selectedSlot1?.cost || 0) * 0.5);
   }, [selectedSlot1]);
 
   const eligibleTargets = useMemo(() => {
     if (!selectedSlot1) return [];
-    return ALL_GIFTS.filter(g => g.price > selectedSlot1.price && g.price >= 15);
+    const p1 = selectedSlot1?.price || selectedSlot1?.cost || 0;
+    return ALL_GIFTS.filter(g => (g.price || g.cost || 0) > p1 && (g.price || g.cost || 0) >= 15);
   }, [selectedSlot1]);
 
   const handleUpgrade = async () => {
@@ -96,14 +99,14 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
       const upgradedItem = {
         ...selectedSlot1,
         id: Date.now(),
-        price: selectedSlot2.price,
-        name: selectedSlot2.name,
-        image: selectedSlot2.image,
+        price: selectedSlot2?.price || selectedSlot2?.cost || 0,
+        name: selectedSlot2?.name || 'Upgraded Item',
+        image: selectedSlot2?.image || '',
       };
 
       setInventory(prev => {
         const newInv = prev.filter(i => i.id !== selectedSlot1.id);
-        return [...newInv, upgradedItem];
+        return [upgradedItem, ...newInv];
       });
 
       setResult('success');
@@ -121,71 +124,65 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 
   const renderChanceCircle = () => {
     const radius = 80;
-    const displayChance = successChance;
-    const successAngle = Math.min(displayChance, 100);
-
-    const successPath = describeArc(100, 100, radius, 0, successAngle);
-    const failPath = describeArc(100, 100, radius, successAngle, 100);
-
+    const displayChance = successAngleFromChance(successChance);
+    
     return (
       <div className="relative w-48 h-48 mx-auto">
         <svg viewBox="0 0 200 200" className="w-full h-full">
-          {displayChance < 100 && (
+          <circle cx="100" cy="100" r={radius} fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+          
+          {successChance < 100 && (
             <path
-              d={failPath}
-              fill="rgba(107, 114, 128, 0.6)"
-              stroke="rgba(107, 114, 128, 0.8)"
-              strokeWidth="2"
+              d={describeArc(100, 100, radius, successChance, 100)}
+              fill="rgba(107, 114, 128, 0.4)"
+              className="transition-all duration-500"
             />
           )}
-          {displayChance > 0 && (
+          {successChance > 0 && (
             <path
-              d={successPath}
-              fill="rgba(34, 197, 94, 0.6)"
-              stroke="rgba(34, 197, 94, 0.8)"
-              strokeWidth="2"
+              d={describeArc(100, 100, radius, 0, successChance)}
+              fill="rgba(34, 197, 94, 0.4)"
+              className="transition-all duration-500"
+              style={{ filter: 'drop-shadow(0 0 10px rgba(34, 197, 94, 0.5))' }}
             />
           )}
-          <circle cx="100" cy="100" r={radius - 2} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
 
-          <text x="100" y="95" textAnchor="middle" dominantBaseline="central" fill="white" fontSize="28" fontWeight="bold" className="font-rounded">
+          <text x="100" y="95" textAnchor="middle" dominantBaseline="central" fill="white" fontSize="28" fontWeight="900" className="font-rounded drop-shadow-md">
             {successChance}%
           </text>
-          <text x="100" y="115" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.5)" fontSize="10" className="font-rounded uppercase tracking-widest">
+          <text x="100" y="115" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.5)" fontSize="10" className="font-rounded uppercase tracking-widest font-black">
             шанс
           </text>
         </svg>
 
-        {isUpgrading ? (
-          <motion.div
-            key={animKey}
-            animate={{ rotate: arrowRotation }}
-            transition={{
-              duration: 4,
-              ease: [0.12, 0, 0.39, 0],
-            }}
-            onAnimationComplete={handleAnimationComplete}
-            className="absolute top-[-16px] left-1/2 transform -translate-x-1/2 z-30"
-            style={{ transformOrigin: '50% 112px' }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 24L2 4H22L12 24Z" fill="white" />
-              <path d="M12 20L4 6H20L12 20Z" fill="rgba(255,255,255,0.8)" />
-            </svg>
-          </motion.div>
-        ) : (
-          <div className="absolute top-[-16px] left-1/2 transform -translate-x-1/2 z-30">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 24L2 4H22L12 24Z" fill="white" />
-              <path d="M12 20L4 6H20L12 20Z" fill="rgba(255,255,255,0.8)" />
-            </svg>
-          </div>
-        )}
+        <motion.div
+          key={animKey}
+          animate={{ rotate: arrowRotation }}
+          transition={{
+            duration: 4,
+            ease: [0.12, 0, 0.39, 0],
+          }}
+          onAnimationComplete={handleAnimationComplete}
+          className="absolute top-[-10px] left-1/2 transform -translate-x-1/2 z-30"
+          style={{ transformOrigin: '50% 110px' }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 24L2 4H22L12 24Z" fill="white" className="drop-shadow-glow" />
+            <path d="M12 20L4 6H20L12 20Z" fill="rgba(255,255,255,0.8)" />
+          </svg>
+        </motion.div>
       </div>
     );
   };
 
-  function describeArc(x, y, radius, startAngle, endAngle) {
+  function successAngleFromChance(chance) {
+    return (chance / 100) * 360;
+  }
+
+  function describeArc(x, y, radius, startPercent, endPercent) {
+    const startAngle = (startPercent / 100) * 360;
+    const endAngle = (endPercent / 100) * 360;
+    
     const start = polarToCartesian(x, y, radius, endAngle - 90);
     const end = polarToCartesian(x, y, radius, startAngle - 90);
     const largeArcFlag = endAngle - startAngle <= 180 ? 0 : 1;
@@ -207,75 +204,88 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
   }
 
   const content = (
-    <div className={`${isPage ? 'p-4 min-h-full' : ''}`}>
+    <div className={`${isPage ? 'p-4 min-h-full pb-24' : ''}`}>
       <div className={`${!isPage ? 'glass-panel p-6 w-full max-w-lg mx-auto' : ''}`}>
         {!isPage && (
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-black text-white font-rounded">Апгрейд</h2>
+            <h2 className="text-2xl font-black text-white font-rounded uppercase tracking-widest">Апгрейд</h2>
           </div>
         )}
         {isPage && (
           <div className="mb-6">
-            <h2 className="text-2xl font-black text-white font-rounded">Апгрейд</h2>
-            <p className="text-white/50 text-sm mt-1">Улучшай предметы и повышай их ценность</p>
+            <h2 className="text-3xl font-black text-white font-rounded uppercase tracking-widest">Апгрейд</h2>
+            <p className="text-white/40 text-xs uppercase font-bold tracking-widest mt-1">Улучшай предметы и повышай их ценность</p>
           </div>
         )}
 
         {!inventory || inventory.length === 0 ? (
-          <div className="glass-panel p-8 text-center">
-            <p className="text-white/50 font-rounded">Инвентарь пуст. Открывайте ящики!</p>
+          <div className="glass-panel p-12 text-center border-white/10 bg-white/5">
+            <p className="text-white/30 font-rounded text-sm uppercase font-black tracking-widest">Инвентарь пуст. Открывайте ящики!</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="glass-panel p-4">
-              <div className="flex items-center justify-center mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="2">
-                  <path d="M12 5v14M5 12l7 7 7-7" />
-                </svg>
+          <div className="space-y-6">
+            <div className="glass-panel p-6 border-white/10 relative overflow-hidden">
+               <div className="absolute inset-0 bg-gradient-to-b from-white/[0.02] to-transparent pointer-events-none" />
+              
+              <div className="flex items-center justify-center mb-6">
+                <div className="p-3 rounded-full bg-white/5 border border-white/10">
+                   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="3" strokeLinecap="round">
+                    <path d="M12 5v14M5 12l7 7 7-7" />
+                  </svg>
+                </div>
               </div>
 
-              <div className="flex items-center justify-center gap-4 mb-4">
+              <div className="flex items-center justify-center gap-6 mb-6">
                 <div className="flex-1 text-center">
-                  <h4 className="text-white/50 text-[10px] uppercase tracking-wider mb-2 font-rounded">Мой предмет</h4>
+                  <h4 className="text-white/40 text-[10px] uppercase tracking-widest mb-3 font-black">Мой предмет</h4>
                   {!selectedSlot1 ? (
-                    <div className="w-32 h-32 mx-auto rounded-3xl border border-dashed border-white/20 bg-white/5 flex items-center justify-center">
-                      <span className="text-white/30 text-xl font-rounded">?</span>
+                    <div className="w-32 h-32 mx-auto rounded-3xl border-2 border-dashed border-white/10 bg-white/[0.02] flex items-center justify-center">
+                      <span className="text-white/20 text-3xl font-black">?</span>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-3xl bg-white/10 border border-white/20">
-                      <img src={normalizeGiftImage(selectedSlot1.image)} alt={selectedSlot1.name} className="w-24 h-24 object-contain mx-auto" onError={useDefaultGiftImage} />
-                      <div className="flex items-center justify-center gap-1.5 text-sm text-white/70 mt-2 font-black font-rounded">
-                        {selectedSlot1.price}
+                    <motion.div 
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="p-4 rounded-3xl bg-white/[0.05] border border-white/10 relative group"
+                    >
+                      <img src={getDynamicGiftImage(selectedSlot1)} alt={selectedSlot1?.name || 'Gift'} className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <div className="flex items-center justify-center gap-1.5 text-sm text-white font-black font-rounded mt-3">
+                        {selectedSlot1?.price || selectedSlot1?.cost || 0}
                         <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
 
-                <div className="text-white/30 text-2xl font-rounded">→</div>
+                <div className="text-white/20 text-3xl font-black pt-8">→</div>
 
                 <div className="flex-1 text-center">
-                  <h4 className="text-white/50 text-[10px] uppercase tracking-wider mb-2 font-rounded">Желаемый</h4>
+                  <h4 className="text-white/40 text-[10px] uppercase tracking-widest mb-3 font-black">Желаемый</h4>
                   {!selectedSlot2 ? (
                     <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                      whileHover={{ scale: 1.05, borderColor: 'rgba(34, 197, 94, 0.3)', backgroundColor: 'rgba(34, 197, 94, 0.05)' }}
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => {
                         setShowGiftSelector(true);
                         triggerHaptic();
                       }}
-                      className="w-32 h-32 mx-auto rounded-3xl border border-dashed border-white/20 bg-white/5 hover:bg-white/10 flex items-center justify-center"
+                      className="w-32 h-32 mx-auto rounded-3xl border-2 border-dashed border-white/10 bg-white/[0.02] transition-all flex items-center justify-center"
                     >
-                      <span className="text-white/30 text-4xl font-rounded">+</span>
+                      <span className="text-white/20 text-5xl font-black">+</span>
                     </motion.button>
                   ) : (
-                    <div className="p-3 rounded-3xl bg-green-500/10 border border-green-500/30">
-                      <img src={normalizeGiftImage(selectedSlot2.image)} alt={selectedSlot2.name} className="w-24 h-24 object-contain mx-auto" onError={useDefaultGiftImage} />
-                      <div className="flex items-center justify-center gap-1.5 text-sm text-green-400 mt-2 font-black font-rounded">
-                        {selectedSlot2.price}
+                    <motion.div 
+                      initial={{ scale: 0.9, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="p-4 rounded-3xl bg-green-500/10 border border-green-500/30 relative group"
+                    >
+                       <div className="absolute inset-0 bg-green-500/10 blur-xl rounded-full scale-75 opacity-50" />
+                      <img src={getDynamicGiftImage(selectedSlot2)} alt={selectedSlot2?.name || 'Target'} className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <div className="flex items-center justify-center gap-1.5 text-sm text-green-400 font-black font-rounded mt-3 relative z-10">
+                        {selectedSlot2?.price || selectedSlot2?.cost || 0}
                         <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" />
                       </div>
-                    </div>
+                    </motion.div>
                   )}
                 </div>
               </div>
@@ -298,29 +308,29 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                   initial={{ opacity: 0, scale: 0.8, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.8 }}
-                  className={`text-center p-6 rounded-3xl border ${
+                  className={`text-center p-8 rounded-3xl border-2 ${
                     result === 'success'
-                      ? 'border-green-500/30 bg-green-500/10'
-                      : 'border-red-500/30 bg-red-500/10'
+                      ? 'border-green-500/40 bg-green-500/10 shadow-[0_0_30px_rgba(34,197,94,0.1)]'
+                      : 'border-red-500/40 bg-red-500/10 shadow-[0_0_30px_rgba(239,68,68,0.1)]'
                   }`}
                 >
-                  <p className={`font-black text-2xl mb-2 font-rounded ${
+                  <p className={`font-black text-3xl mb-2 font-rounded uppercase tracking-tight ${
                     result === 'success' ? 'text-green-400' : 'text-red-400'
                   }`}>
-                    {result === 'success' ? 'АПГРЕЙД УСПЕШЕН!' : 'АПГРЕЙД ПРОВАЛЕН!'}
+                    {result === 'success' ? 'УСПЕХ!' : 'ПРОВАЛ!'}
                   </p>
-                  <p className="text-white/50 text-sm font-rounded">
+                  <p className="text-white/60 text-sm font-bold uppercase tracking-widest">
                     {result === 'success'
-                      ? 'Предмет улучшен и добавлен в инвентарь!'
-                      : 'Предмет потерян при попытке улучшения.'}
+                      ? 'Предмет улучшен!'
+                      : 'Предмет потерян...'}
                   </p>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            <div className="glass-panel p-4">
-              <h3 className="text-white font-bold text-sm mb-3 font-rounded uppercase tracking-widest">Выберите предмет</h3>
-              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+            <div className="glass-panel p-6 border-white/10">
+              <h3 className="text-white/60 font-black text-xs mb-4 uppercase tracking-[0.2em]">Выберите свой предмет</h3>
+              <div className="grid grid-cols-3 gap-3 max-h-64 overflow-y-auto pr-1">
                 {inventory.map(item => (
                   <motion.div
                     key={item.id}
@@ -332,19 +342,17 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                       setSelectedSlot2(null);
                       triggerHaptic();
                     }}
-                    className={`p-2 rounded-xl border cursor-pointer transition-all flex flex-col items-center ${
+                    className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center ${
                       selectedSlot1?.id === item.id
-                        ? 'border-white/40 bg-white/10'
-                        : 'border-white/10 bg-white/5 hover:border-white/20'
+                        ? 'border-white/40 bg-white/10 shadow-lg'
+                        : 'border-white/5 bg-white/[0.02] hover:border-white/20'
                     }`}
                   >
-                    <img src={normalizeGiftImage(item.image)} alt={item.name} className="w-16 h-16 object-contain mb-1 mx-auto" onError={useDefaultGiftImage} />
-                    <span className="text-white text-[10px] font-semibold text-center truncate block font-rounded">{item.name}</span>
-                    <div className="flex items-center justify-center gap-1 text-white/50 text-[10px] mt-1 font-rounded">
-                      <span className="font-bold flex items-center gap-0.5">
-                        {item.price}
-                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" />
-                      </span>
+                    <img src={getDynamicGiftImage(item)} alt={item?.name || 'Gift'} className="w-16 h-16 object-contain mb-2 mx-auto" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                    <span className="text-white text-[10px] font-bold text-center truncate block font-rounded w-full">{item?.name || 'Gift'}</span>
+                    <div className="flex items-center justify-center gap-1 text-white/50 text-[11px] mt-1.5 font-black font-rounded">
+                       {item?.price || item?.cost || 0}
+                       <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" />
                     </div>
                   </motion.div>
                 ))}
@@ -359,25 +367,29 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
             >
               <motion.div
-                initial={{ scale: 0.9, y: 20 }}
+                initial={{ scale: 0.9, y: 30 }}
                 animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.9, y: 20 }}
-                className="glass-panel w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto p-6"
+                exit={{ scale: 0.9, y: 30 }}
+                className="glass-panel w-full max-w-lg mx-4 max-h-[85vh] overflow-hidden flex flex-col p-6 border-white/20 bg-[#1a1b1f]"
               >
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-white font-bold text-lg font-rounded">Выберите желаемый предмет</h3>
-                  <button onClick={() => setShowGiftSelector(false)} className="text-white/50 hover:text-white text-xl">✕</button>
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-white font-black text-2xl uppercase tracking-tight">Цель апгрейда</h3>
+                  <button onClick={() => setShowGiftSelector(false)} className="text-white/40 hover:text-white text-2xl transition-colors">✕</button>
                 </div>
+                
                 {selectedSlot1 && (
-                  <p className="text-white/50 text-xs mb-3 font-rounded">
-                    Показываются только предметы дороже вашего ({selectedSlot1.price}
-                    <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3 inline mx-0.5" alt="Stars" />)
-                  </p>
+                  <div className="mb-6 px-4 py-3 rounded-2xl bg-white/5 border border-white/10">
+                     <p className="text-white/40 text-[10px] font-black uppercase tracking-widest">
+                      Доступны предметы дороже {selectedSlot1?.price || selectedSlot1?.cost || 0}
+                      <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3 inline mx-1 mb-0.5" alt="Stars" />
+                    </p>
+                  </div>
                 )}
-                <div className="grid grid-cols-3 gap-3">
+
+                <div className="grid grid-cols-3 gap-3 overflow-y-auto pr-2 pb-4">
                   {eligibleTargets.map((gift, idx) => (
                     <motion.div
                       key={idx}
@@ -388,41 +400,38 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                         setShowGiftSelector(false);
                         triggerHaptic();
                       }}
-                      className={`p-3 rounded-2xl border cursor-pointer transition-all flex flex-col items-center ${
+                      className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center ${
                         selectedSlot2?.name === gift.name
-                          ? 'border-green-500/40 bg-green-500/10'
-                          : 'border-white/10 bg-white/5 hover:border-white/20'
+                          ? 'border-green-500/50 bg-green-500/10'
+                          : 'border-white/5 bg-white/[0.03] hover:border-white/20'
                       }`}
                     >
-                      <img src={normalizeGiftImage(gift.image)} alt={gift.name} className="w-20 h-20 object-contain mb-2 mx-auto" onError={useDefaultGiftImage} />
-                      <p className="text-white text-[10px] font-semibold text-center truncate block font-rounded">{gift.name}</p>
-                      <div className="flex items-center justify-center gap-1 text-white/50 text-[10px] mt-1 font-rounded">
-                        <span className="font-bold flex items-center gap-0.5">
-                          {gift.price}
+                      <img src={getDynamicGiftImage(gift)} alt={gift?.name || 'Gift'} className="w-20 h-20 object-contain mb-3 mx-auto" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <p className="text-white text-[10px] font-black text-center truncate block font-rounded w-full mb-1">{gift?.name || 'Gift'}</p>
+                      <div className="flex items-center justify-center gap-1 text-green-400 text-[11px] font-black font-rounded">
+                          {gift?.price || gift?.cost || 0}
                           <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" />
-                        </span>
                       </div>
                     </motion.div>
                   ))}
+                  {eligibleTargets.length === 0 && selectedSlot1 && (
+                    <div className="col-span-3 py-16 text-center">
+                       <p className="text-white/20 text-sm font-black uppercase tracking-[0.2em]">Нет подходящих целей</p>
+                    </div>
+                  )}
                 </div>
-                {eligibleTargets.length === 0 && selectedSlot1 && (
-                  <p className="text-white/50 text-sm text-center py-8 font-rounded">
-                    Нет предметов дороже {selectedSlot1.price}
-                    <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3 inline mx-0.5" alt="Stars" />
-                  </p>
-                )}
               </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {showConfetti && (
-          <div className="fixed inset-0 z-50 pointer-events-none">
+          <div className="fixed inset-0 z-[100] pointer-events-none">
             <Confetti
               width={window.innerWidth}
               height={window.innerHeight}
               recycle={false}
-              numberOfPieces={200}
+              numberOfPieces={300}
               colors={['#22c55e', '#4ade80', '#86efac', '#ffffff']}
             />
           </div>
@@ -435,9 +444,9 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
     >
       {content}
@@ -448,11 +457,11 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 function UpgradeButtonContent({ canUpgrade, isUpgrading, upgradeCost, handleUpgrade }) {
   if (isUpgrading) {
     return (
-      <div className="w-full py-4 rounded-xl font-black text-lg flex items-center justify-center gap-2 bg-green-500/15 border border-green-500/30 text-green-400 font-rounded">
+      <div className="w-full py-5 rounded-2xl font-black text-xl flex items-center justify-center gap-3 bg-green-500/10 border-2 border-green-500/40 text-green-400 font-rounded uppercase tracking-tight shadow-lg shadow-green-500/10">
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          className="w-5 h-5 border-2 border-green-400/30 border-t-green-400 rounded-full"
+          className="w-6 h-6 border-3 border-green-400/30 border-t-green-400 rounded-full"
         />
         Апгрейдим...
       </div>
@@ -460,30 +469,28 @@ function UpgradeButtonContent({ canUpgrade, isUpgrading, upgradeCost, handleUpgr
   }
 
   return (
-    <div className="w-full space-y-2">
+    <div className="w-full space-y-3">
       <motion.button
-        whileHover={{ scale: canUpgrade ? 1.02 : 1 }}
+        whileHover={{ scale: canUpgrade ? 1.02 : 1, filter: canUpgrade ? 'brightness(1.1)' : 'none' }}
         whileTap={{ scale: canUpgrade ? 0.98 : 1 }}
         onClick={() => {
           handleUpgrade();
-          if (canUpgrade && window.Telegram?.WebApp?.HapticFeedback) {
-            window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
-          }
         }}
         disabled={isUpgrading || !canUpgrade}
-        className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+        className="w-full py-5 rounded-2xl font-black text-xl disabled:opacity-50 transition-all flex items-center justify-center gap-2 uppercase tracking-tight"
         style={{
-          backgroundColor: canUpgrade ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-          border: `1px solid ${canUpgrade ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`,
-          color: canUpgrade ? '#22c55e' : 'rgba(255,255,255,0.3)',
+          backgroundColor: canUpgrade ? 'rgba(34, 197, 94, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+          border: `2px solid ${canUpgrade ? 'rgba(34, 197, 94, 0.5)' : 'rgba(255, 255, 255, 0.05)'}`,
+          color: canUpgrade ? '#22c55e' : 'rgba(255,255,255,0.2)',
+          boxShadow: canUpgrade ? '0 0 20px rgba(34, 197, 94, 0.15)' : 'none',
         }}
       >
         Апгрейд ({upgradeCost}
         <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />)
       </motion.button>
       {!canUpgrade && !isUpgrading && (
-        <p className="text-red-400 text-[10px] text-center font-rounded uppercase tracking-wider">
-          Недостаточно звёзд для апгрейда
+        <p className="text-red-500/60 text-[10px] text-center font-black uppercase tracking-[0.2em] animate-pulse">
+          Недостаточно звёзд
         </p>
       )}
     </div>

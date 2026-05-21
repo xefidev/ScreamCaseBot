@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { normalizeGiftImage, useDefaultGiftImage, getDynamicGiftImage } from '../giftUtils';
+import { DEFAULT_GIFT_IMAGE, useDefaultGiftImage, getDynamicGiftImage } from '../giftUtils';
 
 const PAGE_BG = '#22242a';
 
@@ -13,14 +13,12 @@ const formatValue = (value) => {
 export default function ProfilePage({
   onClose,
   isPage,
-  inventory,
+  inventory = [],
   setInventory,
   balance,
   setBalance,
-  spent,
-  donor,
-  tasks = [],
-  onVerifyTask,
+  spent = 0,
+  donor = 0
 }) {
   const [user, setUser] = React.useState(null);
 
@@ -46,42 +44,8 @@ export default function ProfilePage({
     if (!setInventory || !setBalance) return;
 
     setInventory((prev) => prev.filter((currentItem) => currentItem.id !== item.id));
-    setBalance((prev) => prev + (Number(item.price) || 0));
+    setBalance((prev) => prev + (Number(item.price || item.cost) || 0));
     triggerHaptic('success');
-  };
-
-  const handleCopyReferral = () => {
-    triggerHaptic();
-    const userId = user?.id || 'guest';
-    const refLink = `https://t.me/ScreamCase_bot?start=${userId}`;
-
-    const showSuccess = () => {
-      window.Telegram?.WebApp?.showPopup?.({
-        title: 'Готово',
-        message: 'Реферальная ссылка скопирована',
-        buttons: [{ type: 'ok' }],
-      });
-      triggerHaptic('success');
-    };
-
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(refLink).then(showSuccess);
-      return;
-    }
-
-    const textArea = document.createElement('textarea');
-    textArea.value = refLink;
-    document.body.appendChild(textArea);
-    textArea.select();
-
-    try {
-      document.execCommand('copy');
-      showSuccess();
-    } catch (error) {
-      console.error('Copy failed:', error);
-    } finally {
-      document.body.removeChild(textArea);
-    }
   };
 
   return (
@@ -114,7 +78,7 @@ export default function ProfilePage({
         <div className="relative z-10 mb-8 flex items-center gap-6">
           <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/5">
             {user?.photo_url ? (
-              <img src={user.photo_url} alt="Avatar" className="h-full w-full object-cover" />
+              <img src={user.photo_url} alt="Avatar" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
             ) : (
               <span className="text-4xl font-black text-white/30">{user?.first_name?.charAt(0) || '?'}</span>
             )}
@@ -175,7 +139,7 @@ export default function ProfilePage({
                   src={getDynamicGiftImage(item)}
                   alt={item.name || 'Gift'}
                   className="mb-3 h-20 w-20 object-contain"
-                  onError={useDefaultGiftImage}
+                  onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                 />
 
                 <p className="mb-3 w-full truncate text-center text-xs font-bold text-white">
@@ -187,7 +151,7 @@ export default function ProfilePage({
                   onClick={() => handleSell(item)}
                   className="w-full rounded-lg border border-red-500/30 bg-red-500/20 py-2 text-xs font-black uppercase text-red-400"
                 >
-                  Продать: {Number(item.price) || 0}
+                  Продать: {Number(item.price || item.cost) || 0}
                 </motion.button>
               </motion.div>
             ))}

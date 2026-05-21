@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
-import { normalizeGiftImage, useDefaultGiftImage, getDynamicGiftImage } from '../giftUtils';
+import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
@@ -21,6 +21,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   // Safety return if caseItem is missing
   if (!caseItem) return null;
 
+  const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
   const canOpen = currentStock >= quantity;
 
   const getCost = useMemo(() => {
@@ -80,7 +81,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         let totalDeducted = 0;
 
         // Perform multiple openings
-        for (let i = 0; i < quantity; i++) {
+        // For Daily case, quantity is forced to 1 by UI, but we keep the loop for consistency
+        for (let i = 0; i < (isDaily ? 1 : quantity); i++) {
           const response = await openCase(user?.id, caseItem?.id);
           
           if (!response?.success || !response?.item) {
@@ -104,7 +106,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         if (setSpent) {
           setSpent(prev => prev + totalDeducted);
         }
-        setCurrentStock(prev => Math.max(0, prev - quantity));
+        setCurrentStock(prev => Math.max(0, prev - (isDaily ? 1 : quantity)));
 
         setWonItems(results);
         setHasSpun(false);
@@ -242,7 +244,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     src={getDynamicGiftImage(gift)}
                     alt={gift?.name || 'Gift'}
                     className="w-28 h-28 object-contain"
-                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                     style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }}
                   />
                 </div>
@@ -301,7 +303,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               src={getDynamicGiftImage(item)} 
                               alt={item?.name || 'Gift'} 
                               className="w-28 h-28 object-contain mb-1" 
-                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
+                              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
                             />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
                               <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">
@@ -342,7 +344,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               src={getDynamicGiftImage(wonItem)}
                               alt={wonItem?.name || 'Gift'}
                               className={`${wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`}
-                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                               style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }}
                             />
                             <p
@@ -392,23 +394,27 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               <div className="mb-6">
                 <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
-                  {[1, 3, 6, 10].map((q) => (
-                    <button
-                      key={q}
-                      disabled={caseItem?.name?.toLowerCase()?.includes('daily') && q > 1}
-                      onClick={() => {
-                        setQuantity(q);
-                        triggerHaptic('light');
-                      }}
-                      className={`flex-1 py-3 rounded-xl border font-black transition-all ${
-                        quantity === q 
-                          ? 'bg-white/10 border-white/40 text-white' 
-                          : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
-                      } ${caseItem?.name?.toLowerCase()?.includes('daily') && q > 1 ? 'hidden' : ''}`}
-                    >
-                      x{q}
-                    </button>
-                  ))}
+                  {[1, 3, 6, 10].map((q) => {
+                    const isVisible = q === 1 || !isDaily;
+                    if (!isVisible) return null;
+                    
+                    return (
+                      <button
+                        key={q}
+                        onClick={() => {
+                          setQuantity(q);
+                          triggerHaptic('light');
+                        }}
+                        className={`flex-1 py-3 rounded-xl border font-black transition-all ${
+                          quantity === q 
+                            ? 'bg-white/10 border-white/40 text-white' 
+                            : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'
+                        }`}
+                      >
+                        x{q}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -426,7 +432,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                       src={getDynamicGiftImage(item)} 
                       alt={item?.name || 'Gift'} 
                       className="w-12 h-12 object-contain mb-1" 
-                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
+                      onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
                     />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
@@ -449,7 +455,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {flashDiscount && caseItem?.price > 0 && (
               <div className="text-center mb-2">
                 <span className="text-red-500 text-xs font-rounded line-through opacity-50">
-                  {(caseItem?.price || 0) * quantity}
+                  {(caseItem?.price || 0) * (isDaily ? 1 : quantity)}
                 </span>
                 <span className="text-red-500 text-sm font-black ml-2 font-rounded">
                   -{Math.round(flashDiscount * 100)}% FLASH SALE!
@@ -470,7 +476,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             >
               {caseItem?.price === 0 ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
                 <span className="flex items-center justify-center gap-2">
-                  ОТКРЫТЬ x{quantity} ЗА {getCost}
+                  ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {getCost}
                   <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
                 </span>
               )}
@@ -486,7 +492,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ЗАБРАТЬ
           </motion.button>
         ) : (
-          <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие {quantity} {quantity === 1 ? 'кейса' : 'кейсов'}...</div>
+          <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие {isDaily ? 1 : quantity} {isDaily || quantity === 1 ? 'кейса' : 'кейсов'}...</div>
         )}
       </div>
     </div>

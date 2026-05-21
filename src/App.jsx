@@ -253,7 +253,7 @@ export default function App() {
               <div className="min-w-0 flex-1">
                 <h3 className="text-sm font-bold text-white/90">{task.title}</h3>
                 <div className="mt-1 flex items-center gap-2">
-                  <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Reward" />
+                  <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Reward" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                   <span className="text-xs font-bold text-yellow-400">+{task.reward}</span>
                 </div>
               </div>
@@ -397,7 +397,7 @@ export default function App() {
             <div className="flex min-w-0 items-center gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
                 {user?.photo_url ? (
-                  <img src={user.photo_url} alt="User" className="h-full w-full object-cover" />
+                  <img src={user.photo_url} alt="User" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
                 ) : (
                   <span className="font-bold text-white/30">{user?.first_name?.charAt(0) || 'U'}</span>
                 )}
@@ -422,7 +422,7 @@ export default function App() {
               }}
               className="glass-button flex items-center gap-2 border-yellow-500/30 bg-yellow-500/5 px-4 py-2"
             >
-              <img src="/asset/Icons/TelegramStar.png" alt="Stars" className="h-6 w-6" />
+              <img src="/asset/Icons/TelegramStar.png" alt="Stars" className="h-6 w-6" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
               <span className="text-lg font-black text-yellow-400"><CountUp end={balance} duration={0.5} /></span>
               <span className="text-xs font-bold text-yellow-400/50">+</span>
             </motion.button>
@@ -518,7 +518,7 @@ export default function App() {
               <div className="space-y-4">
                 <div className="glass-panel space-y-3 p-4">
                   <div className="flex items-center gap-4">
-                    <img src="/asset/Icons/TelegramStar.png" alt="Stars" className="h-10 w-10" />
+                    <img src="/asset/Icons/TelegramStar.png" alt="Stars" className="h-10 w-10" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                     <p className="flex-1 text-sm font-bold">Stars</p>
                     <input
                       type="number"
@@ -538,7 +538,7 @@ export default function App() {
 
                 <div className="glass-panel space-y-3 border-blue-500/20 bg-blue-500/5 p-4">
                   <div className="flex items-center gap-4">
-                    <img src="/asset/Icons/TonCoin.png" alt="TON" className="h-10 w-10" />
+                    <img src="/asset/Icons/TonCoin.png" alt="TON" className="h-10 w-10" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                     <p className="flex-1 text-sm font-bold">TON Crystal</p>
                     <input
                       type="number"

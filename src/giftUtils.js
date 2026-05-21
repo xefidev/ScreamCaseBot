@@ -50,11 +50,17 @@ export function getDynamicGiftImage(item) {
   if (!item) return DEFAULT_GIFT_IMAGE;
   
   // Try different possible price fields to avoid undefined
-  const price = item.price ?? item.cost ?? 0;
+  const price = item.price ?? item.cost ?? item.reward ?? 0;
   
   // Handle names that might have spaces or underscores consistently
-  const rawName = item.name || 'gift';
-  const name = rawName.replace(/\s+/g, '_');
+  // Project requirement: [PRICE]S_[NAME].webp
+  let name = item.name || 'Gift';
   
-  return `/asset/Gifts/${price}S_${name}.webp`;
+  // Remove possible duplicate price prefix if it exists in the name string
+  name = name.replace(/^\d+S_/, '');
+  
+  // Replace spaces with underscores for the filename
+  const safeName = name.trim().replace(/\s+/g, '_');
+  
+  return `/asset/Gifts/${price}S_${safeName}.webp`;
 }
