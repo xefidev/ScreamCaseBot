@@ -404,10 +404,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen w-full overflow-hidden text-white font-rounded" style={{ backgroundColor: PAGE_BG }}>
-      <div className="flex h-screen flex-col" style={{ backgroundColor: PAGE_BG }}>
+    <div className="h-screen w-full overflow-hidden flex justify-center items-center text-white font-rounded" style={{ backgroundColor: PAGE_BG }}>
+      <div className="max-w-md w-full h-screen relative flex flex-col overflow-hidden" style={{ backgroundColor: PAGE_BG }}>
         {/* Header */}
-        <div className="glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
+        <div className="shrink-0 glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
@@ -452,10 +452,12 @@ export default function App() {
         </div>
 
         {/* Main Content */}
-        <div className="relative flex-1 overflow-hidden">{renderContent()}</div>
+        <div className="relative flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+          {renderContent()}
+        </div>
 
         {/* Navigation Bar */}
-        <div className="glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
+        <div className="shrink-0 glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex h-16 items-center justify-around">
             {Object.entries(TABS).map(([key, label]) => (
               <button

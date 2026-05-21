@@ -83,21 +83,16 @@ export function getGiftAsset(giftName) {
  * Returns constructed path: /asset/Gifts/[cleanedName].webp
  */
 export function getDynamicGiftImage(item) {
-  if (!item) return DEFAULT_GIFT_IMAGE;
+  if (!item || (!item.name && item.price === undefined && item.cost === undefined)) {
+    return DEFAULT_GIFT_IMAGE;
+  }
 
-  let name = item.name || 'Gift';
+  const price = item.price ?? item.cost ?? 0;
+  const name = item.name || 'Gift';
 
-  // Remove price prefix (100S_, 50S_, etc.)
-  name = name.replace(/^\d+S_/g, '');
+  // Очищаем от пробелов по краям и заменяем пробелы внутри на подчеркивания
+  const formattedName = name.trim().replace(/\s+/g, '_');
 
-  // Remove _Original or similar suffixes
-  name = name.replace(/_Original.*/g, '');
-
-  // Replace spaces with underscores
-  name = name.replace(/\s+/g, '_');
-
-  // Clean non-alphanumeric characters (keep only letters, numbers, underscores)
-  const formattedName = name.trim().replace(/[^a-zA-Z0-9_]/g, '');
-
-  return `/asset/Gifts/${formattedName}.webp`;
+  // Строго собираем путь по шаблону
+  return `/asset/Gifts/${price}S_${formattedName}_Original_${formattedName}.webp`;
 }
