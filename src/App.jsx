@@ -113,6 +113,27 @@ export default function App() {
     } catch (error) { window.Telegram?.WebApp?.showAlert?.('Ошибка при создании инвойса'); }
   };
 
+  const handleTonPayment = async () => {
+    triggerHaptic();
+    if (!user?.id) return;
+    const amount = parseFloat(tonAmount) || 0.1;
+    const nanotons = (amount * 1000000000).toString();
+    try {
+      const result = await tonConnectUI.sendTransaction({
+        validUntil: Math.floor(Date.now() / 1000) + 600,
+        messages: [{ address: TON_WALLET, amount: nanotons }],
+      });
+      triggerHaptic('success');
+      setShowTopUp(false);
+      await notifyTonSuccess(user.id, amount, result.boc);
+      await syncBalance(user.id);
+      window.Telegram?.WebApp?.showAlert?.('✅ Пополнение успешно!');
+    } catch (e) {
+      console.error(e);
+      window.Telegram?.WebApp?.showAlert?.('❌ Ошибка или отмена транзакции');
+    }
+  };
+
   const handleClaimAchievement = async (aid) => {
     triggerHaptic(); if (!user?.id) return;
     try {
@@ -141,7 +162,7 @@ export default function App() {
           const isComplete = progress >= a.goal;
           return (
             <div key={a.id} className="glass-panel p-5 border-white/10 bg-white/[0.02] relative overflow-hidden">
-               {isComplete && !a.claimed && <div className="absolute inset-0 bg-yellow-500/5 animate-pulse-slow pointer-events-none" />}
+               {isComplete && !a.is_claimed && <div className="absolute inset-0 bg-yellow-500/5 animate-pulse-slow pointer-events-none" />}
                <div className="flex justify-between items-start mb-3">
                   <div>
                     <h3 className="font-black text-sm uppercase tracking-tight text-white">{a.title}</h3>
@@ -152,7 +173,7 @@ export default function App() {
                <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mb-4">
                   <motion.div initial={{ width: 0 }} animate={{ width: `${percent}%` }} className="h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]" />
                </div>
-               {a.claimed ? (
+               {a.is_claimed ? (
                  <div className="w-full py-2 rounded-xl bg-white/5 border border-white/5 text-center"><span className="text-[10px] font-black uppercase text-white/20">Награда получена</span></div>
                ) : (
                  <button onClick={() => handleClaimAchievement(a.id)} disabled={!isComplete} className={`w-full py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${isComplete ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}>Забрать награду</button>
@@ -175,8 +196,8 @@ export default function App() {
         <div className="h-full overflow-y-auto p-6 pb-24 text-white" style={{ backgroundColor: PAGE_BG }}>
           <h2 className="mb-2 font-rounded text-2xl font-black uppercase tracking-tight">Мини-игры</h2>
           <div className="grid grid-cols-1 gap-4 mt-6">
-            <button onClick={() => { triggerHaptic(); setActiveGame('wheel'); }} className="relative h-40 overflow-hidden rounded-3xl border border-purple-500/20 text-left bg-gradient-to-br from-purple-600/10 to-black/20"><div className="relative z-10 flex h-full flex-col justify-between p-6"><div><h3 className="font-rounded text-xl font-black uppercase">Колесо Фортуны</h3><p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-purple-400">Выигрыш до 500 звезд</p></div><span className="text-xs font-black uppercase text-white/60">Играть</span></div></button>
-            <button onClick={() => { triggerHaptic(); setActiveGame('upgrade'); }} className="relative h-40 overflow-hidden rounded-3xl border border-green-500/20 text-left bg-gradient-to-br from-green-600/10 to-black/20"><div className="relative z-10 flex h-full flex-col justify-between p-6"><div><h3 className="font-rounded text-xl font-black uppercase">Апгрейд</h3><p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-green-400">Улучшай свои предметы</p></div><span className="text-xs font-black uppercase text-white/60">Играть</span></div></button>
+            <button onClick={() => { triggerHaptic(); setActiveGame('wheel'); }} className="relative h-40 overflow-hidden rounded-3xl border border-purple-500/30 text-left bg-gradient-to-br from-purple-600/10 to-black/20 shadow-[0_0_30px_rgba(168,85,247,0.15)] hover:shadow-[0_0_50px_rgba(168,85,247,0.3)] transition-shadow duration-500"><img src="/asset/Icons/WheelGameIcon.gif" alt="" className="absolute right-2 top-2 h-24 w-24 object-contain opacity-40 pointer-events-none" onError={(e) => { e.currentTarget.style.display='none'; }} /><div className="absolute inset-0 bg-gradient-to-t from-purple-500/5 to-transparent pointer-events-none" /><div className="relative z-10 flex h-full flex-col justify-between p-6"><div><h3 className="font-rounded text-xl font-black uppercase">Колесо Фортуны</h3><p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-purple-400">Выигрыш до 500 звезд</p></div><span className="text-xs font-black uppercase text-white/60">Играть</span></div></button>
+            <button onClick={() => { triggerHaptic(); setActiveGame('upgrade'); }} className="relative h-40 overflow-hidden rounded-3xl border border-green-500/30 text-left bg-gradient-to-br from-green-600/10 to-black/20 shadow-[0_0_30px_rgba(34,197,94,0.15)] hover:shadow-[0_0_50px_rgba(34,197,94,0.3)] transition-shadow duration-500"><img src="/asset/Icons/UpgradeGameIcon.gif" alt="" className="absolute right-2 top-2 h-24 w-24 object-contain opacity-40 pointer-events-none" onError={(e) => { e.currentTarget.style.display='none'; }} /><div className="absolute inset-0 bg-gradient-to-t from-green-500/5 to-transparent pointer-events-none" /><div className="relative z-10 flex h-full flex-col justify-between p-6"><div><h3 className="font-rounded text-xl font-black uppercase">Апгрейд</h3><p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-green-400">Улучшай свои предметы</p></div><span className="text-xs font-black uppercase text-white/60">Играть</span></div></button>
           </div>
         </div>
       );
@@ -188,15 +209,15 @@ export default function App() {
   return (
     <div className="min-h-screen w-full overflow-hidden text-white font-rounded" style={{ backgroundColor: PAGE_BG }}>
       <div className="flex h-screen flex-col" style={{ backgroundColor: PAGE_BG }}>
-        <div className="glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">{user?.photo_url ? <img src={user.photo_url} alt="U" className="h-full w-full object-cover" onError={(e) => e.currentTarget.style.display='none'} /> : <span className="font-bold text-white/30">{user?.first_name?.charAt(0) || 'U'}</span>}</div>
-              <h1 className="text-lg font-black uppercase text-white truncate max-w-[120px]">{user?.first_name || 'Игрок'}</h1>
+          <div className="glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">{user?.photo_url ? <img src={user?.photo_url} alt="U" className="h-full w-full object-cover" onError={(e) => e.currentTarget.style.display='none'} /> : <span className="font-bold text-white/30">{user?.first_name?.charAt(0) || 'U'}</span>}</div>
+                <h1 className="text-lg font-black uppercase text-white truncate max-w-[120px]">{user?.first_name || 'Игрок'}</h1>
+              </div>
+              <button onClick={() => { setShowTopUp(true); triggerHaptic(); }} className="glass-button flex items-center gap-2 border-yellow-500/30 bg-yellow-500/5 px-4 py-2"><img src="/asset/Icons/TelegramStar.png" alt="S" className="h-6 w-6" onError={(e) => e.currentTarget.src='/asset/Gifts/Case.webp'} /><span className="text-lg font-black text-yellow-400"><CountUp end={balance} duration={0.5} /></span><span className="text-xs font-bold text-yellow-400/50">+</span></button>
             </div>
-            <button onClick={() => { setShowTopUp(true); triggerHaptic(); }} className="glass-button flex items-center gap-2 border-yellow-500/30 bg-yellow-500/5 px-4 py-2"><img src="/asset/Icons/TelegramStar.png" alt="S" className="h-6 w-6" onError={(e) => e.currentTarget.src='/asset/Gifts/Case.webp'} /><span className="text-lg font-black text-yellow-400"><CountUp end={balance} duration={0.5} /></span><span className="text-xs font-bold text-yellow-400/50">+</span></button>
           </div>
-        </div>
         <div className="relative flex-1 overflow-hidden">{renderContent()}</div>
         <div className="glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex h-16 items-center justify-around">

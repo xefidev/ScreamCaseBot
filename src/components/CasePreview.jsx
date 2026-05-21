@@ -96,14 +96,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         for (let i = 0; i < targetQuantity; i++) {
           const response = await openCase(user?.id, caseItem?.id);
-          
           if (!response?.success || !response?.item) {
-            if (response?.errorCode === 'daily_cooldown_active' || response?.details?.error === 'daily_cooldown_active') {
-               const wait = response?.waitSeconds || response?.details?.wait_seconds || 86400;
-               const hours = Math.ceil(wait / 3600);
-               throw new Error(`daily_cooldown_active:${hours}`);
-            }
-            if (response?.error === 'already_opened') throw new Error('already_opened');
             throw new Error(`Failed to open case ${i+1}`);
           }
           results.push(response.item);
@@ -142,10 +135,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         console.error("Error in handleOpen:", e);
         setIsSpinning(false);
         let errorMsg = "❌ Ошибка при открытии кейса";
-        if (e.message?.startsWith('daily_cooldown_active:')) {
-          const hours = e.message.split(':')[1];
+        if (e.errorCode === 'daily_cooldown_active' || e.message?.includes('daily_cooldown_active')) {
+          const wait = e.waitSeconds || 86400;
+          const hours = Math.ceil(wait / 3600);
           errorMsg = `⏳ Кейс будет доступен через ${hours} ч.`;
-        } else if (e.message === 'already_opened') {
+        } else if (e.errorCode === 'already_opened' || e.message === 'already_opened') {
           errorMsg = "❌ Вы уже открывали этот кейс!";
           if (isPromo && setPromoOpened) setPromoOpened(true);
         }

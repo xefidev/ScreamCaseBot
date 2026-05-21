@@ -66,6 +66,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 
     try {
         triggerHaptic();
+        playSound('/asset/Sounds/go-new-gambling.mp3');
         setIsUpgrading(true);
         setResult(null);
         setConsolation(null);
@@ -223,7 +224,8 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 
             <AnimatePresence>
               {result && (
-                <motion.div initial={{ opacity: 0, scale: 0.8, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className={`text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f] ${ result === 'success' ? 'border-green-500/50 shadow-[0_0_50px_rgba(34,197,94,0.15)]' : 'border-red-500/50 shadow-[0_0_50px_rgba(239,68,68,0.15)]' }`}>
+                <motion.div initial={{ opacity: 0, scale: 0.8, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className={`text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f] ${ result === 'success' ? 'border-green-500/60 shadow-[0_0_80px_rgba(34,197,94,0.25)]' : 'border-red-500/60 shadow-[0_0_80px_rgba(239,68,68,0.25)]' }`}>
+                  <div className={`absolute inset-0 ${result === 'success' ? 'bg-gradient-to-br from-green-500/5 to-transparent' : 'bg-gradient-to-br from-red-500/5 to-transparent'} pointer-events-none`} />
                   <p className={`font-black text-4xl mb-2 font-rounded uppercase tracking-tight ${ result === 'success' ? 'text-green-400 text-glow' : 'text-red-400 text-glow' }`}>{result === 'success' ? 'УСПЕХ!' : 'ПРОВАЛ!'}</p>
                   <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">{result === 'success' ? 'Предмет улучшен' : 'Предмет потерян'}</p>
                   {result === 'fail' && consolation && (
@@ -240,7 +242,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
               <h3 className="text-white/20 font-black text-[9px] mb-5 uppercase tracking-[0.3em] text-center">Ваш инвентарь</h3>
               <div className="grid grid-cols-3 gap-4 max-h-72 overflow-y-auto pr-1">
                 {inventory.map(item => (
-                  <motion.div key={item.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setSelectedSlot1(item); setResult(null); setSelectedSlot2(null); triggerHaptic('light'); }} className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center ${ selectedSlot1?.id === item.id ? 'border-white/50 bg-white/10 shadow-2xl' : 'border-white/5 bg-white/[0.02] hover:border-white/10' }`}>
+                  <motion.div key={item.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setSelectedSlot1(item); setResult(null); setSelectedSlot2(null); triggerHaptic('light'); }} className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center ${ selectedSlot1?.id === item.id ? 'border-white/50 bg-white/10 shadow-[0_0_20px_rgba(255,255,255,0.15)]' : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]' }`}>
                     <img src={getDynamicGiftImage(item)} alt="Gift" className="w-16 h-16 object-contain mb-2 mx-auto" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     <span className="text-white text-[10px] font-black text-center truncate block font-rounded w-full px-1">{item?.name || 'Gift'}</span>
                     <div className="flex items-center justify-center gap-1 text-white/40 text-[10px] mt-2 font-black font-rounded">{item?.price || item?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></div>

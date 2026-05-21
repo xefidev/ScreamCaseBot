@@ -362,17 +362,28 @@ export const openCase = async (userId, caseId) => {
     
     if (!response.ok) {
       const error = await handleApiError(response);
-      
+
+      if (error.status === 403 && error.error === 'daily_cooldown_active') {
+        const message = `❌ Ждите ${Math.ceil((error.wait_seconds || 86400) / 3600)} часов`;
+        showAlert(message);
+        const err = new Error(message);
+        err.status = 403;
+        err.errorCode = 'daily_cooldown_active';
+        err.waitSeconds = error.wait_seconds;
+        err.details = error;
+        throw err;
+      }
+
       const message = formatErrorMessage(error);
       showAlert(message);
-      
+
       const err = new Error(message);
       err.status = error.status;
       err.errorCode = error.error;
       err.details = error;
       throw err;
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error('Error opening case:', error);

@@ -91,12 +91,12 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
       const midAngle = (startAngle + SEGMENT_ANGLE / 2 - 90) * Math.PI / 180;
       const contentRadius = radius * 0.68; const contentX = center + contentRadius * Math.cos(midAngle); const contentY = center + contentRadius * Math.sin(midAngle);
       return (
-        <g key={segment.id} className="select-none">
-          <path d={pathD} fill={`${segment.color}25`} stroke={`${segment.color}60`} strokeWidth="2" />
-          <circle cx={contentX} cy={contentY} r="28" fill={`${segment.color}30`} style={{ filter: 'blur(4px)' }} />
-          <image href={getDynamicGiftImage(segment.item)} x={contentX - 18} y={contentY - 20} width="36" height="36" preserveAspectRatio="xMidYMid meet" />
-          <text x={contentX} y={contentY + 34} textAnchor="middle" fill="white" fontSize="12" fontWeight="900" style={{ textShadow: '0 0 5px rgba(0,0,0,0.5)' }} className="font-rounded">{segment.label}</text>
-        </g>
+          <g key={segment.id} className="select-none">
+            <path d={pathD} fill={`${segment.color}25`} stroke={`${segment.color}60`} strokeWidth="2" style={{ filter: `drop-shadow(0 0 6px ${segment.color}80)` }} />
+            <circle cx={contentX} cy={contentY} r="28" fill={`${segment.color}30`} style={{ filter: 'blur(4px)' }} />
+            <image href={getDynamicGiftImage(segment.item)} x={contentX - 18} y={contentY - 20} width="36" height="36" preserveAspectRatio="xMidYMid meet" />
+            <text x={contentX} y={contentY + 34} textAnchor="middle" fill="white" fontSize="12" fontWeight="900" style={{ textShadow: '0 0 5px rgba(0,0,0,0.5)' }} className="font-rounded">{segment.label}</text>
+          </g>
       );
     });
   };

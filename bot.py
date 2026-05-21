@@ -94,7 +94,7 @@ def init_db():
                         (user_id INTEGER, 
                          achievement_id TEXT, 
                          progress INTEGER DEFAULT 0,
-                         claimed INTEGER DEFAULT 0,
+                         is_claimed INTEGER DEFAULT 0,
                          PRIMARY KEY (user_id, achievement_id))''')
         
         cur = conn.cursor()
@@ -452,6 +452,30 @@ async def admin_add(message: types.Message):
         await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error in admin_add: {e}")
+        await message.answer("❌ Ошибка при добавлении звезд.")
+
+@dp.message(F.from_user.id.in_(ADMIN_IDS) & F.text.startswith('/+'))
+async def admin_add_text_fallback(message: types.Message):
+    """Fallback text handler for /+ when Telegram doesn't recognize '+' as a command"""
+    try:
+        text = message.text.strip()
+        parts = text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Пример: `/+ 100`", parse_mode="Markdown")
+            return
+
+        amount = int(parts[1])
+        if amount <= 0:
+            await message.answer("❌ Количество должно быть > 0.")
+            return
+
+        update_balance(message.from_user.id, amount, "add")
+        logger.info(f"Admin {message.from_user.id} added {amount} stars via text fallback")
+        await message.answer(f"✅ Добавлено {amount} ⭐")
+    except ValueError:
+        await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_add_text_fallback: {e}")
         await message.answer("❌ Ошибка при добавлении звезд.")
 
 @dp.message(Command("setbalance"))
@@ -865,7 +889,7 @@ async def api_open_case(request):
             
             conn.commit()
             
-            # 6. Update Achievements
+            # 6. Update Achievements (Fixing ID to 'ludoman' as requested)
             _increment_achievement_progress(uid, 'cases_opened')
             
             logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
@@ -901,7 +925,7 @@ def _get_random_gift(min_p, max_p):
 def _increment_achievement_progress(user_id, achievement_type):
     # achievement_type: 'cases_opened' or 'upgrades_successful'
     mapping = {
-        'cases_opened': ['first_step', 'true_gambler'],
+        'cases_opened': ['first_step', 'ludoman'],
         'upgrades_successful': ['upgrade_master']
     }
     
@@ -973,7 +997,7 @@ async def api_get_achievements(request):
         ACHIEVEMENTS = [
             {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
             {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
-            {'id': 'true_gambler', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+            {'id': 'ludoman', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
         ]
         
         with sqlite3.connect('database.db') as conn:
@@ -981,7 +1005,7 @@ async def api_get_achievements(request):
             for a in ACHIEVEMENTS:
                 conn.execute("INSERT OR IGNORE INTO user_achievements (user_id, achievement_id) VALUES (?, ?)", (uid, a['id']))
             
-            res = conn.execute("SELECT achievement_id, progress, claimed FROM user_achievements WHERE user_id = ?", (uid,)).fetchall()
+            res = conn.execute("SELECT achievement_id, progress, is_claimed FROM user_achievements WHERE user_id = ?", (uid,)).fetchall()
             
         data = []
         for r in res:
@@ -1011,7 +1035,7 @@ async def api_claim_achievement(request):
         ACHIEVEMENTS = [
             {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
             {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
-            {'id': 'true_gambler', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+            {'id': 'ludoman', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
         ]
         
         info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
@@ -1019,14 +1043,14 @@ async def api_claim_achievement(request):
 
         uid = int(uid)
         with sqlite3.connect('database.db') as conn:
-            res = conn.execute("SELECT progress, claimed FROM user_achievements WHERE user_id = ? AND achievement_id = ?", (uid, aid)).fetchone()
+            res = conn.execute("SELECT progress, is_claimed FROM user_achievements WHERE user_id = ? AND achievement_id = ?", (uid, aid)).fetchone()
             if not res: return web.json_response({"error": "not_found"}, status=404)
             
             prog, claimed = res
             if claimed: return web.json_response({"error": "already_claimed"}, status=400)
             if prog < info['goal']: return web.json_response({"error": "not_reached"}, status=400)
             
-            conn.execute("UPDATE user_achievements SET claimed = 1 WHERE user_id = ? AND achievement_id = ?", (uid, aid))
+            conn.execute("UPDATE user_achievements SET is_claimed = 1 WHERE user_id = ? AND achievement_id = ?", (uid, aid))
             conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (info['reward'], uid))
             conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
                          (uid, info['reward'], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
