@@ -88,24 +88,12 @@ export default function ProfilePage({
             <h3 className="truncate text-3xl font-black uppercase leading-tight tracking-tight text-white">
               {user?.first_name || 'Игрок'}
             </h3>
-            <p className="mt-2 text-sm text-white/40">ID: {user?.id || '0'}</p>
-          </div>
-        </div>
-
-        <div className="relative z-10 grid grid-cols-2 gap-4">
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-white/60">Донор</p>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-black text-white">{formatValue(donor)}</span>
-              <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <p className="mb-3 text-xs font-bold uppercase tracking-widest text-white/60">Слито</p>
-            <div className="flex items-center gap-2">
-              <span className="text-3xl font-black text-white">{formatValue(spent)}</span>
-              <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+            <div className="mt-2 flex items-center gap-4">
+               <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                  <span className="text-sm font-black text-yellow-500">{formatValue(balance)}</span>
+                  <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
+               </div>
+               <p className="text-xs text-white/30 font-bold uppercase tracking-widest">ID: {user?.id || '0'}</p>
             </div>
           </div>
         </div>

@@ -49,18 +49,19 @@ export function getGiftAsset(giftName, price = 0) {
 export function getDynamicGiftImage(item) {
   if (!item) return DEFAULT_GIFT_IMAGE;
   
-  // Try different possible price fields to avoid undefined
-  const price = item.price ?? item.cost ?? item.reward ?? 0;
-  
-  // Handle names that might have spaces or underscores consistently
-  // Project requirement: [PRICE]S_[NAME].webp
+  // Project requirement: files are named [NAME].webp (no price in filename)
+  // Path MUST be /asset/Gifts/[NAME].webp
   let name = item.name || 'Gift';
   
-  // Remove possible duplicate price prefix if it exists in the name string
+  // 1. Remove any leading price prefixes like "15S_", "500S_", etc.
   name = name.replace(/^\d+S_/, '');
   
-  // Replace spaces with underscores for the filename
-  const safeName = name.trim().replace(/\s+/g, '_');
+  // 2. Remove "Original" or other suffixes if they exist in the name
+  name = name.replace(/_Original.*/, '');
   
-  return `/asset/Gifts/${price}S_${safeName}.webp`;
+  // 3. Replace spaces with underscores for the filename consistency
+  const formattedName = name.trim().replace(/\s+/g, '_');
+  
+  // 4. Return the requested path
+  return `/asset/Gifts/${formattedName}.webp`;
 }

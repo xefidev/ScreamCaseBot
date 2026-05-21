@@ -1,12 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CasePreview from './CasePreview';
-import { getGiftsInRange, getTopGift } from '../giftData';
+import { getGiftsInRange } from '../giftData';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
 
 const CASES_DATA = [
   { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Promo', minPrice: 15, maxPrice: 500, stock: 100 },
-  { id: 2, name: 'Daily Case', price: 0, glowColor: '#dc2626', badge: 'Free', minPrice: 0, maxPrice: 100, stock: 50 },
+  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: 'Free', minPrice: 0, maxPrice: 100, stock: 50 },
   { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Random', minPrice: 100, maxPrice: 667, stock: 100 },
   { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Random', minPrice: 200, maxPrice: 599, stock: 80 },
   { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Any', minPrice: 0, maxPrice: 199, stock: 200 },
@@ -59,7 +59,6 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
       }}
     >
       <div className="glass-panel p-4 h-full flex flex-col gap-3 overflow-hidden relative">
-        {/* Radial Glow Behind Gift */}
         <div
           className="absolute inset-0 rounded-3xl opacity-30 pointer-events-none"
           style={{
@@ -67,20 +66,17 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
           }}
         />
 
-        {/* Unified Composition: Gift + Case Together */}
         <div className="relative flex-1 flex items-center justify-center py-2 min-h-[120px] w-full overflow-visible">
-          {/* Case Image - z-10 so gifts appear above */}
           <img
             src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
             alt={caseItem?.name || 'Case'}
             className={caseItem?.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
-            onError={(e) => { e.currentTarget.src = '/asset/Case/CaseBlack.png'; }}
+            onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
             style={{
               filter: `drop-shadow(0 0 20px ${caseItem?.glowColor || '#ffffff'}80)`,
             }}
           />
 
-          {/* Floating Gifts inside/above case */}
           {previewGift && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               {Array.isArray(previewGift) ? (
@@ -110,7 +106,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                       alt={gift?.name || 'Gift'}
                       className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
                       loading="lazy"
-                      onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                       style={{
                         filter: `drop-shadow(0 0 8px ${caseItem?.glowColor || '#ffffff'}70)`,
                       }}
@@ -137,7 +133,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
                     alt={previewGift?.name || 'Gift'}
                     className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
                     loading="lazy"
-                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                     style={{
                       filter: `drop-shadow(0 0 10px ${caseItem?.glowColor || '#ffffff'}70)`,
                     }}
@@ -148,7 +144,6 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
           )}
         </div>
 
-        {/* Case Info */}
         <div className="flex items-center justify-between gap-2 relative z-10">
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-bold text-xs truncate">{caseItem?.name || 'Case'}</h3>
@@ -164,7 +159,6 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
           )}
         </div>
 
-        {/* Buy Button */}
         <motion.button
           whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.15)' }}
           whileTap={{ scale: 0.95 }}
@@ -183,7 +177,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
               <span className={isFlashDiscount ? 'text-red-400' : ''}>
                 {isFlashDiscount && (caseItem?.price || 0) > 1 ? 'ОТКРЫТЬ ЗА ' : 'ОТКРЫТЬ ЗА '}{isFlashDiscount && (caseItem?.price || 0) > 1 ? discountedPrice : (caseItem?.price || 0)}
               </span>
-              <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+              <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
             </span>
           )}
         </motion.button>
@@ -192,7 +186,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
   );
 };
 
-export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent }) {
+export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent, promoOpened, setPromoOpened }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [view, setView] = useState('grid');
   const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
@@ -265,87 +259,8 @@ export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, set
               setBalance={setBalance}
               setSpent={setSpent}
               flashDiscount={getCaseFlashDiscount(selectedCase.id)}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent }) {
-  const [selectedCase, setSelectedCase] = useState(null);
-  const [view, setView] = useState('grid');
-  const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
-
-  const sortedCases = useMemo(() => [...CASES_DATA].sort((a, b) => a.price - b.price), []);
-
-  const handlePreview = (caseItem) => {
-    setSelectedCase(caseItem);
-    setView('preview');
-  };
-
-  const handleClosePreview = () => {
-    setView('grid');
-    setSelectedCase(null);
-  };
-
-  const handleWin = (item, caseItem) => {
-    if (onWin) {
-      onWin(item, caseItem);
-    }
-  };
-
-  const getCaseFlashDiscount = (caseId) => {
-    return flashDiscountCaseId === caseId ? 0.15 : null;
-  };
-
-  return (
-    <div className="h-full overflow-hidden relative">
-      <AnimatePresence mode="wait">
-        {view === 'grid' && (
-          <motion.div
-            key="grid"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, x: -100 }}
-            className="h-full overflow-y-auto p-4"
-          >
-            <div className="grid grid-cols-2 gap-3">
-              {sortedCases.map((caseItem, index) => (
-                <motion.div
-                  key={caseItem.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <CaseCard
-                    caseItem={caseItem}
-                    onClick={() => handlePreview(caseItem)}
-                    isFlashDiscount={flashDiscountCaseId === caseItem.id}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-
-        {view === 'preview' && selectedCase && (
-          <motion.div
-            key="preview"
-            initial={{ opacity: 0, x: 100 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -100 }}
-            className="h-full"
-          >
-            <CasePreview
-              user={user}
-              caseItem={selectedCase}
-              onClose={handleClosePreview}
-              onWin={handleWin}
-              balance={balance}
-              setBalance={setBalance}
-              setSpent={setSpent}
-              flashDiscount={getCaseFlashDiscount(selectedCase.id)}
+              promoOpened={promoOpened}
+              setPromoOpened={setPromoOpened}
             />
           </motion.div>
         )}

@@ -149,7 +149,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                       src={getDynamicGiftImage(item)}
                       alt={item.name}
                       className="w-14 h-14 object-contain mb-1"
-                      onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                     />
                     <span className="text-white/70 text-[10px] text-center font-semibold uppercase">{item.rarity}</span>
                   </div>
@@ -176,7 +176,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
                   src={getDynamicGiftImage(selectedItem)}
                   alt={selectedItem.name}
                   className="h-24 w-24 object-contain mx-auto mb-3"
-                  onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                  onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                   style={{
                     filter: `drop-shadow(0 0 20px ${(selectedItem.color || '#ffffff')}80)`,
                   }}

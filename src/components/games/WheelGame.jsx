@@ -41,7 +41,6 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
         setIsSpinning(true);
         setWinSegment(null);
         
-        // 1. Call backend /api/wheel/spin
         const res = await spinWheel(userId);
         
         if (!res.success) {
@@ -52,7 +51,6 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             return;
         }
 
-        // 2. Receive the 'prize_index' from the server
         const winIndex = res.prize_index;
         const wonSegment = wheelSegments[winIndex];
         
@@ -62,20 +60,15 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
         }
 
-        // 3. Start the rotation animation
-        const fullRotations = 8;
+        const fullRotations = 10; // Increased for more speed
         const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE); 
         const newTargetRotation = spinRotation + (fullRotations * 360) + segmentOffset;
 
         setTargetRotation(newTargetRotation);
         setAnimKey(prev => prev + 1);
 
-        if (setBalance) {
-          setBalance(prev => Math.max(0, prev - SPIN_COST));
-        }
-        if (setSpent) {
-          setSpent(prev => prev + SPIN_COST);
-        }
+        if (setBalance) setBalance(prev => Math.max(0, prev - SPIN_COST));
+        if (setSpent) setSpent(prev => prev + SPIN_COST);
 
     } catch (error) {
         console.error("Spin error:", error);
@@ -116,24 +109,24 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
       const pathD = `M ${center} ${center} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
 
       const midAngle = (startAngle + SEGMENT_ANGLE / 2 - 90) * Math.PI / 180;
-      const contentRadius = radius * 0.65;
+      const contentRadius = radius * 0.68;
       const contentX = center + contentRadius * Math.cos(midAngle);
       const contentY = center + contentRadius * Math.sin(midAngle);
 
       return (
-        <g key={segment.id}>
+        <g key={segment.id} className="select-none">
           <path
             d={pathD}
-            fill={`${segment.color}15`}
-            stroke={`${segment.color}40`}
-            strokeWidth="1.5"
+            fill={`${segment.color}25`}
+            stroke={`${segment.color}60`}
+            strokeWidth="2"
           />
           <circle
             cx={contentX}
             cy={contentY}
-            r="26"
-            fill={`${segment.color}20`}
-            style={{ filter: 'blur(2px)' }}
+            r="28"
+            fill={`${segment.color}30`}
+            style={{ filter: 'blur(4px)' }}
           />
           <image
             href={getDynamicGiftImage(segment.item)}
@@ -145,11 +138,12 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
           />
           <text
             x={contentX}
-            y={contentY + 32}
+            y={contentY + 34}
             textAnchor="middle"
-            fill="rgba(255,255,255,0.9)"
+            fill="white"
             fontSize="12"
             fontWeight="900"
+            style={{ textShadow: '0 0 5px rgba(0,0,0,0.5)' }}
             className="font-rounded"
           >
             {segment.label}
@@ -169,51 +163,42 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
           </div>
         )}
         {isPage && (
-          <div className="mb-6">
-            <h2 className="text-3xl font-black text-white font-rounded uppercase tracking-widest">Колесо Фортуны</h2>
-            <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mt-2 flex items-center justify-center gap-1.5">
-              Стоимость прокрута: {SPIN_COST}
-              <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
-            </p>
+          <div className="mb-6 text-center">
+            <h2 className="text-3xl font-black text-white font-rounded uppercase tracking-widest text-glow">Колесо Фортуны</h2>
+            <div className="mt-2 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10">
+              <span className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">Стоимость: {SPIN_COST}</span>
+              <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
+            </div>
           </div>
         )}
 
         <div className="relative w-80 h-80 mx-auto mb-10">
-          <div className="absolute inset-[-12px] rounded-full"
+          <div className="absolute inset-[-15px] rounded-full animate-pulse-slow"
             style={{
-              background: 'linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.02))',
-              border: '2px solid rgba(255,255,255,0.1)',
-              boxShadow: '0 0 40px rgba(0,0,0,0.5)',
+              background: 'radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%)',
             }}
           />
 
-          <div className="absolute top-[-20px] left-1/2 transform -translate-x-1/2 z-30 filter drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <div className="absolute top-[-25px] left-1/2 transform -translate-x-1/2 z-40">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="filter drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]">
               <path d="M12 24L2 4H22L12 24Z" fill="white" />
-              <path d="M12 20L4 6H20L12 20Z" fill="rgba(255,255,255,0.8)" />
+              <path d="M12 20L5 6H19L12 20Z" fill="rgba(255,255,255,0.8)" />
             </svg>
           </div>
 
-          <div className="absolute inset-[-4px] rounded-full z-10 pointer-events-none"
+          <div className="w-full h-full rounded-full overflow-hidden relative shadow-[0_0_50px_rgba(0,0,0,0.8)]"
             style={{
-              border: '1px solid rgba(255,255,255,0.15)',
-              boxShadow: isSpinning ? '0 0 30px rgba(168, 85, 247, 0.2)' : 'none',
-            }}
-          />
-
-          <div className="w-full h-full rounded-full overflow-hidden relative shadow-[inset_0_0_60px_rgba(0,0,0,0.6)]"
-            style={{
-              background: '#1a1b1f',
-              border: '4px solid rgba(255,255,255,0.1)',
+              background: '#15161a',
+              border: '6px solid rgba(255,255,255,0.08)',
             }}
           >
-             <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/5 to-transparent pointer-events-none" />
+             <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-transparent pointer-events-none z-10" />
              
             <motion.div
               key={animKey}
               animate={{ rotate: targetRotation }}
               transition={{
-                duration: 4,
+                duration: 5,
                 ease: [0.12, 0, 0.39, 0],
               }}
               onAnimationComplete={handleAnimationComplete}
@@ -224,21 +209,21 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
                 <defs>
                   <radialGradient id="wheelGrad">
                     <stop offset="0%" stopColor="rgba(255,255,255,0.05)" />
-                    <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
+                    <stop offset="100%" stopColor="rgba(0,0,0,0.4)" />
                   </radialGradient>
                 </defs>
                 <circle cx="200" cy="200" r="198" fill="url(#wheelGrad)" />
                 {generateWheelSVG()}
-                <circle cx="200" cy="200" r="35" fill="#1a1b1f" stroke="rgba(255,255,255,0.2)" strokeWidth="3" />
-                <circle cx="200" cy="200" r="30" fill="rgba(255,255,255,0.02)" />
+                <circle cx="200" cy="200" r="40" fill="#15161a" stroke="rgba(255,255,255,0.15)" strokeWidth="4" />
+                <circle cx="200" cy="200" r="35" fill="rgba(168, 85, 247, 0.1)" />
                 <image
                   href="/asset/Icons/TelegramStar.png"
-                  x="182"
-                  y="182"
-                  width="36"
-                  height="36"
+                  x="180"
+                  y="180"
+                  width="40"
+                  height="40"
                   preserveAspectRatio="xMidYMid meet"
-                  className="drop-shadow-glow"
+                  className="filter drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]"
                 />
               </svg>
             </motion.div>
@@ -250,14 +235,15 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
           whileTap={{ scale: 0.98 }}
           onClick={handleSpin}
           disabled={isSpinning || balance < SPIN_COST}
-          className="w-full py-5 rounded-2xl font-black text-xl disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-wider shadow-lg"
+          className="w-full py-5 rounded-2xl font-black text-xl disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-wider shadow-2xl overflow-hidden relative group"
           style={{
-            backgroundColor: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.05)' : 'rgba(168, 85, 247, 0.2)',
-            border: `2px solid ${(isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.1)' : 'rgba(168, 85, 247, 0.4)'}`,
-            color: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.2)' : '#a855f7',
-            boxShadow: (isSpinning || balance < SPIN_COST) ? 'none' : '0 0 25px rgba(168, 85, 247, 0.15)',
+            backgroundColor: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.03)' : 'rgba(168, 85, 247, 0.25)',
+            border: `2px solid ${(isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.08)' : 'rgba(168, 85, 247, 0.45)'}`,
+            color: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.15)' : '#c084fc',
           }}
         >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+            
             {isSpinning ? (
               <div className="flex items-center justify-center gap-3 font-rounded">
                 <motion.div
@@ -270,7 +256,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             ) : (
               <span className="flex items-center justify-center gap-2 font-rounded">
                 ИСПЫТАТЬ УДАЧУ ({SPIN_COST}
-                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />)
+                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />)
               </span>
             )}
         </motion.button>
@@ -281,33 +267,37 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
                 initial={{ opacity: 0, scale: 0.8, y: 30 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                className="mt-8 text-center p-8 rounded-3xl border-2 relative overflow-hidden"
+                className="mt-8 text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f]"
                 style={{
-                  borderColor: `${winSegment.color}40`,
-                  backgroundColor: `${winSegment.color}10`,
-                  boxShadow: `0 0 40px ${winSegment.color}15`,
+                  borderColor: `${winSegment.color}50`,
+                  boxShadow: `0 0 50px ${winSegment.color}20`,
                 }}
               >
                 <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
                 <p className="text-white/40 text-[10px] mb-4 uppercase font-black tracking-[0.3em] font-rounded">Поздравляем!</p>
-                <div className="relative mb-4">
-                   <div className="absolute inset-0 bg-white/10 blur-2xl rounded-full scale-50 opacity-50" />
-                  <img
-                    src={getDynamicGiftImage(winSegment.item)}
-                    alt={winSegment.label}
-                    className="h-32 w-32 object-contain mx-auto relative z-10"
-                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
-                    style={{ filter: `drop-shadow(0 0 25px ${winSegment.color}80)` }}
-                  />
+                <div className="relative mb-6">
+                   <div className="absolute inset-0 bg-white/10 blur-3xl rounded-full scale-75 opacity-50" />
+                   <motion.div
+                     animate={{ y: [0, -10, 0], rotate: [0, 5, -5, 0] }}
+                     transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                   >
+                    <img
+                      src={getDynamicGiftImage(winSegment.item)}
+                      alt={winSegment.label}
+                      className="h-36 w-32 object-contain mx-auto relative z-10"
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                      style={{ filter: `drop-shadow(0 0 30px ${winSegment.color}90)` }}
+                    />
+                  </motion.div>
                 </div>
                 <p
-                  className="text-white font-black text-4xl mb-1 flex items-center justify-center gap-3 font-rounded"
-                  style={{ color: winSegment.color, textShadow: `0 0 20px ${winSegment.color}50` }}
+                  className="text-white font-black text-5xl mb-2 flex items-center justify-center gap-3 font-rounded"
+                  style={{ color: winSegment.color, textShadow: `0 0 30px ${winSegment.color}60` }}
                 >
                   {winSegment.label}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-9 w-9" alt="Stars" />
+                  <img src="/asset/Icons/TelegramStar.png" className="h-10 w-10" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                 </p>
-                <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest mt-2">Выигрыш зачислен на баланс</p>
+                <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest mt-3">Выигрыш зачислен на баланс</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -322,7 +312,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4"
     >
       {content}
     </motion.div>

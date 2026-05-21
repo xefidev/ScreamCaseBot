@@ -7,7 +7,7 @@ import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
-export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null }) {
+export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -22,15 +22,18 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   if (!caseItem) return null;
 
   const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
-  const canOpen = currentStock >= quantity;
+  const isPromo = caseItem?.name?.toLowerCase()?.includes('promo');
+  const canOpen = currentStock >= quantity && !(isPromo && promoOpened);
 
   const getCost = useMemo(() => {
+    if (isPromo) return 0; // Promo is free
+    if (isDaily) return 1; // Daily is 1 star
     let basePrice = caseItem?.price || 0;
     if (flashDiscount && basePrice > 0) {
       basePrice = Math.floor(basePrice * (1 - flashDiscount));
     }
     return basePrice * quantity;
-  }, [caseItem?.price, flashDiscount, quantity]);
+  }, [caseItem?.price, flashDiscount, quantity, isPromo, isDaily]);
 
   const dropItems = useMemo(() =>
     getGiftsInRange(caseItem?.minPrice || 0, caseItem?.maxPrice || 0),
@@ -81,8 +84,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         let totalDeducted = 0;
 
         // Perform multiple openings
-        // For Daily case, quantity is forced to 1 by UI, but we keep the loop for consistency
-        for (let i = 0; i < (isDaily ? 1 : quantity); i++) {
+        // For Daily/Promo case, quantity is forced to 1 by UI, but we keep the loop for consistency
+        const targetQuantity = (isDaily || isPromo) ? 1 : quantity;
+        for (let i = 0; i < targetQuantity; i++) {
           const response = await openCase(user?.id, caseItem?.id);
           
           if (!response?.success || !response?.item) {
@@ -91,6 +95,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                const wait = response?.waitSeconds || response?.details?.wait_seconds || 86400;
                const hours = Math.ceil(wait / 3600);
                throw new Error(`daily_cooldown_active:${hours}`);
+            }
+            if (response?.error === 'already_opened') {
+              throw new Error('already_opened');
             }
             throw new Error(`Failed to open case ${i+1}`);
           }
@@ -106,7 +113,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         if (setSpent) {
           setSpent(prev => prev + totalDeducted);
         }
-        setCurrentStock(prev => Math.max(0, prev - (isDaily ? 1 : quantity)));
+        if (isPromo && setPromoOpened) {
+          setPromoOpened(true);
+        }
+        setCurrentStock(prev => Math.max(0, prev - targetQuantity));
 
         setWonItems(results);
         setHasSpun(false);
@@ -140,6 +150,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         if (e.message?.startsWith('daily_cooldown_active:')) {
           const hours = e.message.split(':')[1];
           errorMsg = `⏳ Кейс будет доступен через ${hours} ч.`;
+        } else if (e.message === 'already_opened') {
+          errorMsg = "❌ Вы уже открывали этот кейс!";
+          if (isPromo && setPromoOpened) setPromoOpened(true);
         }
 
         if (window.Telegram?.WebApp) {
@@ -244,7 +257,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     src={getDynamicGiftImage(gift)}
                     alt={gift?.name || 'Gift'}
                     className="w-28 h-28 object-contain"
-                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                     style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }}
                   />
                 </div>
@@ -257,7 +270,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
               alt={caseItem?.name || 'Case'}
               className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"}
-              onError={(e) => { e.currentTarget.src = '/asset/Case/CaseBlack.png'; }}
+              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
               style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }}
             />
           </div>
@@ -303,12 +316,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               src={getDynamicGiftImage(item)} 
                               alt={item?.name || 'Gift'} 
                               className="w-28 h-28 object-contain mb-1" 
-                              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
                             />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
                               <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">
                                 {item?.price ?? item?.cost ?? 0}
-                                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
+                                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                               </span>
                             </div>
                           </div>
@@ -344,7 +357,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               src={getDynamicGiftImage(wonItem)}
                               alt={wonItem?.name || 'Gift'}
                               className={`${wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`}
-                              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                              onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
                               style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }}
                             />
                             <p
@@ -356,7 +369,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                             <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
                               <span className="flex items-center gap-1 font-black font-rounded">
                                 {wonItem?.price ?? wonItem?.cost ?? 0}
-                                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" />
+                                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                               </span>
                             </div>
                           </div>
@@ -395,7 +408,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
                   {[1, 3, 6, 10].map((q) => {
-                    const isVisible = q === 1 || !isDaily;
+                    const isVisible = q === 1 || (!isDaily && !isPromo);
                     if (!isVisible) return null;
                     
                     return (
@@ -432,13 +445,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                       src={getDynamicGiftImage(item)} 
                       alt={item?.name || 'Gift'} 
                       className="w-12 h-12 object-contain mb-1" 
-                      onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} 
                     />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]">
                       <span className="flex items-center gap-0.5">
                         {item?.price ?? item?.cost ?? 0}
-                        <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" />
+                        <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                       </span>
                     </div>
                   </motion.div>
@@ -463,10 +476,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               </div>
             )}
             <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: (isPromo && promoOpened) ? 1 : 1.02 }}
+              whileTap={{ scale: (isPromo && promoOpened) ? 1 : 0.98 }}
               onClick={handleOpen}
-              disabled={!canOpen || balance < getCost || isSpinning}
+              disabled={!canOpen || balance < getCost || isSpinning || (isPromo && promoOpened)}
               className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               style={{
                 backgroundColor: canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}20` : 'rgba(255,255,255,0.05)',
@@ -474,10 +487,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 color: canOpen && balance >= getCost && !isSpinning ? caseItem?.glowColor || '#ffffff' : 'rgba(255,255,255,0.3)',
               }}
             >
-              {caseItem?.price === 0 ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
+              {isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
                 <span className="flex items-center justify-center gap-2">
-                  ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {getCost}
-                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+                  ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {isDaily ? 1 : getCost}
+                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
                 </span>
               )}
             </motion.button>

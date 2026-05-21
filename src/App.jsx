@@ -66,6 +66,7 @@ export default function App() {
   const [tickets, setTickets] = useState(0);
   const [spent, setSpent] = useState(() => Number(localStorage.getItem('spent') || 0));
   const [donor, setDonor] = useState(() => Number(localStorage.getItem('donor') || 0));
+  const [promoOpened, setPromoOpened] = useState(false);
 
   const triggerHaptic = (type = 'light') => {
     const haptic = window.Telegram?.WebApp?.HapticFeedback;
@@ -88,6 +89,7 @@ export default function App() {
       setTickets(data?.tickets || 0);
       setDonor(data?.donor || 0);
       setSpent(data?.spent || 0);
+      setPromoOpened(!!data?.promo_opened);
       return data;
     } catch (error) {
       console.error('Sync balance error:', error);
@@ -329,7 +331,7 @@ export default function App() {
     if (loading) return <LoadingSpinner />;
 
     if (activeTab === 'cases') {
-      return <CasesGrid user={user} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} setSpent={setSpent} />;
+      return <CasesGrid user={user} onWin={handleSpinComplete} balance={balance} setBalance={setBalance} setSpent={setSpent} promoOpened={promoOpened} setPromoOpened={setPromoOpened} />;
     }
 
     if (activeTab === 'tasks') return renderTasks();
@@ -407,10 +409,6 @@ export default function App() {
                 <h1 className="truncate text-lg font-black uppercase leading-tight tracking-tight text-white">
                   {user?.first_name || 'Игрок'}
                 </h1>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-tighter text-white/40">Донор {formatValue(donor)}</span>
-                  <span className="text-[10px] font-bold uppercase tracking-tighter text-white/40">Слито {formatValue(spent)}</span>
-                </div>
               </div>
             </div>
 

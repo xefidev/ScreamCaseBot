@@ -83,7 +83,7 @@ def init_db():
         except: pass
         try: conn.execute("ALTER TABLE users ADD COLUMN referred_by INTEGER")
         except: pass
-        try: conn.execute("ALTER TABLE users ADD COLUMN total_spent INTEGER DEFAULT 0")
+        try: conn.execute("ALTER TABLE users ADD COLUMN promo_opened INTEGER DEFAULT 0")
         except: pass
         
         cur = conn.cursor()
@@ -106,6 +106,7 @@ def init_db():
 
 # --- CASE DATA (Server Side) ---
 CASES_DATA = {
+    1: {'min': 15, 'max': 500},   # Promo Case
     2: {'min': 0, 'max': 100},    # Daily Case
     3: {'min': 100, 'max': 667},  # Snoop Case
     4: {'min': 200, 'max': 599},  # Lover's Case
@@ -305,7 +306,8 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
 
 # --- ЦЕНЫ КЕЙСОВ ---
 CASES_PRICES = {
-    2: 0,   # Daily Case
+    1: 0,   # Promo Case (Free once)
+    2: 1,   # Daily Case (1 Star)
     3: 667, # Snoop Case
     4: 599, # Lover's Case
     5: 199, # Hobo Case
@@ -682,16 +684,17 @@ async def api_balance(request):
             return web.json_response({"error": "no_id"}, status=400)
         
         with sqlite3.connect('database.db') as conn:
-            res = conn.execute("SELECT stars, tickets, total_donated_stars, total_spent FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+            res = conn.execute("SELECT stars, tickets, total_donated_stars, total_spent, promo_opened FROM users WHERE user_id = ?", (int(uid),)).fetchone()
         
         if not res:
-            return web.json_response({"stars": 0, "tickets": 0, "donor": 0, "spent": 0})
+            return web.json_response({"stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
             
         return web.json_response({
             "stars": res[0], 
             "tickets": res[1],
             "donor": res[2],
-            "spent": res[3]
+            "spent": res[3],
+            "promo_opened": res[4]
         })
     except ValueError:
         return web.json_response({"error": "invalid_user_id"}, status=400)
@@ -810,13 +813,18 @@ async def api_open_case(request):
             return web.json_response({"error": "invalid_case"}, status=400)
         
         if case_id == 2: return await _handle_claim_daily(uid)
-        if case_id == 1: return web.json_response({"error": "invalid_case"}, status=400)
         
         with sqlite3.connect('database.db') as conn:
-            user = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+            user = conn.execute("SELECT stars, promo_opened FROM users WHERE user_id = ?", (int(uid),)).fetchone()
             if not user: return web.json_response({"error": "user_not_found"}, status=404)
             
-            balance = user[0]
+            balance, promo_opened = user
+            
+            if case_id == 1:
+                if promo_opened:
+                    return web.json_response({"error": "already_opened"}, status=403)
+                conn.execute("UPDATE users SET promo_opened = 1 WHERE user_id = ?", (uid,))
+
             if balance < price:
                 return web.json_response({"error": "insufficient_funds"}, status=403)
             
