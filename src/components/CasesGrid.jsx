@@ -5,20 +5,22 @@ import { getGiftsInRange } from '../giftData';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
 
 const CASES_DATA = [
-  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Promo', minPrice: 15, maxPrice: 500, stock: 100 },
-  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: 'Free', minPrice: 0, maxPrice: 100, stock: 50 },
-  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Random', minPrice: 100, maxPrice: 667, stock: 100 },
-  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Random', minPrice: 200, maxPrice: 599, stock: 80 },
-  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Any', minPrice: 0, maxPrice: 199, stock: 200 },
-  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Extreme', minPrice: 0, maxPrice: 50, stock: 150 },
-  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Hidden', minPrice: 0, maxPrice: 599, stock: 300 },
-  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'FN/MW', minPrice: 100, maxPrice: 444, stock: 120 },
-  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Gifts', minPrice: 50, maxPrice: 222, stock: 100 },
-  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'BS', minPrice: 100, maxPrice: 250, stock: 150 },
+  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 15, maxPrice: 500, stock: 100 },
+  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 0, maxPrice: 100, stock: 50 },
+  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 100, maxPrice: 667, stock: 100 },
+  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 200, maxPrice: 599, stock: 80 },
+  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Бюджет', minPrice: 0, maxPrice: 199, stock: 200 },
+  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Рискованный', minPrice: 0, maxPrice: 50, stock: 150 },
+  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Мистический', minPrice: 0, maxPrice: 599, stock: 300 },
+  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'Элитный', minPrice: 100, maxPrice: 444, stock: 120 },
+  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Подарки', minPrice: 50, maxPrice: 222, stock: 100 },
+  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'Яркий', minPrice: 100, maxPrice: 250, stock: 150 },
 ];
 
 const getRandomFlashDiscount = () => {
-  const discountCaseId = CASES_DATA[Math.floor(Math.random() * CASES_DATA.length)].id;
+  // Исключаем Promo Case (id 1) и Daily Case (id 2) из скидок
+  const discountableCases = CASES_DATA.filter(c => c.id !== 1 && c.id !== 2);
+  const discountCaseId = discountableCases[Math.floor(Math.random() * discountableCases.length)].id;
   return discountCaseId;
 };
 
@@ -72,6 +74,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
             alt={caseItem?.name || 'Case'}
             className={caseItem?.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
             onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+            loading="lazy"
             style={{
               filter: `drop-shadow(0 0 20px ${caseItem?.glowColor || '#ffffff'}80)`,
             }}

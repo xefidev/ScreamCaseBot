@@ -12,10 +12,10 @@ const PAGE_BG = '#22242a';
 const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
 
 const TABS = {
-  cases: 'Кейсы',
-  achievements: 'Достижения',
-  games: 'Игры',
-  profile: 'Профиль',
+  cases: { label: 'Кейсы', icon: '📦' },
+  achievements: { label: 'Достижения', icon: '🏆' },
+  games: { label: 'Игры', icon: '🎮' },
+  profile: { label: 'Профиль', icon: '👤' },
 };
 
 const TAB_COLORS = {
@@ -466,15 +466,16 @@ export default function App() {
         <div className="shrink-0 pb-safe">
           <div className="glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
           <div className="flex h-16 items-center justify-around">
-            {Object.entries(TABS).map(([key, label]) => (
+            {Object.entries(TABS).map(([key, tabData]) => (
               <button
                 key={key}
-                className="relative flex h-12 w-16 flex-col items-center justify-center transition-all"
+                className="relative flex h-12 w-16 flex-col items-center justify-center transition-all gap-0.5"
                 onClick={() => {
                   setActiveTab(key);
                   setActiveGame(null);
                   triggerHaptic();
                 }}
+                title={tabData.label}
               >
                 {activeTab === key && (
                   <motion.div
@@ -483,11 +484,18 @@ export default function App() {
                   />
                 )}
                 <span
-                  className={`z-10 text-[9px] font-black uppercase tracking-tighter ${
+                  className={`z-10 text-lg transition-all ${
+                    activeTab === key ? 'text-white scale-110' : 'text-white/40'
+                  }`}
+                >
+                  {tabData.icon}
+                </span>
+                <span
+                  className={`z-10 text-[7px] font-black uppercase tracking-tighter whitespace-nowrap transition-all ${
                     activeTab === key ? 'text-white' : 'text-white/30'
                   }`}
                 >
-                  {label}
+                  {tabData.label}
                 </span>
               </button>
             ))}
@@ -503,95 +511,147 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
             onClick={() => setShowTopUp(false)}
           >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-md rounded-t-3xl border-t border-white/20 p-8 pb-10"
+              className="glass-panel w-full max-w-sm mx-4 rounded-3xl border border-white/20 p-0 overflow-hidden"
               style={{ backgroundColor: PAGE_BG }}
             >
-              <h2 className="mb-8 text-center text-xl font-black uppercase tracking-widest text-white">
-                Пополнение
-              </h2>
-
-              <div className="space-y-4">
-                {/* Stars Section */}
-                <div className="glass-panel p-6 border-white/10">
-                  <div className="flex items-center gap-4 mb-4">
-                    <img
-                      src="/asset/Icons/TelegramStar.png"
-                      className="h-10 w-10"
-                      alt="stars"
-                      onError={(e) => {
-                        e.currentTarget.src = '/asset/Gifts/Case.webp';
-                      }}
-                    />
-                    <input
-                      type="number"
-                      value={starsAmount}
-                      onChange={(e) => setStarsAmount(e.target.value)}
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-right font-black text-yellow-400 placeholder-white/20"
-                      placeholder="100"
-                      min="1"
-                    />
-                  </div>
-                  <button
-                    onClick={handleStarsPayment}
-                    className="w-full py-4 rounded-xl bg-yellow-500 text-black font-black uppercase tracking-widest hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!user?.id}
-                  >
-                    Купить звезды
-                  </button>
-                </div>
-
-                {/* TON Section */}
-                <div className="glass-panel p-6 border-blue-500/20 bg-blue-500/5">
-                  <div className="flex items-center gap-4 mb-4">
-                    <img
-                      src="/asset/Icons/TonCoin.png"
-                      className="h-10 w-10"
-                      alt="ton"
-                      onError={(e) => {
-                        e.currentTarget.src = '/asset/Gifts/Case.webp';
-                      }}
-                    />
-                    <input
-                      type="number"
-                      value={tonAmount}
-                      onChange={(e) => setTonAmount(e.target.value)}
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-right font-black text-blue-400 placeholder-white/20"
-                      placeholder="0.1"
-                      step="0.1"
-                      min="0.1"
-                    />
-                  </div>
-                  <button
-                    onClick={handleTonPayment}
-                    className="w-full py-4 rounded-xl bg-blue-500 text-white font-black uppercase tracking-widest hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!user?.id}
-                  >
-                    Перевести TON
-                  </button>
-                </div>
-
-                {/* Info */}
-                <div className="p-4 rounded-2xl bg-white/5 border border-white/10 mt-4">
-                  <p className="text-white/40 text-[10px] text-center uppercase tracking-widest leading-relaxed">
-                    После пополнения средства зачислятся автоматически в течение 5-10 минут.
+              {/* Заголовок с красивым фоном */}
+              <div className="relative p-8 pb-6 bg-gradient-to-b from-white/5 to-transparent border-b border-white/10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl -mr-16 -mt-8 pointer-events-none" />
+                <div className="relative z-10">
+                  <h2 className="text-center text-2xl font-black uppercase tracking-widest text-white mb-2">
+                    Пополнить Баланс
+                  </h2>
+                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
+                    Выбери удобный способ платежа
                   </p>
                 </div>
               </div>
 
-              <button
-                onClick={() => setShowTopUp(false)}
-                className="mt-6 w-full py-2 text-[10px] font-black uppercase tracking-[0.4em] text-white/20 hover:text-white/40 transition-colors"
-              >
-                Закрыть
-              </button>
+              {/* Содержимое */}
+              <div className="p-6 space-y-4">
+                {/* Telegram Stars */}
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="glass-panel p-6 border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-transparent cursor-pointer hover:border-yellow-500/50 transition-all"
+                >
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="p-3 rounded-2xl bg-yellow-500/20">
+                      <img
+                        src="/asset/Icons/TelegramStar.png"
+                        className="h-8 w-8"
+                        alt="stars"
+                        onError={(e) => {
+                          e.currentTarget.src = '/asset/Gifts/Case.webp';
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Звёзды</h3>
+                      <p className="text-[9px] text-white/40 font-bold">Мгновенное пополнение</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <input
+                      type="number"
+                      value={starsAmount}
+                      onChange={(e) => setStarsAmount(e.target.value)}
+                      className="flex-1 bg-white/5 border border-yellow-500/20 rounded-xl p-3 text-right font-black text-yellow-400 placeholder-white/20 focus:outline-none focus:border-yellow-500/50"
+                      placeholder="100"
+                      min="1"
+                    />
+                    <span className="text-white/40 text-sm font-black">⭐</span>
+                  </div>
+                  <button
+                    onClick={handleStarsPayment}
+                    disabled={!user?.id}
+                    className="w-full py-3 rounded-xl bg-yellow-500 text-black font-black uppercase tracking-widest text-sm hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/20"
+                  >
+                    Купить за {starsAmount} ⭐
+                  </button>
+                  <p className="text-[8px] text-white/30 font-black uppercase text-center mt-2">Конвертируется по курсу 1:1</p>
+                </motion.div>
+
+                {/* TON */}
+                <motion.div
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="glass-panel p-6 border border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent cursor-pointer hover:border-blue-500/50 transition-all"
+                >
+                  <div className="flex items-start gap-4 mb-4">
+                    <div className="p-3 rounded-2xl bg-blue-500/20">
+                      <img
+                        src="/asset/Icons/TonCoin.png"
+                        className="h-8 w-8"
+                        alt="ton"
+                        onError={(e) => {
+                          e.currentTarget.src = '/asset/Gifts/Case.webp';
+                        }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Blockchain</h3>
+                      <p className="text-[9px] text-white/40 font-bold">100 ⭐ = 1 TON</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mb-4">
+                    <input
+                      type="number"
+                      value={tonAmount}
+                      onChange={(e) => setTonAmount(e.target.value)}
+                      className="flex-1 bg-white/5 border border-blue-500/20 rounded-xl p-3 text-right font-black text-blue-400 placeholder-white/20 focus:outline-none focus:border-blue-500/50"
+                      placeholder="0.1"
+                      step="0.1"
+                      min="0.1"
+                    />
+                    <span className="text-white/40 text-sm font-black">TON</span>
+                  </div>
+                  <button
+                    onClick={handleTonPayment}
+                    disabled={!user?.id}
+                    className="w-full py-3 rounded-xl bg-blue-500 text-white font-black uppercase tracking-widest text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
+                  >
+                    Отправить {(parseFloat(tonAmount) || 0.1) * 100} ⭐
+                  </button>
+                  <p className="text-[8px] text-white/30 font-black uppercase text-center mt-2">Безопасно через тон-кошелёк</p>
+                </motion.div>
+
+                {/* Информация */}
+                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10">
+                  <div className="space-y-2 text-[9px] text-white/50 font-bold uppercase tracking-wide">
+                    <div className="flex items-start gap-2">
+                      <span className="text-white/30 mt-0.5">✓</span>
+                      <span>Средства зачислятся мгновенно</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-white/30 mt-0.5">✓</span>
+                      <span>100% безопасно и зашифровано</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-white/30 mt-0.5">✓</span>
+                      <span>Без скрытых комиссий и платежей</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Кнопка закрытия */}
+              <div className="px-6 pb-6 pt-0">
+                <button
+                  onClick={() => setShowTopUp(false)}
+                  className="w-full py-3 rounded-xl border border-white/10 bg-white/5 text-white font-black uppercase tracking-widest text-[10px] hover:bg-white/10 transition-colors"
+                >
+                  Отмена
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

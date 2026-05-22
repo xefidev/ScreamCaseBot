@@ -33,10 +33,29 @@ export default function ProfilePage({
 
   const handleSell = (item) => {
     triggerHaptic();
-    if (!setInventory || !setBalance) return;
-    setInventory((prev) => prev.filter((currentItem) => currentItem.id !== item.id));
-    setBalance((prev) => prev + (Number(item.price || item.cost) || 0));
-    triggerHaptic('success');
+    if (!setInventory || !setBalance || !item?.id) return;
+    
+    // Проверяем, что item существует в инвентаре перед продажей
+    setInventory((prev) => {
+      const itemExists = prev.some(i => i.id === item.id);
+      if (!itemExists) {
+        console.warn('Item not found in inventory');
+        return prev;
+      }
+      const newInv = prev.filter((currentItem) => currentItem.id !== item.id);
+      // Убеждаемся, что элемент был удален
+      if (newInv.length === prev.length) {
+        console.warn('Failed to remove item from inventory');
+        return prev;
+      }
+      return newInv;
+    });
+    
+    const sellPrice = Number(item.price || item.cost) || 0;
+    if (sellPrice > 0) {
+      setBalance((prev) => prev + sellPrice);
+      triggerHaptic('success');
+    }
   };
 
   return (
@@ -73,7 +92,7 @@ export default function ProfilePage({
           <div className="grid grid-cols-2 gap-4">
             {inventory.map((item) => (
               <motion.div key={item.id} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-5 shadow-xl group">
-                <img src={getDynamicGiftImage(item)} alt="Gift" className="mb-4 h-24 w-24 object-contain transition-transform group-hover:scale-110" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                <img src={getDynamicGiftImage(item)} alt="Gift" className="mb-4 h-24 w-24 object-contain transition-transform group-hover:scale-110" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
                 <p className="mb-4 w-full truncate text-center text-[10px] font-black uppercase tracking-tight text-white/60">{item.name || 'Gift'}</p>
                 <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleSell(item)} className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-[9px] font-black uppercase tracking-widest text-red-400">Продать: {Number(item.price || item.cost) || 0}</motion.button>
               </motion.div>

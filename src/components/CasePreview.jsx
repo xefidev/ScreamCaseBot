@@ -170,6 +170,19 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     onClose();
   };
 
+  React.useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' || e.key === 'ArrowLeft') {
+        if (!isSpinning && !showResult) {
+          onClose();
+          triggerHaptic();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSpinning, showResult, onClose]);
+
   return (
     <div className="h-full flex flex-col bg-black">
       {showConfetti && (
@@ -229,14 +242,30 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
                 {hasSpun && wonItems?.length > 0 && showResult && (
                   <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="mt-4">
-                    <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-wider font-rounded">Вы выиграли!</p>
-                    <div className={`grid gap-4 ${wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                    <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-wider font-rounded">
+                      {wonItems?.length > 1 ? `Вы выиграли ${wonItems.length} предмета!` : 'Вы выиграли!'}
+                    </p>
+                    <div className={`grid gap-4 ${wonItems?.length > 2 ? 'grid-cols-2' : wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {wonItems?.map((wonItem, idx) => wonItem && (
-                        <motion.div key={idx} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.1 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
-                          <p className={`${wonItems?.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded`} style={{ color: caseItem?.glowColor || '#ffffff' }}>{wonItem?.name || 'Gift'}</p>
+                        <motion.div 
+                          key={idx} 
+                          initial={{ opacity: 0, y: 20, scale: 0.8 }} 
+                          animate={{ opacity: 1, y: 0, scale: 1 }} 
+                          transition={{ delay: idx * 0.15, duration: 0.4 }}
+                          className="text-center p-4 rounded-3xl relative overflow-hidden border" 
+                          style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
+                          <motion.img 
+                            src={getDynamicGiftImage(wonItem)} 
+                            alt="Gift" 
+                            className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} 
+                            onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                            animate={{ y: [0, -8, 0] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} 
+                          />
+                          <p className={`${wonItems?.length > 2 ? 'text-xs' : wonItems?.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
                           <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
-                            <span className="flex items-center gap-1 font-black font-rounded">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span>
+                            <span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span>
                           </div>
                         </motion.div>
                       ))}

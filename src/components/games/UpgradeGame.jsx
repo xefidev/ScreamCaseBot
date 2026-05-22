@@ -103,7 +103,11 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
     const res = pendingResult.current;
 
     if (res.success) {
-      playSound('/asset/Sounds/win_sound.mp3');
+      // Задержим звук на 0.5 сек после завершения спина
+      setTimeout(() => {
+        playSound('/asset/Sounds/win_sound.mp3');
+      }, 500);
+      
       const upgradedItem = {
         ...selectedSlot1,
         id: Date.now(),
@@ -122,7 +126,11 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
       setTimeout(() => setShowConfetti(false), 3000);
       triggerHaptic('success');
     } else {
-      playSound('/asset/Sounds/fail_sound.mp3');
+      // Задержим звук fail на 0.5 сек
+      setTimeout(() => {
+        playSound('/asset/Sounds/fail_sound.mp3');
+      }, 500);
+      
       setInventory(prev => prev.filter(i => i.id !== selectedSlot1.id));
       setResult('fail');
       
@@ -224,7 +232,17 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
 
             <AnimatePresence>
               {result && (
-                <motion.div initial={{ opacity: 0, scale: 0.8, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className={`text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f] ${ result === 'success' ? 'border-green-500/60 shadow-[0_0_80px_rgba(34,197,94,0.25)]' : 'border-red-500/60 shadow-[0_0_80px_rgba(239,68,68,0.25)]' }`}>
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.8, y: 20 }} 
+                  animate={{ 
+                    opacity: 1, 
+                    scale: 1, 
+                    y: 0,
+                    x: result === 'fail' ? [0, -10, 10, -10, 10, 0] : 0
+                  }}
+                  transition={result === 'fail' ? { duration: 0.5, times: [0, 0.1, 0.3, 0.5, 0.7, 1], ease: 'easeInOut' } : { duration: 0.3 }}
+                  exit={{ opacity: 0, scale: 0.8 }} 
+                  className={`text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f] ${ result === 'success' ? 'border-green-500/60 shadow-[0_0_80px_rgba(34,197,94,0.25)]' : 'border-red-500/60 shadow-[0_0_80px_rgba(239,68,68,0.25)]' }`}>
                   <div className={`absolute inset-0 ${result === 'success' ? 'bg-gradient-to-br from-green-500/5 to-transparent' : 'bg-gradient-to-br from-red-500/5 to-transparent'} pointer-events-none`} />
                   <p className={`font-black text-4xl mb-2 font-rounded uppercase tracking-tight ${ result === 'success' ? 'text-green-400 text-glow' : 'text-red-400 text-glow' }`}>{result === 'success' ? 'УСПЕХ!' : 'ПРОВАЛ!'}</p>
                   <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">{result === 'success' ? 'Предмет улучшен' : 'Предмет потерян'}</p>
