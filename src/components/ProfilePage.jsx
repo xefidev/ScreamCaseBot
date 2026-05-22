@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
 
-const PAGE_BG = '#22242a';
+const PAGE_BG = '#1a1b1e';
 
 const formatValue = (value) => {
   if (value === undefined || value === null) return '0';
@@ -18,6 +18,8 @@ export default function ProfilePage({
   setBalance
 }) {
   const [user, setUser] = React.useState(null);
+  const [sellingIds, setSellingIds] = useState(new Set());
+  const [isSellingAll, setIsSellingAll] = useState(false);
 
   React.useEffect(() => {
     const userData = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -32,23 +34,17 @@ export default function ProfilePage({
   };
 
   const handleSell = (item) => {
+    if (sellingIds.has(item.id)) return;
+    
     triggerHaptic();
     if (!setInventory || !setBalance || !item?.id) return;
     
-    // Проверяем, что item существует в инвентаре перед продажей
+    setSellingIds(prev => new Set(prev).add(item.id));
+    
     setInventory((prev) => {
       const itemExists = prev.some(i => i.id === item.id);
-      if (!itemExists) {
-        console.warn('Item not found in inventory');
-        return prev;
-      }
-      const newInv = prev.filter((currentItem) => currentItem.id !== item.id);
-      // Убеждаемся, что элемент был удален
-      if (newInv.length === prev.length) {
-        console.warn('Failed to remove item from inventory');
-        return prev;
-      }
-      return newInv;
+      if (!itemExists) return prev;
+      return prev.filter((currentItem) => currentItem.id !== item.id);
     });
     
     const sellPrice = Number(item.price || item.cost) || 0;
@@ -58,43 +54,74 @@ export default function ProfilePage({
     }
   };
 
+  const handleSellAll = () => {
+    if (inventory.length === 0 || isSellingAll) return;
+    
+    triggerHaptic('heavy');
+    setIsSellingAll(true);
+    
+    const totalValue = inventory.reduce((sum, item) => sum + (Number(item.price || item.cost) || 0), 0);
+    
+    setInventory([]);
+    setBalance(prev => prev + totalValue);
+    triggerHaptic('success');
+    
+    setTimeout(() => setIsSellingAll(false), 1000);
+  };
+
   return (
-    <div className="h-full overflow-y-auto p-6 pb-24" style={{ backgroundColor: PAGE_BG }}>
-      <div className="mb-8">
-        <h2 className="text-3xl font-black uppercase tracking-widest text-white text-glow">Профиль</h2>
+    <div className="h-full overflow-y-auto p-4 pb-24" style={{ backgroundColor: PAGE_BG }}>
+      <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-2xl font-black uppercase tracking-widest text-white">Профиль</h2>
+        {inventory.length > 0 && (
+          <button 
+            onClick={handleSellAll}
+            disabled={isSellingAll}
+            className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
+          >
+            {isSellingAll ? 'ПРОДАЖА...' : 'ПРОДАТЬ ВСЕ'}
+          </button>
+        )}
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="glass-panel relative mb-8 overflow-hidden p-8 bg-[#1a1b1f] border-white/10">
-        <div className="relative z-10 flex items-center gap-6">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-2xl">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="glass-panel relative mb-6 overflow-hidden p-6 bg-white/[0.02] border-white/10">
+        <div className="relative z-10 flex items-center gap-4">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-2xl">
             {user?.photo_url ? (
               <img src={user.photo_url} alt="Avatar" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} />
             ) : (
-              <span className="text-4xl font-black text-white/20">{user?.first_name?.charAt(0) || '?'}</span>
+              <span className="text-3xl font-black text-white/20">{user?.first_name?.charAt(0) || '?'}</span>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-3xl font-black uppercase leading-tight tracking-tight text-white">{user?.first_name || 'Игрок'}</h3>
+            <h3 className="truncate text-xl font-black uppercase leading-tight tracking-tight text-white">{user?.first_name || 'Игрок'}</h3>
             <div className="mt-2 flex items-center gap-1.5 px-3 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20 w-fit">
                <span className="text-sm font-black text-yellow-500">{formatValue(balance)}</span>
                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
             </div>
-            <p className="mt-2 text-[10px] text-white/20 font-black uppercase tracking-widest">ID: {user?.id || '0'}</p>
+            <p className="mt-2 text-[8px] text-white/20 font-black uppercase tracking-widest">ID: {user?.id || '0'}</p>
           </div>
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="glass-panel p-8 bg-[#1a1b1f] border-white/10">
-        <h4 className="mb-6 text-lg font-black uppercase tracking-widest text-white/40">Инвентарь ({inventory?.length || 0})</h4>
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="glass-panel p-6 bg-white/[0.02] border-white/10">
+        <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-white/40">Инвентарь ({inventory?.length || 0})</h4>
         {!inventory || inventory.length === 0 ? (
-          <div className="py-16 text-center border-2 border-dashed border-white/5 rounded-3xl"><p className="text-xs font-black uppercase tracking-[0.2em] text-white/10">Пусто</p></div>
+          <div className="py-12 text-center border border-dashed border-white/5 rounded-3xl"><p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/10">Пусто</p></div>
         ) : (
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             {inventory.map((item) => (
-              <motion.div key={item.id} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-5 shadow-xl group">
-                <img src={getDynamicGiftImage(item)} alt="Gift" className="mb-4 h-24 w-24 object-contain transition-transform group-hover:scale-110" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
-                <p className="mb-4 w-full truncate text-center text-[10px] font-black uppercase tracking-tight text-white/60">{item.name || 'Gift'}</p>
-                <motion.button whileTap={{ scale: 0.95 }} onClick={() => handleSell(item)} className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-[9px] font-black uppercase tracking-widest text-red-400">Продать: {Number(item.price || item.cost) || 0}</motion.button>
+              <motion.div key={item.id} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-4 shadow-xl group">
+                <img src={getDynamicGiftImage(item)} alt="Gift" className="mb-3 h-20 w-20 object-contain transition-transform group-hover:scale-110" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
+                <p className="mb-3 w-full truncate text-center text-[9px] font-black uppercase tracking-tight text-white/60">{item.name || 'Gift'}</p>
+                <motion.button 
+                  whileTap={{ scale: 0.95 }} 
+                  onClick={() => handleSell(item)} 
+                  disabled={sellingIds.has(item.id)}
+                  className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2 text-[8px] font-black uppercase tracking-widest text-red-400 disabled:opacity-50"
+                >
+                  {sellingIds.has(item.id) ? 'ПРОДАНО' : `Продать: ${Number(item.price || item.cost) || 0}`}
+                </motion.button>
               </motion.div>
             ))}
           </div>

@@ -11,6 +11,7 @@
   "dependencies": {
     "@tonconnect/ui-react": "^2.4.4",
     "framer-motion": "^10.16.16",
+    "lucide-react": "^1.16.0",
     "react": "^18.3.1",
     "react-confetti": "^6.4.0",
     "react-countup": "^6.5.3",

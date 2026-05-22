@@ -4,18 +4,9 @@ import Confetti from 'react-confetti';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
+import { playSound } from '../App';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
-
-const playSound = (path) => {
-  try {
-    const audio = new Audio(path);
-    audio.volume = 0.5;
-    audio.play().catch(e => console.warn("Audio play blocked", e));
-  } catch (e) {
-    console.error("Audio error", e);
-  }
-};
 
 export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null }) {
   const [isSpinning, setIsSpinning] = useState(false);
@@ -26,13 +17,15 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
   const [currentStock, setCurrentStock] = useState(caseItem?.stock || 0);
   const [quantity, setQuantity] = useState(1);
+  const [promoCode, setPromoCode] = useState('');
+  const [isCollecting, setIsCollecting] = useState(false);
   const animationKey = useRef(0);
 
   if (!caseItem) return null;
 
   const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
   const isPromo = caseItem?.name?.toLowerCase()?.includes('promo');
-  const canOpen = currentStock >= quantity && !(isPromo && promoOpened);
+  const canOpen = currentStock >= quantity && !(isPromo && promoOpened) && (!isPromo || promoCode.trim().length > 0);
 
   const getCost = useMemo(() => {
     if (isPromo) return 0;
@@ -74,6 +67,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
   const handleOpen = async () => {
     if (isSpinning || !canOpen || !user?.id) return;
+
+    if (isPromo && promoCode.toUpperCase() !== 'SCREAM') {
+      window?.Telegram?.WebApp?.showAlert?.("❌ Неверный промокод!");
+      return;
+    }
 
     const totalCost = getCost;
     if (balance < totalCost) {
@@ -165,6 +163,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   };
 
   const handleClaim = () => {
+    if (isCollecting) return;
+    setIsCollecting(true);
     triggerHaptic();
     setShowConfetti(false);
     onClose();
@@ -184,7 +184,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   }, [isSpinning, showResult, onClose]);
 
   return (
-    <div className="h-full flex flex-col bg-black">
+    <div className="h-full flex flex-col">
       {showConfetti && (
         <div className="fixed inset-0 z-60 pointer-events-none">
           <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={200} />
@@ -280,6 +280,18 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         <AnimatePresence>
           {!isSpinning && !hasSpun && (
             <motion.div initial={{ opacity: 1 }} exit={{ opacity: 0 }} className="mx-4 mb-6">
+              {isPromo && (
+                <div className="mb-6 glass-panel p-4 bg-white/5 border-white/10">
+                  <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Введите промокод</h3>
+                  <input 
+                    type="text" 
+                    value={promoCode}
+                    onChange={(e) => setPromoCode(e.target.value)}
+                    placeholder="SCREAM"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black uppercase tracking-widest focus:outline-none focus:border-white/30"
+                  />
+                </div>
+              )}
               <div className="mb-6">
                 <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
@@ -314,7 +326,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             )}
           </motion.button>
         ) : hasSpun && showResult ? (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleClaim} className="w-full py-4 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center">ЗАБРАТЬ</motion.button>
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleClaim} disabled={isCollecting} className="w-full py-4 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center disabled:opacity-50">ЗАБРАТЬ</motion.button>
         ) : (
           <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие...</div>
         )}

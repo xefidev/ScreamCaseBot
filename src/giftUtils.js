@@ -80,7 +80,7 @@ export function getGiftAsset(giftName) {
 /**
  * Get dynamic gift image from item object
  * Cleans name (removes prefixes like "100S_", replaces spaces with underscores)
- * Returns constructed path: /asset/Gifts/[cleanedName].webp
+ * Returns constructed path: /asset/Gifts/[price]S_[formattedName]_Original_[formattedName].webp
  */
 export function getDynamicGiftImage(item) {
   if (!item || (!item.name && item.price === undefined && item.cost === undefined)) {

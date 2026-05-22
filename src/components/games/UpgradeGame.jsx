@@ -5,15 +5,7 @@ import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 
-const playSound = (path) => {
-  try {
-    const audio = new Audio(path);
-    audio.volume = 0.5;
-    audio.play().catch(e => console.warn("Audio play blocked", e));
-  } catch (e) {
-    console.error("Audio error", e);
-  }
-};
+import { playSound } from '../../App';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
   const [selectedSlot1, setSelectedSlot1] = useState(null);

@@ -4,18 +4,10 @@ import { ALL_GIFTS } from '../../giftData';
 import { spinWheel } from '../../api';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 
+import { playSound } from '../../App';
+
 const SEGMENT_ANGLE = 360 / 12;
 const SPIN_COST = 50;
-
-const playSound = (path) => {
-  try {
-    const audio = new Audio(path);
-    audio.volume = 0.5;
-    audio.play().catch(e => console.warn("Audio play blocked", e));
-  } catch (e) {
-    console.error("Audio error", e);
-  }
-};
 
 export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBalance = null, setSpent = null }) {
   const [isSpinning, setIsSpinning] = useState(false);

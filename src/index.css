@@ -51,7 +51,7 @@ html, body, #root {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #000000;
+  background: #1a1b1e;
 }
 
 h1, h2, h3, h4, h5, h6, button, input, .font-rounded {
