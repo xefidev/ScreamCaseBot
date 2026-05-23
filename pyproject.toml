@@ -7,7 +7,7 @@ authors = ["Admin <admin@example.com>"]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 aiogram = "3.13.1"
-supabase = "2.4.0"
+supabase = "^2.11.0"
 pydantic-settings = "*"
 flet = ">=0.84.0"
 
