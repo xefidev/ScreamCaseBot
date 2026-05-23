@@ -1,6 +1,6 @@
 import logging
 import asyncio
-import sqlite3
+import os
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
@@ -10,12 +10,23 @@ import aiohttp_cors
 import hashlib
 import string
 import random
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 # --- НАСТРОЙКИ ---
-TOKEN = "8660260631:AAF9yETvvFVrIUUsP5twUZtPzik-0jaJUog"
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ADMIN_IDS = [7782281997, 5396975347]
-APP_URL = "https://scream-case-bot.vercel.app"
-CHANNEL_URL = "https://t.me/ScreamCase"
+APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
+CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
+
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logging.error("Supabase URL or Key is missing. Check your .env file.")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 HYPE_TEMPLATES = [
     "@{username}, 20 секунд назад пользователь id {fake_id} выиграл Astral Shard за 20К ⭐\n\n🔥 Испытай свою удачу, твои шансы на победу в платной рулетке увеличены на 34% (всего на час)!",
@@ -36,91 +47,121 @@ dp = Dispatcher()
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
-    with sqlite3.connect('database.db') as conn:
-        conn.execute('''CREATE TABLE IF NOT EXISTS users 
-                        (user_id INTEGER PRIMARY KEY, 
-                         stars INTEGER DEFAULT 0, 
-                         tickets INTEGER DEFAULT 0,
-                         referred_by INTEGER,
-                         join_date TEXT, 
-                         last_daily TEXT DEFAULT '1970-01-01 00:00:00',
-                         total_donated_stars INTEGER DEFAULT 0,
-                         total_donated_ton REAL DEFAULT 0.0,
-                         total_spent INTEGER DEFAULT 0,
-                         username TEXT,
-                         first_name TEXT,
-                         photo_url TEXT,
-                         promo_opened INTEGER DEFAULT 0,
-                         cases_opened_count INTEGER DEFAULT 0,
-                         successful_upgrades_count INTEGER DEFAULT 0)''')
+    try:
+        supabase.table("user").select("count", count="exact").limit(1).execute()
+        logger.info("✅ Supabase connection verified")
         
-        conn.execute('''CREATE TABLE IF NOT EXISTS payments 
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount INTEGER, date TEXT)''')
-        
-        conn.execute('''CREATE TABLE IF NOT EXISTS ton_transactions 
-                        (tx_id TEXT PRIMARY KEY, user_id INTEGER, amount REAL, date TEXT)''')
-        
-        conn.execute('''CREATE TABLE IF NOT EXISTS tasks 
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                         title TEXT, 
-                         reward INTEGER, 
-                         type TEXT, 
-                         url TEXT, 
-                         chat_id TEXT)''')
-        
-        conn.execute('''CREATE TABLE IF NOT EXISTS user_tasks 
-                        (user_id INTEGER, 
-                         task_id INTEGER, 
-                         status TEXT DEFAULT 'completed', 
-                         PRIMARY KEY (user_id, task_id))''')
-        
-        conn.execute('''CREATE TABLE IF NOT EXISTS user_achievements 
-                        (user_id INTEGER, 
-                         achievement_id TEXT, 
-                         progress INTEGER DEFAULT 0,
-                         is_claimed INTEGER DEFAULT 0,
-                         PRIMARY KEY (user_id, achievement_id))''')
-        
-        # Миграции
-        migrations = [
-            "ALTER TABLE users ADD COLUMN total_donated_stars INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN total_donated_ton REAL DEFAULT 0.0",
-            "ALTER TABLE users ADD COLUMN last_daily TEXT DEFAULT '1970-01-01 00:00:00'",
-            "ALTER TABLE users ADD COLUMN username TEXT",
-            "ALTER TABLE users ADD COLUMN first_name TEXT",
-            "ALTER TABLE users ADD COLUMN photo_url TEXT",
-            "ALTER TABLE users ADD COLUMN tickets INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN referred_by INTEGER",
-            "ALTER TABLE users ADD COLUMN promo_opened INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN cases_opened_count INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN successful_upgrades_count INTEGER DEFAULT 0",
-            "ALTER TABLE users ADD COLUMN total_spent INTEGER DEFAULT 0",
-        ]
-        
-        for migration in migrations:
-            try:
-                conn.execute(migration)
-            except:
-                pass
-
-        # Initialize tasks
-        cur = conn.cursor()
-        cur.execute("DELETE FROM user_tasks")
-        cur.execute("DELETE FROM tasks")
         referral_tasks = [
-            ("Пригласить 1 друга", 1, "referral_1", "", ""),
-            ("Пригласить 2 друзей", 2, "referral_2", "", ""),
-            ("Пригласить 3 друзей", 3, "referral_3", "", ""),
-            ("Пригласить 4 друзей", 4, "referral_4", "", ""),
-            ("Пригласить 5 друзей", 5, "referral_5", "", ""),
+            {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
+            {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
+            {"id": 3, "title": "Пригласить 3 друзей", "reward": 3, "type": "referral_3", "url": "", "chat_id": ""},
+            {"id": 4, "title": "Пригласить 4 друзей", "reward": 4, "type": "referral_4", "url": "", "chat_id": ""},
+            {"id": 5, "title": "Пригласить 5 друзей", "reward": 5, "type": "referral_5", "url": "", "chat_id": ""},
         ]
-        cur.executemany(
-            "INSERT INTO tasks (title, reward, type, url, chat_id) VALUES (?, ?, ?, ?, ?)",
-            referral_tasks
-        )
-        conn.commit()
+        supabase.table("tasks").upsert(referral_tasks).execute()
+        logger.info("✅ Base tasks initialized in Supabase")
+    except Exception as e:
+        logger.error(f"❌ Supabase initialization error: {e}")
 
-    print("✅ База данных полностью готова")
+def get_gifts_in_range(min_p, max_p):
+    return [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
+
+def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
+    try:
+        res = supabase.table("user").select("stars, join_date").eq("user_id", user_id).execute()
+        
+        if res.data:
+            update_user_profile(user_id, username, first_name, photo_url)
+            return (res.data[0]['stars'], res.data[0]['join_date']), False
+        
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        ref_id = None
+        if referred_by and str(referred_by).isdigit():
+            ref_id = int(referred_by)
+            if ref_id == user_id:
+                ref_id = None
+            else:
+                ref_check = supabase.table("user").select("user_id").eq("user_id", ref_id).execute()
+                if not ref_check.data:
+                    ref_id = None
+
+        user_data = {
+            "user_id": user_id,
+            "stars": 0,
+            "join_date": date,
+            "username": username,
+            "first_name": first_name,
+            "photo_url": photo_url,
+            "referred_by": ref_id,
+            "tickets": 0
+        }
+        supabase.table("user").insert(user_data).execute()
+        
+        if ref_id:
+            ref_user = supabase.table("user").select("tickets").eq("user_id", ref_id).execute()
+            if ref_user.data:
+                new_tickets = (ref_user.data[0].get('tickets') or 0) + 1
+                supabase.table("user").update({"tickets": new_tickets}).eq("user_id", ref_id).execute()
+            logger.info(f"User {user_id} joined via referral {ref_id}")
+            
+        return (0, date), True
+    except Exception as e:
+        logger.error(f"Error in register_or_get: {e}")
+        return (0, ""), False
+
+def update_user_profile(user_id, username=None, first_name=None, photo_url=None):
+    try:
+        updates = {}
+        if username: updates["username"] = username
+        if first_name: updates["first_name"] = first_name
+        if photo_url: updates["photo_url"] = photo_url
+        
+        if updates:
+            supabase.table("user").update(updates).eq("user_id", user_id).execute()
+    except Exception as e:
+        logger.error(f"Error in update_user_profile: {e}")
+
+def update_balance(user_id, amount, mode="add", is_donation=False):
+    try:
+        user_res = supabase.table("user").select("stars, total_donated_stars, referred_by").eq("user_id", user_id).execute()
+        if not user_res.data:
+            return
+        
+        current_stars = user_res.data[0]['stars']
+        current_donated = user_res.data[0].get('total_donated_stars') or 0
+        ref_id = user_res.data[0].get('referred_by')
+
+        if mode == "add":
+            new_stars = current_stars + amount
+            updates = {"stars": new_stars}
+            if is_donation:
+                updates["total_donated_stars"] = current_donated + amount
+                
+                if ref_id:
+                    reward = int(amount * 0.1)
+                    if reward > 0:
+                        ref_res = supabase.table("user").select("stars").eq("user_id", ref_id).execute()
+                        if ref_res.data:
+                            new_ref_stars = ref_res.data[0]['stars'] + reward
+                            supabase.table("user").update({"stars": new_ref_stars}).eq("user_id", ref_id).execute()
+                            supabase.table("payments").insert({
+                                "user_id": ref_id, 
+                                "amount": reward, 
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }).execute()
+                            logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
+            supabase.table("user").update(updates).eq("user_id", user_id).execute()
+        else:
+            supabase.table("user").update({"stars": amount}).eq("user_id", user_id).execute()
+        
+        supabase.table("payments").insert({
+            "user_id": user_id, 
+            "amount": amount if mode == "add" else amount - current_stars, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+    except Exception as e:
+        logger.error(f"Error in update_balance: {e}")
 
 # --- CASE DATA (Server Side) ---
 CASES_DATA = {
@@ -242,87 +283,6 @@ CASES_PRICES = {
     9: 222, # Pussy Case
     10: 250 # Skolnik Case
 }
-
-def get_gifts_in_range(min_p, max_p):
-    return [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
-
-def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
-    with sqlite3.connect('database.db') as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT stars, join_date FROM users WHERE user_id = ?", (user_id,))
-        res = cur.fetchone()
-        
-        if res:
-            update_user_profile(user_id, username, first_name, photo_url)
-            return res, False
-        
-        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        ref_id = None
-        if referred_by and str(referred_by).isdigit():
-            ref_id = int(referred_by)
-            if ref_id == user_id:
-                ref_id = None
-            else:
-                cur.execute("SELECT user_id FROM users WHERE user_id = ?", (ref_id,))
-                if not cur.fetchone():
-                    ref_id = None
-
-        cur.execute("""INSERT INTO users 
-                       (user_id, stars, join_date, username, first_name, photo_url, referred_by, tickets) 
-                       VALUES (?, 0, ?, ?, ?, ?, ?, 0)""", 
-                     (user_id, date, username, first_name, photo_url, ref_id))
-        
-        if ref_id:
-            cur.execute("UPDATE users SET tickets = tickets + 1 WHERE user_id = ?", (ref_id,))
-            logger.info(f"User {user_id} joined via referral {ref_id}")
-            
-        conn.commit()
-        return (0, date), True
-
-def update_user_profile(user_id, username=None, first_name=None, photo_url=None):
-    with sqlite3.connect('database.db') as conn:
-        updates = []
-        params = []
-        
-        if username:
-            updates.append("username = ?")
-            params.append(username)
-        if first_name:
-            updates.append("first_name = ?")
-            params.append(first_name)
-        if photo_url:
-            updates.append("photo_url = ?")
-            params.append(photo_url)
-        
-        if updates:
-            params.append(user_id)
-            query = f"UPDATE users SET {', '.join(updates)} WHERE user_id = ?"
-            conn.execute(query, tuple(params))
-            conn.commit()
-
-def update_balance(user_id, amount, mode="add", is_donation=False):
-    with sqlite3.connect('database.db') as conn:
-        if mode == "add":
-            conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (amount, user_id))
-            if is_donation:
-                conn.execute("UPDATE users SET total_donated_stars = total_donated_stars + ? WHERE user_id = ?", (amount, user_id))
-                
-                user_res = conn.execute("SELECT referred_by FROM users WHERE user_id = ?", (user_id,)).fetchone()
-                if user_res and user_res[0]:
-                    ref_id = user_res[0]
-                    reward = int(amount * 0.1)
-                    if reward > 0:
-                        conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (reward, ref_id))
-                        conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                                     (ref_id, reward, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-                        logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
-        else:
-            conn.execute("UPDATE users SET stars = ? WHERE user_id = ?", (amount, user_id))
-        
-        conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                     (user_id, amount, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-        conn.commit()
 
 # --- ОБРАБОТКА КОМАНД ---
 
@@ -454,23 +414,20 @@ async def admin_user_info(message: types.Message):
             return
         
         user_id = int(parts[1])
-        with sqlite3.connect('database.db') as conn:
-            user = conn.execute(
-                "SELECT user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets FROM users WHERE user_id = ?",
-                (user_id,)
-            ).fetchone()
+        res = supabase.table("user").select("user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("user_id", user_id).execute()
         
-        if not user:
+        if not res.data:
             await message.answer(f"❌ Пользователь `{user_id}` не найден.", parse_mode="Markdown")
             return
         
+        user = res.data[0]
         text = f"""👤 **Информация о пользователе**
-🆔 ID: `{user[0]}`
-⭐ Баланс: `{user[1]}`
-🎫 Билеты: `{user[5]}`
-📅 Дата присоединения: `{user[2]}`
-💎 Всего пожертвовано звёзд: `{user[3]}`
-💰 Всего пожертвовано TON: `{user[4]:.4f}`"""
+🆔 ID: `{user['user_id']}`
+⭐ Баланс: `{user['stars']}`
+🎫 Билеты: `{user['tickets']}`
+📅 Дата присоединения: `{user['join_date']}`
+💎 Всего пожертвовано звёзд: `{user.get('total_donated_stars', 0)}`
+💰 Всего пожертвовано TON: `{user.get('total_donated_ton', 0.0):.4f}`"""
         await message.answer(text, parse_mode="Markdown")
     except ValueError:
         await message.answer("❌ Некорректный ID пользователя.", parse_mode="Markdown")
@@ -485,15 +442,21 @@ async def admin_stats(message: types.Message):
             await message.answer("❌ Вы не администратор.")
             return
         
-        with sqlite3.connect('database.db') as conn:
-            total_users = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            total_stars = conn.execute("SELECT SUM(stars) FROM users").fetchone()[0] or 0
-            total_issued = conn.execute("SELECT SUM(amount) FROM payments WHERE amount > 0").fetchone()[0] or 0
-            total_donated = conn.execute("SELECT SUM(total_donated_stars) FROM users").fetchone()[0] or 0
-            total_ton = conn.execute("SELECT SUM(total_donated_ton) FROM users").fetchone()[0] or 0
+        users_count_res = supabase.table("user").select("count", count="exact").execute()
+        stars_sum_res = supabase.table("user").select("stars").execute()
+        total_stars = sum(u['stars'] for u in stars_sum_res.data)
+        
+        donated_stars_res = supabase.table("user").select("total_donated_stars").execute()
+        total_donated = sum(u.get('total_donated_stars', 0) for u in donated_stars_res.data)
+        
+        donated_ton_res = supabase.table("user").select("total_donated_ton").execute()
+        total_ton = sum(u.get('total_donated_ton', 0.0) for u in donated_ton_res.data)
+
+        payments_res = supabase.table("payments").select("amount").gt("amount", 0).execute()
+        total_issued = sum(p['amount'] for p in payments_res.data)
         
         text = f"""📊 **Глобальная статистика**
-👥 Всего пользователей: `{total_users}`
+👥 Всего пользователей: `{users_count_res.count}`
 ⭐ Звёзд в системе: `{total_stars}`
 🎁 Звёзд выдано: `{total_issued}`
 💎 Всего пожертвовано звёзд: `{total_donated}`
@@ -517,12 +480,13 @@ async def admin_send(message: types.Message, command: CommandObject):
 
         await message.answer("⏳ Рассылка запущена...")
         
-        with sqlite3.connect('database.db') as conn:
-            users = conn.execute('SELECT user_id FROM users').fetchall()
+        res = supabase.table("user").select("user_id").execute()
+        users = res.data
         
         sent = 0
         failed = 0
-        for (uid,) in users:
+        for u in users:
+            uid = u['user_id']
             try:
                 await bot.send_message(uid, text_to_send)
                 sent += 1
@@ -557,12 +521,13 @@ async def admin_hype(message: types.Message, command: CommandObject):
 
         template = HYPE_TEMPLATES[template_index]
         
-        with sqlite3.connect('database.db') as conn:
-            users = conn.execute('SELECT user_id, username, first_name FROM users').fetchall()
+        res = supabase.table("user").select("user_id, username, first_name").execute()
+        users = res.data
         
         sent = 0
         failed = 0
-        for (uid, username, first_name) in users:
+        for u in users:
+            uid, username, first_name = u['user_id'], u.get('username'), u.get('first_name')
             try:
                 clean_username = (username or first_name or "игрок").strip() or "игрок"
                 text = template.format(
@@ -607,18 +572,18 @@ async def api_balance(request):
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
         
-        with sqlite3.connect('database.db') as conn:
-            res = conn.execute("SELECT stars, tickets, total_donated_stars, total_spent, promo_opened FROM users WHERE user_id = ?", (int(uid),)).fetchone()
+        res = supabase.table("user").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", int(uid)).execute()
         
-        if not res:
+        if not res.data:
             return web.json_response({"stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
             
+        u = res.data[0]
         return web.json_response({
-            "stars": res[0], 
-            "tickets": res[1],
-            "donor": res[2],
-            "spent": res[3],
-            "promo_opened": res[4]
+            "stars": u['stars'], 
+            "tickets": u['tickets'],
+            "donor": u.get('total_donated_stars', 0),
+            "spent": u.get('total_spent', 0),
+            "promo_opened": u.get('promo_opened', 0)
         })
     except ValueError:
         return web.json_response({"error": "invalid_user_id"}, status=400)
@@ -633,20 +598,16 @@ async def api_referrals(request):
             return web.json_response({"error": "no_id"}, status=400)
         
         uid = int(uid)
-        with sqlite3.connect('database.db') as conn:
-            res = conn.execute(
-                "SELECT user_id, username, first_name, photo_url, total_donated_stars FROM users WHERE referred_by = ?",
-                (uid,)
-            ).fetchall()
+        res = supabase.table("user").select("user_id, username, first_name, photo_url, total_donated_stars").eq("referred_by", uid).execute()
         
         referrals = [
             {
-                "user_id": r[0],
-                "username": r[1],
-                "first_name": r[2],
-                "photo_url": r[3],
-                "donated": r[4]
-            } for r in res
+                "user_id": r['user_id'],
+                "username": r.get('username'),
+                "first_name": r.get('first_name'),
+                "photo_url": r.get('photo_url'),
+                "donated": r.get('total_donated_stars', 0)
+            } for r in res.data
         ]
         
         return web.json_response({
@@ -685,37 +646,46 @@ async def api_open_case(request):
         if price is None:
             return web.json_response({"error": "invalid_case"}, status=400)
         
-        with sqlite3.connect('database.db') as conn:
-            user = conn.execute("SELECT stars, promo_opened FROM users WHERE user_id = ?", (uid,)).fetchone()
-            if not user: return web.json_response({"error": "user_not_found"}, status=404)
-            
-            balance, promo_opened = user
-            
-            # Promo Case
-            if case_id == 1:
-                if promo_opened:
-                    return web.json_response({"error": "already_opened"}, status=403)
-                conn.execute("UPDATE users SET promo_opened = 1 WHERE user_id = ?", (uid,))
-                price = 0
+        user_res = supabase.table("user").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
+        if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        promo_opened = u.get('promo_opened', 0)
+        
+        # Promo Case
+        if case_id == 1:
+            if promo_opened:
+                return web.json_response({"error": "already_opened"}, status=403)
+            supabase.table("user").update({"promo_opened": 1}).eq("user_id", uid).execute()
+            price = 0
 
-            if balance < price:
-                return web.json_response({"error": "insufficient_funds"}, status=403)
-            
-            case_info = CASES_DATA.get(case_id)
-            if not case_info:
-                return web.json_response({"error": "case_data_missing"}, status=500)
-            
-            won_item = _get_random_gift(case_info['min'], case_info['max'])
+        if balance < price:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        case_info = CASES_DATA.get(case_id)
+        if not case_info:
+            return web.json_response({"error": "case_data_missing"}, status=500)
+        
+        won_item = _get_random_gift(case_info['min'], case_info['max'])
 
-            conn.execute("UPDATE users SET stars = stars - ?, total_spent = total_spent + ?, cases_opened_count = cases_opened_count + 1 WHERE user_id = ?", (price, price, uid))
-            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                         (uid, -price, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            
-            conn.commit()
-            
-            _increment_achievement_progress(uid, 'cases_opened')
-            
-            logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
+        new_spent = (u.get('total_spent') or 0) + price
+        new_count = (u.get('cases_opened_count') or 0) + 1
+        supabase.table("user").update({
+            "stars": balance - price, 
+            "total_spent": new_spent, 
+            "cases_opened_count": new_count
+        }).eq("user_id", uid).execute()
+
+        supabase.table("payments").insert({
+            "user_id": uid, 
+            "amount": -price, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        _increment_achievement_progress(uid, 'cases_opened')
+        
+        logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
         
         return web.json_response({
             "success": True, 
@@ -727,7 +697,7 @@ async def api_open_case(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 def _get_random_gift(min_p, max_p):
-    drop_items = get_gifts_in_range(min_p, max_p)
+    drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
     if not drop_items:
         drop_items = ALL_GIFTS[:10]
     
@@ -752,14 +722,16 @@ def _increment_achievement_progress(user_id, achievement_type):
     }
     
     a_ids = mapping.get(achievement_type, [])
-    with sqlite3.connect('database.db') as conn:
-        for aid in a_ids:
-            conn.execute("""
-                INSERT INTO user_achievements (user_id, achievement_id, progress) 
-                VALUES (?, ?, 1)
-                ON CONFLICT(user_id, achievement_id) DO UPDATE SET progress = progress + 1
-            """, (user_id, aid))
-        conn.commit()
+    for aid in a_ids:
+        try:
+            res = supabase.table("user_achievements").select("progress").eq("user_id", user_id).eq("achievement_id", aid).execute()
+            if res.data:
+                new_prog = (res.data[0]['progress'] or 0) + 1
+                supabase.table("user_achievements").update({"progress": new_prog}).eq("user_id", user_id).eq("achievement_id", aid).execute()
+            else:
+                supabase.table("user_achievements").insert({"user_id": user_id, "achievement_id": aid, "progress": 1}).execute()
+        except Exception as e:
+            logger.error(f"Error incrementing achievement {aid} for {user_id}: {e}")
 
 async def api_upgrade(request):
     try:
@@ -771,33 +743,37 @@ async def api_upgrade(request):
         
         if not uid: return web.json_response({"error": "no_id"}, status=400)
         
-        with sqlite3.connect('database.db') as conn:
-            user = conn.execute("SELECT stars FROM users WHERE user_id = ?", (int(uid),)).fetchone()
-            if not user: return web.json_response({"error": "user_not_found"}, status=404)
-            
-            balance = user[0]
-            if balance < cost:
-                return web.json_response({"error": "insufficient_funds"}, status=403)
-            
-            success = random.random() * 100 < chance
-            
-            consolation = None
-            if not success and item_price > 100:
-                consolation_item = _get_random_gift(0, 100)
-                consolation = {
-                    "type": "poor_case",
-                    "item": consolation_item
-                }
+        user_res = supabase.table("user").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
+        if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        if balance < cost:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        success = random.random() * 100 < chance
+        
+        consolation = None
+        if not success and item_price > 100:
+            consolation_item = _get_random_gift(0, 100)
+            consolation = {
+                "type": "poor_case",
+                "item": consolation_item
+            }
 
-            conn.execute("UPDATE users SET stars = stars - ?, total_spent = total_spent + ? WHERE user_id = ?", (cost, cost, int(uid)))
-            if success:
-                conn.execute("UPDATE users SET successful_upgrades_count = successful_upgrades_count + 1 WHERE user_id = ?", (int(uid),))
-                _increment_achievement_progress(int(uid), 'upgrades_successful')
+        new_spent = (u.get('total_spent') or 0) + cost
+        updates = {"stars": balance - cost, "total_spent": new_spent}
+        
+        if success:
+            updates["successful_upgrades_count"] = (u.get('successful_upgrades_count') or 0) + 1
+            _increment_achievement_progress(int(uid), 'upgrades_successful')
 
-            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                         (int(uid), -cost, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            
-            conn.commit()
+        supabase.table("user").update(updates).eq("user_id", int(uid)).execute()
+        supabase.table("payments").insert({
+            "user_id": int(uid), 
+            "amount": -cost, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
             
         return web.json_response({"success": success, "consolation": consolation})
     except Exception as e:
@@ -816,35 +792,36 @@ async def api_wheel_spin(request):
         
         SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
         
-        with sqlite3.connect('database.db') as conn:
-            user = conn.execute("SELECT stars FROM users WHERE user_id = ?", (uid,)).fetchone()
-            if not user:
-                return web.json_response({"error": "user_not_found"}, status=404)
-            
-            balance = user[0]
-            if balance < cost:
-                return web.json_response({"error": "insufficient_funds"}, status=403)
-            
-            rand = random.random() * 100
-            if rand < 0.8:
-                prize_index = 9
-            elif rand < 15:
-                prize_index = random.choice([3, 5, 7, 11])
-            else:
-                prize_index = random.choice([0, 1, 2, 4, 6, 8, 10])
-            
-            prize = SEGMENTS[prize_index]
-            
-            new_balance = balance - cost + prize
-            conn.execute("UPDATE users SET total_spent = total_spent + ? WHERE user_id = ?", (cost, uid))
-            conn.execute("UPDATE users SET stars = ? WHERE user_id = ?", (new_balance, uid))
-            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                         (uid, -cost, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                         (uid, prize, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            conn.commit()
-            
-            logger.info(f"User {uid} spun wheel: won {prize}")
+        user_res = supabase.table("user").select("stars, total_spent").eq("user_id", uid).execute()
+        if not user_res.data:
+            return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        if balance < cost:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        rand = random.random() * 100
+        if rand < 0.8:
+            prize_index = 9
+        elif rand < 15:
+            prize_index = random.choice([3, 5, 7, 11])
+        else:
+            prize_index = random.choice([0, 1, 2, 4, 6, 8, 10])
+        
+        prize = SEGMENTS[prize_index]
+        
+        new_balance = balance - cost + prize
+        new_spent = (u.get('total_spent') or 0) + cost
+        
+        supabase.table("user").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
+        
+        supabase.table("payments").insert([
+            {"user_id": uid, "amount": -cost, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+            {"user_id": uid, "amount": prize, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        ]).execute()
+        
+        logger.info(f"User {uid} spun wheel: won {prize}")
             
         return web.json_response({
             "success": True,
@@ -861,34 +838,29 @@ async def api_claim_daily_internal(uid):
         uid = int(uid)
         now = datetime.now()
         
-        with sqlite3.connect('database.db') as conn:
-            user = conn.execute("SELECT last_daily FROM users WHERE user_id = ?", (uid,)).fetchone()
-            
-            if not user:
-                return web.json_response({"error": "user_not_found"}, status=404)
-            
-            last_daily_str = user[0]
-            
-            if last_daily_str and last_daily_str != "1970-01-01 00:00:00":
-                try:
-                    last_daily = datetime.strptime(last_daily_str, "%Y-%m-%d %H:%M:%S")
-                    time_diff = (now - last_daily).total_seconds()
-                    
-                    if time_diff < 86400:
-                        wait_seconds = int(86400 - time_diff)
-                        logger.info(f"User {uid} attempted daily claim too soon. Wait: {wait_seconds}s")
-                        return web.json_response({
-                            "error": "daily_cooldown_active",
-                            "wait_seconds": wait_seconds
-                        }, status=403)
-                except ValueError:
-                    pass
-            
-            conn.execute("UPDATE users SET last_daily = ? WHERE user_id = ?", 
-                        (now.strftime("%Y-%m-%d %H:%M:%S"), uid))
-            conn.commit()
-            
-            logger.info(f"User {uid} claimed daily case")
+        user_res = supabase.table("user").select("last_daily").eq("user_id", uid).execute()
+        if not user_res.data:
+            return web.json_response({"error": "user_not_found"}, status=404)
+        
+        last_daily_str = user_res.data[0].get('last_daily')
+        
+        if last_daily_str and last_daily_str != "1970-01-01 00:00:00":
+            try:
+                last_daily = datetime.strptime(last_daily_str, "%Y-%m-%d %H:%M:%S")
+                time_diff = (now - last_daily).total_seconds()
+                
+                if time_diff < 86400:
+                    wait_seconds = int(86400 - time_diff)
+                    logger.info(f"User {uid} attempted daily claim too soon. Wait: {wait_seconds}s")
+                    return web.json_response({
+                        "error": "daily_cooldown_active",
+                        "wait_seconds": wait_seconds
+                    }, status=403)
+            except ValueError:
+                pass
+        
+        supabase.table("user").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("user_id", uid).execute()
+        logger.info(f"User {uid} claimed daily case")
         
         return web.json_response({"success": True})
     
@@ -927,30 +899,30 @@ async def api_ton_success(request):
         tx_hash_normalized = hashlib.sha256(str(tx_hash).encode()).hexdigest()
         stars_to_add = int(amount_ton * 100)
         
-        with sqlite3.connect('database.db') as conn:
-            existing = conn.execute(
-                "SELECT tx_id FROM ton_transactions WHERE tx_id = ?",
-                (tx_hash_normalized,)
-            ).fetchone()
+        existing = supabase.table("ton_transactions").select("tx_id").eq("tx_id", tx_hash_normalized).execute()
+        if existing.data:
+            logger.warning(f"Duplicate TON transaction detected: {tx_hash_normalized}")
+            return web.json_response({"error": "transaction_already_processed"}, status=400)
+        
+        supabase.table("ton_transactions").insert({
+            "tx_id": tx_hash_normalized, 
+            "user_id": uid, 
+            "amount": amount_ton, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        user_res = supabase.table("user").select("stars, total_donated_ton").eq("user_id", uid).execute()
+        if user_res.data:
+            u = user_res.data[0]
+            new_stars = u['stars'] + stars_to_add
+            new_donated_ton = (u.get('total_donated_ton') or 0.0) + amount_ton
+            supabase.table("user").update({"stars": new_stars, "total_donated_ton": new_donated_ton}).eq("user_id", uid).execute()
             
-            if existing:
-                logger.warning(f"Duplicate TON transaction detected: {tx_hash_normalized}")
-                return web.json_response({"error": "transaction_already_processed"}, status=400)
-            
-            conn.execute(
-                "INSERT INTO ton_transactions (tx_id, user_id, amount, date) VALUES (?, ?, ?, ?)",
-                (tx_hash_normalized, uid, amount_ton, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            )
-            
-            conn.execute(
-                "UPDATE users SET stars = stars + ?, total_donated_ton = total_donated_ton + ? WHERE user_id = ?",
-                (stars_to_add, amount_ton, uid)
-            )
-            conn.execute(
-                "INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)",
-                (uid, stars_to_add, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            )
-            conn.commit()
+            supabase.table("payments").insert({
+                "user_id": uid, 
+                "amount": stars_to_add, 
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
             
             logger.info(f"TON payment processed: User {uid}, {amount_ton} TON = {stars_to_add} stars")
         
@@ -1059,20 +1031,22 @@ async def api_get_achievements(request):
             {'id': 'ludoman', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
         ]
         
-        with sqlite3.connect('database.db') as conn:
-            for a in ACHIEVEMENTS:
-                conn.execute("INSERT OR IGNORE INTO user_achievements (user_id, achievement_id) VALUES (?, ?)", (uid, a['id']))
-            
-            res = conn.execute("SELECT achievement_id, progress, is_claimed FROM user_achievements WHERE user_id = ?", (uid,)).fetchall()
+        # Ensure achievements exist in user_achievements
+        for a in ACHIEVEMENTS:
+            try:
+                supabase.table("user_achievements").upsert({"user_id": uid, "achievement_id": a['id']}, on_conflict="user_id,achievement_id").execute()
+            except: pass
+        
+        res = supabase.table("user_achievements").select("achievement_id, progress, is_claimed").eq("user_id", uid).execute()
             
         data = []
-        for r in res:
-            aid, prog, claimed = r
+        for r in res.data:
+            aid, prog, claimed = r['achievement_id'], r['progress'], r['is_claimed']
             info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
             if info:
                 data.append({
                     **info,
-                    "progress": prog,
+                    "progress": prog or 0,
                     "is_claimed": bool(claimed)
                 })
         
@@ -1099,19 +1073,25 @@ async def api_claim_achievement(request):
         if not info: return web.json_response({"error": "achievement_not_found"}, status=404)
 
         uid = int(uid)
-        with sqlite3.connect('database.db') as conn:
-            res = conn.execute("SELECT progress, is_claimed FROM user_achievements WHERE user_id = ? AND achievement_id = ?", (uid, aid)).fetchone()
-            if not res: return web.json_response({"error": "not_found"}, status=404)
-            
-            prog, claimed = res
-            if claimed: return web.json_response({"error": "already_claimed"}, status=400)
-            if prog < info['goal']: return web.json_response({"error": "not_reached"}, status=400)
-            
-            conn.execute("UPDATE user_achievements SET is_claimed = 1 WHERE user_id = ? AND achievement_id = ?", (uid, aid))
-            conn.execute("UPDATE users SET stars = stars + ? WHERE user_id = ?", (info['reward'], uid))
-            conn.execute("INSERT INTO payments (user_id, amount, date) VALUES (?, ?, ?)", 
-                         (uid, info['reward'], datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-            conn.commit()
+        res = supabase.table("user_achievements").select("progress, is_claimed").eq("user_id", uid).eq("achievement_id", aid).execute()
+        if not res.data: return web.json_response({"error": "not_found"}, status=404)
+        
+        a_status = res.data[0]
+        prog, claimed = a_status['progress'], a_status['is_claimed']
+        if claimed: return web.json_response({"error": "already_claimed"}, status=400)
+        if prog < info['goal']: return web.json_response({"error": "not_reached"}, status=400)
+        
+        supabase.table("user_achievements").update({"is_claimed": 1}).eq("user_id", uid).eq("achievement_id", aid).execute()
+        
+        user_res = supabase.table("user").select("stars").eq("user_id", uid).execute()
+        if user_res.data:
+            new_stars = user_res.data[0]['stars'] + info['reward']
+            supabase.table("user").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("payments").insert({
+                "user_id": uid, 
+                "amount": info['reward'], 
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
             
         return web.json_response({"success": True, "reward": info['reward']})
     except Exception as e:

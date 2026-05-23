@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
     "@tonconnect/ui-react": "^2.4.4",
     "framer-motion": "^10.16.16",
     "lucide-react": "^1.16.0",

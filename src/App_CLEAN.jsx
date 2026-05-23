@@ -26,7 +26,7 @@ const TABS = {
 };
 
 const CHANNEL_LINK = 'https://t.me/ScreamCase';
-const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
+const TON_WALLET = import.meta.env.VITE_TON_WALLET;
 
 const TAB_COLORS = {
   cases: { bubble: 'rgba(255, 255, 255, 0.15)', icon: '#ffffff' },

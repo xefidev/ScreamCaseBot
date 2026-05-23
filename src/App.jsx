@@ -11,10 +11,10 @@ import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notif
 import { getDynamicGiftImage } from './giftUtils';
 
 const PAGE_BG = '#1a1b1e';
-const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
+const TON_WALLET = import.meta.env.VITE_TON_WALLET;
 
 // Список ID администраторов
-const ADMIN_IDS = [741604924, 12345678]; // Замените на реальные ID
+const ADMIN_IDS = (import.meta.env.VITE_ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
 // Глобальный контроллер звука
 let globalAudio = null;
@@ -151,6 +151,10 @@ export default function App() {
     }
     const amount = customAmount || starsAmount;
     try {
+      console.log('Creating invoice for user:', user.id, 'amount:', amount);
+      if (!window.Telegram?.WebApp) {
+          console.warn('Telegram WebApp is undefined');
+      }
       const { link } = await createInvoice(user.id, amount);
       window?.Telegram?.WebApp?.openTelegramLink?.(link);
       setShowTopUp(false);
