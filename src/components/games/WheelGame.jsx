@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ALL_GIFTS } from '../../giftData';
 import { spinWheel } from '../../api';
@@ -12,21 +12,57 @@ const SPIN_COST = 50;
 export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBalance = null, setSpent = null }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [winSegment, setWinSegment] = useState(null);
-  const [wheelSegments] = useState(() => {
-    const SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150];
-    const colors = ['#ff0000', '#00ff00', '#0099ff', '#ff00ff', '#ffaa00', '#888888', '#00ffff', '#ff00aa', '#a855f7', '#22c55e', '#f97316', '#3b82f6'];
-    return SEGMENTS.map((val, idx) => {
-        const gift = ALL_GIFTS.find(g => (g.price || g.cost) === val) || ALL_GIFTS[0];
-        return { id: idx + 1, label: val.toString(), color: colors[idx % colors.length], item: gift, price: val };
-    });
-  });
+  
+  const wheelSegments = useMemo(() => {
+    // Выбираем 12 уникальных подарков из разных ценовых категорий
+    const selectedItems = [
+      ALL_GIFTS.find(g => g.name === 'Rosae') || ALL_GIFTS[0],
+      ALL_GIFTS.find(g => g.name === 'Flowers') || ALL_GIFTS[5],
+      ALL_GIFTS.find(g => g.name === 'Xmas Stockings') || ALL_GIFTS[7],
+      ALL_GIFTS.find(g => g.name === 'Jester Hats') || ALL_GIFTS[11],
+      ALL_GIFTS.find(g => g.name === 'Magic Potions') || ALL_GIFTS[17],
+      ALL_GIFTS.find(g => g.name === 'Ice Creams') || ALL_GIFTS[25],
+      ALL_GIFTS.find(g => g.name === 'Scared Cats') || ALL_GIFTS[30],
+      ALL_GIFTS.find(g => g.name === 'Victory Medals') || ALL_GIFTS[33],
+      ALL_GIFTS.find(g => g.name === 'Voodoo Dolls') || ALL_GIFTS[36],
+      ALL_GIFTS.find(g => g.name === 'Diamond Rings') || ALL_GIFTS[55],
+      ALL_GIFTS.find(g => g.name === 'Mini Oscars') || ALL_GIFTS[76],
+      ALL_GIFTS.find(g => g.name === 'Low Riders') || ALL_GIFTS[88],
+    ];
+
+    const colors = [
+      '#ff4444', '#44ff44', '#4444ff', '#ffff44', 
+      '#ff44ff', '#44ffff', '#ff8844', '#8844ff', 
+      '#44ff88', '#ffbc00', '#00d2ff', '#9d50bb'
+    ];
+
+    return selectedItems.map((item, idx) => ({
+      id: idx + 1,
+      label: item.price.toString(),
+      color: colors[idx],
+      item: item,
+      price: item.price
+    }));
+  }, []);
+
   const [spinRotation, setSpinRotation] = useState(0);
   const [targetRotation, setTargetRotation] = useState(0);
   const [animKey, setAnimKey] = useState(0);
   const pendingWinSegment = useRef(null);
 
   const handleSpin = async () => {
-    if (isSpinning || balance < SPIN_COST) return;
+    if (isSpinning) return;
+    
+    if (balance < SPIN_COST) {
+      window?.Telegram?.WebApp?.showConfirm?.(
+        `Недостаточно звёзд! Стоимость вращения: ${SPIN_COST} ⭐. Пополнить баланс?`,
+        (ok) => {
+          if (ok) window?.Telegram?.WebApp?.showAlert?.("Перейдите в профиль для пополнения!");
+        }
+      );
+      return;
+    }
+
     const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
     if (!userId) return;
 
@@ -34,7 +70,6 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
         setIsSpinning(true);
         setWinSegment(null);
         
-        // Gambling sound start
         playSound('/asset/Sounds/go-new-gambling.mp3');
 
         const res = await spinWheel(userId);
@@ -63,7 +98,6 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
   };
 
   const handleAnimationComplete = () => {
-    // Задержим звук победы на 0.5 сек после завершения спина
     setTimeout(() => {
       playSound('/asset/Sounds/win_sound.mp3');
     }, 500);
@@ -98,35 +132,110 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
   };
 
   const content = (
-    <div className={`${isPage ? 'min-h-full overflow-y-auto p-4 pb-24' : ''}`}>
-      <div className={`${!isPage ? 'glass-panel p-6 w-full max-w-lg mx-auto' : ''}`}>
-        {!isPage && onClose && ( <div className="flex justify-between items-center mb-6"><h2 className="text-2xl font-black text-white font-rounded uppercase tracking-widest">Колесо Фортуны</h2><button onClick={onClose} className="text-white/50 hover:text-white text-xl font-rounded">✕</button></div> )}
-        {isPage && ( <div className="mb-6 text-center"><h2 className="text-3xl font-black text-white font-rounded uppercase tracking-widest text-glow">Колесо Фортуны</h2><div className="mt-2 inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10"><span className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">Стоимость: {SPIN_COST}</span><img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div></div> )}
+    <div className={`${isPage ? 'h-full overflow-y-auto p-4 pb-24' : ''} bg-[#1a1b1e]`}>
+      <div className={`${!isPage ? 'glass-panel p-8 w-full max-w-lg mx-auto relative' : ''}`}>
+        {!isPage && onClose && ( 
+          <button 
+            onClick={onClose} 
+            className="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white/50 hover:text-white transition-all z-50"
+          >
+            ✕
+          </button> 
+        )}
+        
+        <div className="mb-8 text-center pt-4">
+          <h2 className="text-3xl font-black text-white font-rounded uppercase tracking-tight text-glow">Колесо Фортуны</h2>
+          <div className="mt-3 inline-flex items-center gap-3 px-5 py-2 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
+            <span className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">Стоимость: {SPIN_COST}</span>
+            <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+          </div>
+        </div>
 
         <div className="relative w-80 h-80 mx-auto mb-10">
-          <div className="absolute inset-[-15px] rounded-full animate-pulse-slow" style={{ background: 'radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%)' }} />
-          <div className="absolute top-[-25px] left-1/2 transform -translate-x-1/2 z-40"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="filter drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]"><path d="M12 24L2 4H22L12 24Z" fill="white" /><path d="M12 20L5 6H19L12 20Z" fill="rgba(255,255,255,0.8)" /></svg></div>
-          <div className="w-full h-full rounded-full overflow-hidden relative shadow-[0_0_50px_rgba(0,0,0,0.8)]" style={{ background: '#15161a', border: '6px solid rgba(255,255,255,0.08)' }}>
-             <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 to-transparent pointer-events-none z-10" />
+          <div className="absolute inset-[-20px] rounded-full animate-pulse-slow opacity-50" style={{ background: 'radial-gradient(circle, rgba(168, 85, 247, 0.2) 0%, transparent 70%)' }} />
+          <div className="absolute top-[-25px] left-1/2 transform -translate-x-1/2 z-40 filter drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 24L2 4H22L12 24Z" fill="white" />
+              <path d="M12 20L5 6H19L12 20Z" fill="rgba(255,255,255,0.8)" />
+            </svg>
+          </div>
+          <div className="w-full h-full rounded-full overflow-hidden relative shadow-[0_0_60px_rgba(0,0,0,0.6)]" style={{ background: '#15161a', border: '8px solid rgba(255,255,255,0.05)' }}>
+            <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/10 via-transparent to-white/5 pointer-events-none z-10" />
             <motion.div key={animKey} animate={{ rotate: targetRotation }} transition={{ duration: 5, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete} style={{ transformOrigin: 'center center' }} className="w-full h-full">
-              <svg viewBox="0 0 400 400" className="w-full h-full"><defs><radialGradient id="wheelGrad"><stop offset="0%" stopColor="rgba(255,255,255,0.05)" /><stop offset="100%" stopColor="rgba(0,0,0,0.4)" /></radialGradient></defs><circle cx="200" cy="200" r="198" fill="url(#wheelGrad)" />{generateWheelSVG()}<circle cx="200" cy="200" r="40" fill="#15161a" stroke="rgba(255,255,255,0.15)" strokeWidth="4" /><circle cx="200" cy="200" r="35" fill="rgba(168, 85, 247, 0.1)" /><image href="/asset/Icons/TelegramStar.png" x="180" y="180" width="40" height="40" preserveAspectRatio="xMidYMid meet" className="filter drop-shadow-[0_0_10px_rgba(168, 85, 247, 0.5)]" /></svg>
+              <svg viewBox="0 0 400 400" className="w-full h-full">
+                <defs>
+                  <radialGradient id="wheelGrad">
+                    <stop offset="0%" stopColor="rgba(255,255,255,0.05)" />
+                    <stop offset="100%" stopColor="rgba(0,0,0,0.4)" />
+                  </radialGradient>
+                </defs>
+                <circle cx="200" cy="200" r="198" fill="url(#wheelGrad)" />
+                {generateWheelSVG()}
+                <circle cx="200" cy="200" r="45" fill="#15161a" stroke="rgba(255,255,255,0.1)" strokeWidth="4" />
+                <circle cx="200" cy="200" r="38" fill="rgba(168, 85, 247, 0.1)" />
+                <image href="/asset/Icons/TelegramStar.png" x="178" y="178" width="44" height="44" className="filter drop-shadow-[0_0_15px_rgba(168,85,247,0.6)]" />
+              </svg>
             </motion.div>
           </div>
         </div>
 
-        <motion.button whileHover={{ scale: 1.02, brightness: 1.1 }} whileTap={{ scale: 0.98 }} onClick={handleSpin} disabled={isSpinning || balance < SPIN_COST} className="w-full py-5 rounded-2xl font-black text-xl disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-wider shadow-2xl overflow-hidden relative group" style={{ backgroundColor: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.03)' : 'rgba(168, 85, 247, 0.25)', border: `2px solid ${(isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.08)' : 'rgba(168, 85, 247, 0.45)'}`, color: (isSpinning || balance < SPIN_COST) ? 'rgba(255,255,255,0.15)' : '#c084fc' }}>
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            {isSpinning ? ( <div className="flex items-center justify-center gap-3 font-rounded"><motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 border-3 border-purple-400/30 border-t-purple-400 rounded-full" />Крутим...</div> ) : ( <span className="flex items-center justify-center gap-2 font-rounded">ИСПЫТАТЬ УДАЧУ ({SPIN_COST} <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />)</span> )}
-        </motion.button>
+        <div className="px-4">
+          <motion.button 
+            whileHover={{ scale: 1.02 }} 
+            whileTap={{ scale: 0.98 }} 
+            onClick={handleSpin} 
+            disabled={isSpinning} 
+            className="w-full py-5 rounded-3xl font-black text-xl transition-all flex items-center justify-center gap-3 uppercase tracking-widest shadow-2xl overflow-hidden relative group" 
+            style={{ 
+              backgroundColor: isSpinning ? 'rgba(255,255,255,0.03)' : 'rgba(168, 85, 247, 0.2)', 
+              border: `2px solid ${isSpinning ? 'rgba(255,255,255,0.1)' : 'rgba(168, 85, 247, 0.4)'}`, 
+              color: isSpinning ? 'rgba(255,255,255,0.2)' : '#c084fc' 
+            }}
+          >
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+              {isSpinning ? ( 
+                <div className="flex items-center justify-center gap-3 font-rounded">
+                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 border-3 border-purple-400/30 border-t-purple-400 rounded-full" />
+                  Крутим...
+                </div> 
+              ) : ( 
+                <span className="flex items-center justify-center gap-2 font-rounded">
+                  ИСПЫТАТЬ УДАЧУ
+                </span> 
+              )}
+          </motion.button>
+        </div>
 
         <AnimatePresence>
           {winSegment && (
-            <motion.div initial={{ opacity: 0, scale: 0.8, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className="mt-8 text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f]" style={{ borderColor: `${winSegment.color}50`, boxShadow: `0 0 50px ${winSegment.color}20` }}>
-              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] to-transparent pointer-events-none" />
-              <p className="text-white/40 text-[10px] mb-4 uppercase font-black tracking-[0.3em] font-rounded">Поздравляем!</p>
-              <div className="relative mb-6"><div className="absolute inset-0 bg-white/10 blur-3xl rounded-full scale-75 opacity-50" /><motion.div animate={{ y: [0, -10, 0], rotate: [0, 5, -5, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}><img src={getDynamicGiftImage(winSegment.item)} alt={winSegment.label} className="h-36 w-32 object-contain mx-auto relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${winSegment.color}90)` }} /></motion.div></div>
-              <p className="text-white font-black text-5xl mb-2 flex items-center justify-center gap-3 font-rounded" style={{ color: winSegment.color, textShadow: `0 0 30px ${winSegment.color}60` }}>{winSegment.label} <img src="/asset/Icons/TelegramStar.png" className="h-10 w-10" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></p>
-              <p className="text-white/40 text-[10px] uppercase font-bold tracking-widest mt-3">Выигрыш зачислен на баланс</p>
+            <motion.div initial={{ opacity: 0, scale: 0.8, y: 30 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className="mt-8 text-center p-8 rounded-[2rem] border-2 relative overflow-hidden bg-[#1a1b1f] shadow-[0_20px_50px_rgba(0,0,0,0.5)]" style={{ borderColor: `${winSegment.color}40` }}>
+              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.03] to-transparent pointer-events-none" />
+              <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full blur-[80px] opacity-20" style={{ backgroundColor: winSegment.color }} />
+              
+              <p className="text-white/40 text-[10px] mb-6 uppercase font-black tracking-[0.4em] font-rounded">Поздравляем!</p>
+              
+              <div className="relative mb-8">
+                <div className="absolute inset-0 blur-3xl rounded-full scale-75 opacity-30" style={{ backgroundColor: winSegment.color }} />
+                <motion.div 
+                  animate={{ y: [0, -12, 0], rotate: [0, 5, -5, 0] }} 
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <img 
+                    src={getDynamicGiftImage(winSegment.item)} 
+                    alt={winSegment.item.name} 
+                    className="h-44 w-44 object-contain mx-auto relative z-10" 
+                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+                    style={{ filter: `drop-shadow(0 0 40px ${winSegment.color}80)` }} 
+                  />
+                </motion.div>
+              </div>
+
+              <h3 className="text-white font-black text-3xl mb-1 font-rounded uppercase tracking-tighter" style={{ color: winSegment.color }}>
+                {winSegment.item.name}
+              </h3>
+              <p className="text-white/30 text-[10px] uppercase font-bold tracking-[0.2em] mb-4">Стоимость: {winSegment.price} ⭐</p>
+              <div className="w-full h-px bg-white/5 mb-4" />
+              <p className="text-white/40 text-[9px] uppercase font-black tracking-widest">Выигрыш добавлен в ваш инвентарь</p>
             </motion.div>
           )}
         </AnimatePresence>

@@ -18,7 +18,6 @@ const CASES_DATA = [
 ];
 
 const getRandomFlashDiscount = () => {
-  // Исключаем Promo Case (id 1) и Daily Case (id 2) из скидок
   const discountableCases = CASES_DATA.filter(c => c.id !== 1 && c.id !== 2);
   const discountCaseId = discountableCases[Math.floor(Math.random() * discountableCases.length)].id;
   return discountCaseId;
@@ -30,18 +29,6 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
       window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
     }
   };
-
-  const dropItems = useMemo(() =>
-    getGiftsInRange(caseItem?.minPrice || 0, caseItem?.maxPrice || 0),
-    [caseItem?.minPrice, caseItem?.maxPrice]
-  );
-
-  const previewGift = useMemo(() => {
-    if (!dropItems || dropItems.length === 0) return null;
-    if (dropItems.length === 1) return dropItems[0];
-    const shuffled = [...dropItems].sort(() => Math.random() - 0.5);
-    return shuffled.slice(0, 2);
-  }, [dropItems]);
 
   const discountedPrice = useMemo(() => {
     if (!isFlashDiscount) return caseItem?.price || 0;
@@ -73,91 +60,26 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
             src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'}
             alt={caseItem?.name || 'Case'}
             className={caseItem?.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
-            onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
             loading="lazy"
             style={{
               filter: `drop-shadow(0 0 20px ${caseItem?.glowColor || '#ffffff'}80)`,
             }}
           />
-
-          {previewGift && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              {Array.isArray(previewGift) ? (
-                previewGift.map((gift, idx) => (
-                  <motion.div
-                    key={`${gift?.price || idx}-${idx}`}
-                    animate={{
-                      y: [0, -12, 0],
-                      rotate: [0, 4, -4, 0],
-                      scale: [1.05, 1.1, 1.05],
-                    }}
-                    transition={{
-                      duration: 3 + idx * 0.4,
-                      repeat: Infinity,
-                      ease: "easeInOut",
-                      delay: idx * 0.6,
-                    }}
-                    className="absolute"
-                    style={{
-                      left: idx === 0 ? 'calc(50% - 2.5rem)' : 'calc(50% + 2.5rem)',
-                      top: 'calc(50% - 3rem)',
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                  >
-                    <img
-                      src={getDynamicGiftImage(gift)}
-                      alt={gift?.name || 'Gift'}
-                      className="w-10 h-10 sm:w-12 sm:h-12 object-contain"
-                      loading="lazy"
-                      onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
-                      style={{
-                        filter: `drop-shadow(0 0 8px ${caseItem?.glowColor || '#ffffff'}70)`,
-                      }}
-                    />
-                  </motion.div>
-                ))
-              ) : (
-                <motion.div
-                  animate={{
-                    y: [0, -12, 0],
-                    rotate: [0, 3, -3, 0],
-                    scale: [1, 1.08, 1],
-                  }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute"
-                  style={{
-                    left: '50%',
-                    top: 'calc(50% - 3rem)',
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <img
-                    src={getDynamicGiftImage(previewGift)}
-                    alt={previewGift?.name || 'Gift'}
-                    className="w-12 h-12 sm:w-14 sm:h-14 object-contain"
-                    loading="lazy"
-                    onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
-                    style={{
-                      filter: `drop-shadow(0 0 10px ${caseItem?.glowColor || '#ffffff'}70)`,
-                    }}
-                  />
-                </motion.div>
-              )}
-            </div>
-          )}
         </div>
 
         <div className="flex items-center justify-between gap-2 relative z-10">
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-bold text-xs truncate">{caseItem?.name || 'Case'}</h3>
-            <p className="text-white/40 text-[9px] uppercase font-black">Stock: {caseItem?.stock || 0}</p>
+            <p className="text-white/40 text-[9px] uppercase font-black">В наличии: {caseItem?.stock || 0}</p>
           </div>
-          <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-white/10 border border-white/20 whitespace-nowrap">
-            {caseItem?.badge || 'N/A'}
-          </span>
-          {isFlashDiscount && (
+          {isFlashDiscount ? (
             <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-red-500/20 border border-red-500/40 text-red-400 whitespace-nowrap font-rounded animate-pulse">
               🔥 -15%
+            </span>
+          ) : (
+            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-white/10 border border-white/20 whitespace-nowrap text-white/60">
+                {caseItem?.badge || 'N/A'}
             </span>
           )}
         </div>
@@ -172,16 +94,16 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
           }}
           className="w-full py-3 rounded-2xl border border-white/20 bg-white/10 text-white font-black text-sm transition-all hover:border-white/30 flex items-center justify-center gap-2 font-rounded"
         >
-          {caseItem?.price === 0 ? 'ОТКРЫТЬ' : (
-            <span className="flex items-center justify-center gap-2">
+          {caseItem?.price === 0 ? 'БЕСПЛАТНО' : (
+            <div className="flex items-center justify-center gap-2">
               {isFlashDiscount && (caseItem?.price || 0) > 1 && (
-                <span className="line-through text-white/40 text-xs">ОТКРЫТЬ ЗА {caseItem?.price}</span>
+                <span className="line-through text-white/40 text-xs">{caseItem?.price}</span>
               )}
-              <span className={isFlashDiscount ? 'text-red-400' : ''}>
-                {isFlashDiscount && (caseItem?.price || 0) > 1 ? 'ОТКРЫТЬ ЗА ' : 'ОТКРЫТЬ ЗА '}{isFlashDiscount && (caseItem?.price || 0) > 1 ? discountedPrice : (caseItem?.price || 0)}
+              <span className={`flex items-center gap-1 ${isFlashDiscount ? 'text-red-400' : 'text-white'}`}>
+                {isFlashDiscount && (caseItem?.price || 0) > 1 ? discountedPrice : (caseItem?.price || 0)}
+                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
               </span>
-              <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
-            </span>
+            </div>
           )}
         </motion.button>
       </div>
@@ -226,7 +148,7 @@ export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, set
             exit={{ opacity: 0, x: -100 }}
             className="h-full overflow-y-auto"
           >
-            <div className="grid grid-cols-2 gap-3 p-4">
+            <div className="grid grid-cols-2 gap-3 p-4 pb-24">
               {sortedCases.map((caseItem, index) => (
                 <motion.div
                   key={caseItem.id}

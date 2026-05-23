@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import CountUp from 'react-countup';
 import { useTonConnectUI } from '@tonconnect/ui-react';
-import { Briefcase, Trophy, Gamepad2, User } from 'lucide-react';
+import { Briefcase, Trophy, Gamepad2, User, Zap, ChevronLeft } from 'lucide-react';
 import CasesGrid from './components/CasesGrid';
 import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
@@ -308,17 +308,17 @@ export default function App() {
         if (activeGame === 'wheel') {
           return (
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
               className="h-full overflow-y-auto" 
               style={{ backgroundColor: PAGE_BG }}
             >
-              <div className="p-4">
+              <div className="px-6 py-4">
                 <button
                   onClick={() => setActiveGame(null)}
-                  className="glass-button p-2 text-white/70 rounded-lg hover:bg-white/10"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
                 >
-                  Назад
+                  <ChevronLeft size={24} strokeWidth={2.5} />
                 </button>
               </div>
               <WheelGame
@@ -333,17 +333,17 @@ export default function App() {
         if (activeGame === 'upgrade') {
           return (
             <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
               className="h-full overflow-y-auto" 
               style={{ backgroundColor: PAGE_BG }}
             >
-              <div className="p-4">
+              <div className="px-6 py-4">
                 <button
                   onClick={() => setActiveGame(null)}
-                  className="glass-button p-2 text-white/70 rounded-lg hover:bg-white/10"
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
                 >
-                  Назад
+                  <ChevronLeft size={24} strokeWidth={2.5} />
                 </button>
               </div>
               <UpgradeGame
@@ -365,20 +365,25 @@ export default function App() {
                   triggerHaptic();
                   setActiveGame('wheel');
                 }}
-                className="relative h-40 overflow-hidden rounded-3xl border border-purple-500/30 text-left bg-gradient-to-br from-purple-600/10 to-black/20 shadow-[0_0_30px_rgba(168,85,247,0.15)] hover:shadow-[0_0_50px_rgba(168,85,247,0.3)] transition-shadow duration-500"
+                className="relative h-44 overflow-hidden rounded-[2.5rem] border border-purple-500/30 text-left bg-gradient-to-br from-purple-600/10 to-black/40 shadow-[0_0_40px_rgba(168,85,247,0.1)] hover:shadow-[0_0_60px_rgba(168,85,247,0.2)] transition-all duration-500 group"
               >
-                <div className="absolute right-2 top-2 h-24 w-24 flex items-center justify-center opacity-40">
-                  <Gamepad2 size={64} className="text-purple-400" />
+                <div className="absolute right-[-10%] top-[-10%] h-40 w-40 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
+                  <Gamepad2 size={120} className="text-purple-400 rotate-12" />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-purple-500/5 to-transparent pointer-events-none" />
-                <div className="relative z-10 flex h-full flex-col justify-between p-6">
+                <div className="absolute inset-0 bg-gradient-to-t from-purple-500/10 via-transparent to-transparent pointer-events-none" />
+                <div className="relative z-10 flex h-full flex-col justify-between p-8">
                   <div>
-                    <h3 className="font-rounded text-xl font-black uppercase">Колесо Фортуны</h3>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-purple-400">
-                      Выигрыш до 500 звезд
+                    <h3 className="font-rounded text-2xl font-black uppercase tracking-tighter">Колесо Фортуны</h3>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-purple-400/80">
+                      ВЫИГРЫВАЙ УНИКАЛЬНЫЕ ПОДАРКИ
                     </p>
                   </div>
-                  <span className="text-xs font-black uppercase text-white/60">Играть →</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase text-white/60 group-hover:text-white transition-colors">Играть</span>
+                    <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center group-hover:bg-purple-500 transition-colors">
+                      <ChevronLeft size={14} className="rotate-180" />
+                    </div>
+                  </div>
                 </div>
               </button>
 
@@ -387,20 +392,25 @@ export default function App() {
                   triggerHaptic();
                   setActiveGame('upgrade');
                 }}
-                className="relative h-40 overflow-hidden rounded-3xl border border-green-500/30 text-left bg-gradient-to-br from-green-600/10 to-black/20 shadow-[0_0_30px_rgba(34,197,94,0.15)] hover:shadow-[0_0_50px_rgba(34,197,94,0.3)] transition-shadow duration-500"
+                className="relative h-44 overflow-hidden rounded-[2.5rem] border border-green-500/30 text-left bg-gradient-to-br from-green-600/10 to-black/40 shadow-[0_0_40px_rgba(34,197,94,0.1)] hover:shadow-[0_0_60px_rgba(34,197,94,0.2)] transition-all duration-500 group"
               >
-                <div className="absolute right-2 top-2 h-24 w-24 flex items-center justify-center opacity-40">
-                  <Briefcase size={64} className="text-green-400" />
+                <div className="absolute right-[-10%] top-[-10%] h-40 w-40 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
+                  <Zap size={120} className="text-green-400 -rotate-12" />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-green-500/5 to-transparent pointer-events-none" />
-                <div className="relative z-10 flex h-full flex-col justify-between p-6">
+                <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 via-transparent to-transparent pointer-events-none" />
+                <div className="relative z-10 flex h-full flex-col justify-between p-8">
                   <div>
-                    <h3 className="font-rounded text-xl font-black uppercase">Апгрейд</h3>
-                    <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-green-400">
-                      Улучшай свои предметы
+                    <h3 className="font-rounded text-2xl font-black uppercase tracking-tighter">Апгрейд</h3>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.2em] text-green-400/80">
+                      УЛУЧШАЙ СВОИ ПРЕДМЕТЫ
                     </p>
                   </div>
-                  <span className="text-xs font-black uppercase text-white/60">Играть →</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase text-white/60 group-hover:text-white transition-colors">Играть</span>
+                    <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center group-hover:bg-green-500 transition-colors">
+                      <ChevronLeft size={14} className="rotate-180" />
+                    </div>
+                  </div>
                 </div>
               </button>
             </div>
@@ -425,10 +435,11 @@ export default function App() {
     <div className="h-screen w-full overflow-hidden flex justify-center items-center bg-[#1a1b1e] text-white font-rounded select-none">
       <div className="relative z-10 flex flex-col h-screen w-full max-w-md bg-[#1a1b1e] overflow-hidden">
         <div className="shrink-0">
-          <div className="glass-panel border-b border-white/10 px-6 py-4" style={{ backgroundColor: PAGE_BG }}>
-          <div className="flex items-center justify-between">
+          <div className="px-6 py-4 flex items-center justify-between bg-[#1a1b1e]/80 backdrop-blur-lg border-b border-white/5">
+          <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5">
+              <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 relative">
+                <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent pointer-events-none" />
                 {user?.photo_url ? (
                   <img
                     src={user?.photo_url}
@@ -439,32 +450,39 @@ export default function App() {
                     }}
                   />
                 ) : (
-                  <span className="font-bold text-white/30">{user?.first_name?.charAt(0) || 'U'}</span>
+                  <span className="font-black text-white/20 text-xl">{user?.first_name?.charAt(0) || 'U'}</span>
                 )}
               </div>
-              <h1 className="text-lg font-black uppercase text-white truncate max-w-[120px]">
-                {user?.first_name || 'Игрок'}
-              </h1>
+              <div>
+                <h1 className="text-lg font-black uppercase tracking-tighter text-white truncate max-w-[120px]">
+                  {user?.first_name || 'Игрок'}
+                </h1>
+                <p className="text-[10px] text-white/30 font-black uppercase tracking-widest">Premium User</p>
+              </div>
             </div>
             <button
               onClick={() => {
                 setShowTopUp(true);
                 triggerHaptic();
               }}
-              className="glass-button flex items-center gap-2 border-yellow-500/30 bg-yellow-500/5 px-4 py-2 rounded-lg hover:bg-yellow-500/10 transition-colors"
+              className="flex items-center gap-3 bg-white/5 border border-white/10 pl-4 pr-3 py-2 rounded-2xl hover:bg-white/10 transition-all group"
             >
-              <img
-                src="/asset/Icons/TelegramStar.png"
-                alt="star"
-                className="h-6 w-6"
-                onError={(e) => {
-                  e.currentTarget.src = '/asset/Gifts/Case.webp';
-                }}
-              />
-              <span className="text-lg font-black text-yellow-400">
-                <CountUp end={balance} duration={0.5} />
-              </span>
-              <span className="text-xs font-bold text-yellow-400/50">+</span>
+              <div className="flex flex-col items-end">
+                <span className="text-lg font-black text-yellow-500 leading-none">
+                  <CountUp end={balance} duration={0.5} />
+                </span>
+                <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">Звёзд</span>
+              </div>
+              <div className="w-8 h-8 rounded-xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <img
+                  src="/asset/Icons/TelegramStar.png"
+                  alt="star"
+                  className="h-6 w-6"
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_GIFT_IMAGE;
+                  }}
+                />
+              </div>
             </button>
           </div>
           </div>
@@ -475,37 +493,27 @@ export default function App() {
         </div>
 
         <div className="shrink-0 pb-safe">
-          <div className="glass-panel border-t border-white/10 px-4 py-2" style={{ backgroundColor: PAGE_BG }}>
-          <div className="flex h-16 items-center justify-around">
+          <div className="px-6 py-4 bg-[#1a1b1e]/90 backdrop-blur-xl border-t border-white/5">
+          <div className="flex h-14 items-center justify-around gap-2">
             {Object.entries(TABS).map(([key, tabData]) => {
               const Icon = tabData.icon;
+              const isActive = activeTab === key;
               return (
                 <button
                   key={key}
-                  className="relative flex h-12 w-16 flex-col items-center justify-center transition-all gap-0.5"
+                  className="relative flex-1 flex flex-col items-center justify-center transition-all py-2 gap-1"
                   onClick={() => {
                     setActiveTab(key);
                     setActiveGame(null);
                     triggerHaptic();
                   }}
-                  title={tabData.label}
                 >
-                  {activeTab === key && (
-                    <motion.div
-                      layoutId="pill"
-                      className="absolute inset-[-4px] rounded-2xl border border-white/10 bg-white/5"
-                    />
-                  )}
+                  <div className={`w-12 h-8 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-white/10 text-white' : 'text-white/20 hover:text-white/40'}`}>
+                    <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                  </div>
                   <span
-                    className={`z-10 transition-all ${
-                      activeTab === key ? 'text-white scale-110' : 'text-white/40'
-                    }`}
-                  >
-                    <Icon size={20} />
-                  </span>
-                  <span
-                    className={`z-10 text-[7px] font-black uppercase tracking-tighter whitespace-nowrap transition-all ${
-                      activeTab === key ? 'text-white' : 'text-white/30'
+                    className={`text-[8px] font-black uppercase tracking-widest transition-all ${
+                      isActive ? 'text-white' : 'text-white/20'
                     }`}
                   >
                     {tabData.label}
@@ -524,140 +532,91 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
             onClick={() => setShowTopUp(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.9, y: 40, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.9, y: 40, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel w-full max-w-sm mx-4 rounded-3xl border border-white/20 p-0 overflow-hidden"
-              style={{ backgroundColor: PAGE_BG }}
+              className="w-full max-w-sm rounded-[2.5rem] border border-white/10 bg-[#1a1b1f] overflow-hidden shadow-2xl shadow-black/50"
             >
-              <div className="relative p-8 pb-6 bg-gradient-to-b from-white/5 to-transparent border-b border-white/10">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/10 rounded-full blur-2xl -mr-16 -mt-8 pointer-events-none" />
-                <div className="relative z-10">
-                  <h2 className="text-center text-2xl font-black uppercase tracking-widest text-white mb-2">
-                    Пополнить Баланс
-                  </h2>
-                  <p className="text-center text-[10px] font-black uppercase tracking-[0.2em] text-white/40">
-                    Выбери удобный способ платежа
-                  </p>
-                </div>
+              <div className="relative p-8 text-center border-b border-white/5">
+                <button 
+                  onClick={() => setShowTopUp(false)}
+                  className="absolute top-6 right-6 text-white/20 hover:text-white transition-colors"
+                >
+                  ✕
+                </button>
+                <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-1">
+                  Пополнение
+                </h2>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">
+                  Выберите способ оплаты
+                </p>
               </div>
 
-              <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="glass-panel p-6 border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-transparent cursor-pointer hover:border-yellow-500/50 transition-all"
-                >
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="p-3 rounded-2xl bg-yellow-500/20">
-                      <img
-                        src="/asset/Icons/TelegramStar.png"
-                        className="h-8 w-8"
-                        alt="stars"
-                        onError={(e) => {
-                          e.currentTarget.src = '/asset/Gifts/Case.webp';
-                        }}
-                      />
+              <div className="p-6 space-y-4">
+                <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-yellow-500/30 transition-all group">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="stars" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Звёзды</h3>
-                      <p className="text-[9px] text-white/40 font-bold">Мгновенное пополнение</p>
+                    <div>
+                      <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Stars</h3>
+                      <p className="text-[9px] text-white/30 font-black uppercase">Мгновенно</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="relative mb-4">
                     <input
                       type="number"
                       value={starsAmount}
                       onChange={(e) => setStarsAmount(e.target.value)}
-                      className="w-full box-border bg-white/5 border border-yellow-500/20 rounded-xl p-3 text-right font-black text-yellow-400 placeholder-white/20 focus:outline-none focus:border-yellow-500/50"
-                      placeholder="100"
-                      min="1"
+                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-yellow-500 focus:outline-none focus:border-yellow-500/50 transition-all"
                     />
-                    <span className="text-white/40 text-sm font-black">⭐</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">⭐</span>
                   </div>
                   <button
                     onClick={handleStarsPayment}
-                    disabled={!user?.id}
-                    className="w-full py-3 rounded-xl bg-yellow-500 text-black font-black uppercase tracking-widest text-sm hover:bg-yellow-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-yellow-500/20"
+                    className="w-full py-4 rounded-2xl bg-yellow-500 text-black font-black uppercase tracking-widest text-xs hover:bg-yellow-600 transition-all active:scale-95 shadow-lg shadow-yellow-500/10"
                   >
-                    Купить за {starsAmount} ⭐
+                    ОПЛАТИТЬ {starsAmount} ⭐
                   </button>
-                  <p className="text-[8px] text-white/30 font-black uppercase text-center mt-2">Конвертируется по курсу 1:1</p>
-                </motion.div>
+                </div>
 
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="glass-panel p-6 border border-blue-500/30 bg-gradient-to-br from-blue-500/10 to-transparent cursor-pointer hover:border-blue-500/50 transition-all"
-                >
-                  <div className="flex items-start gap-4 mb-4">
-                    <div className="p-3 rounded-2xl bg-blue-500/20">
-                      <img
-                        src="/asset/Icons/TonCoin.png"
-                        className="h-8 w-8"
-                        alt="ton"
-                        onError={(e) => {
-                          e.currentTarget.src = '/asset/Gifts/Case.webp';
-                        }}
-                      />
+                <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-blue-500/30 transition-all group">
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                      <img src="/asset/Icons/TonCoin.png" className="h-8 w-8" alt="ton" />
                     </div>
-                    <div className="flex-1">
-                      <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Blockchain</h3>
-                      <p className="text-[9px] text-white/40 font-bold">100 ⭐ = 1 TON</p>
+                    <div>
+                      <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Coin</h3>
+                      <p className="text-[9px] text-white/30 font-black uppercase">1 TON = 100 ⭐</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="relative mb-2">
                     <input
                       type="number"
                       value={tonAmount}
                       onChange={(e) => setTonAmount(e.target.value)}
-                      className="w-full box-border bg-white/5 border border-blue-500/20 rounded-xl p-3 text-right font-black text-blue-400 placeholder-white/20 focus:outline-none focus:border-blue-500/50"
-                      placeholder="0.1"
+                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-blue-400 focus:outline-none focus:border-blue-400/50 transition-all"
                       step="0.1"
-                      min="0.1"
                     />
-                    <span className="text-white/40 text-sm font-black">TON</span>
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">TON</span>
+                  </div>
+                  <div className="text-center mb-4">
+                     <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                       Вы получите: <span className="text-white">{(parseFloat(tonAmount) || 0) * 100}</span> ⭐
+                     </p>
                   </div>
                   <button
                     onClick={handleTonPayment}
-                    disabled={!user?.id}
-                    className="w-full py-3 rounded-xl bg-blue-500 text-white font-black uppercase tracking-widest text-sm hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-blue-500/20"
+                    className="w-full py-4 rounded-2xl bg-blue-500 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-blue-500/10"
                   >
-                    Отправить {(parseFloat(tonAmount) || 0.1) * 100} ⭐
+                    ОПЛАТИТЬ {tonAmount} TON
                   </button>
-                  <p className="text-[8px] text-white/30 font-black uppercase text-center mt-2">Безопасно через тон-кошелёк</p>
-                </motion.div>
-
-                <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10">
-                  <div className="space-y-2 text-[9px] text-white/50 font-bold uppercase tracking-wide">
-                    <div className="flex items-start gap-2">
-                      <span className="text-white/30 mt-0.5">✓</span>
-                      <span>Средства зачислятся мгновенно</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-white/30 mt-0.5">✓</span>
-                      <span>100% безопасно и зашифровано</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <span className="text-white/30 mt-0.5">✓</span>
-                      <span>Без скрытых комиссий и платежей</span>
-                    </div>
-                  </div>
                 </div>
-              </div>
-
-              <div className="px-6 pb-6 pt-0">
-                <button
-                  onClick={() => setShowTopUp(false)}
-                  className="w-full py-3 rounded-xl border border-white/10 bg-white/5 text-white font-black uppercase tracking-widest text-[10px] hover:bg-white/10 transition-colors"
-                >
-                  Отмена
-                </button>
               </div>
             </motion.div>
           </motion.div>

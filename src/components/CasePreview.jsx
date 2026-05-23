@@ -66,7 +66,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   };
 
   const handleOpen = async () => {
-    if (isSpinning || !canOpen || !user?.id) return;
+    if (isSpinning || !user?.id) return;
 
     if (isPromo && promoCode.toUpperCase() !== 'SCREAM') {
       window?.Telegram?.WebApp?.showAlert?.("❌ Неверный промокод!");
@@ -75,16 +75,27 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
     const totalCost = getCost;
     if (balance < totalCost) {
-      if (window.Telegram?.WebApp) {
-        window.Telegram.WebApp.showAlert("❌ Недостаточно средств!");
-      }
+      window?.Telegram?.WebApp?.showConfirm?.(
+        `Недостаточно звёзд! У вас ${balance} ⭐, нужно ${totalCost} ⭐. Пополнить баланс?`,
+        (ok) => {
+          if (ok) {
+            // В App.jsx мы добавим логику открытия модалки пополнения, 
+            // но пока просто уведомление или вызов функции если бы она была пропсом
+            window?.Telegram?.WebApp?.showAlert?.("Перейдите в профиль для пополнения!");
+          }
+        }
+      );
       return;
+    }
+
+    if (!canOpen) {
+       window?.Telegram?.WebApp?.showAlert?.("❌ Кейс временно недоступен");
+       return;
     }
 
     setIsSpinning(true);
     setWonItems([]);
     
-    // Play Gambling Sound
     playSound('/asset/Sounds/go-new-gambling.mp3');
 
     try {
@@ -152,7 +163,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       setShowConfetti(true);
       setShowResult(true);
       
-      // Major Win Sound for good drops or just any success
       playSound('/asset/Sounds/win_sound.mp3');
 
       if (onWin && wonItems?.length > 0) {
@@ -184,21 +194,29 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   }, [isSpinning, showResult, onClose]);
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-[#1a1b1e]">
       {showConfetti && (
         <div className="fixed inset-0 z-60 pointer-events-none">
           <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={200} />
         </div>
       )}
 
-      <div className="relative z-10 flex-1 overflow-y-auto">
-        <div className="glass-panel border-b border-white/10 px-6 py-4 flex items-center justify-between sticky top-0 z-20">
-          <button onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} className="text-white/50 hover:text-white text-xl">←</button>
+      <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar">
+        <div className="px-6 py-4 flex items-center justify-between sticky top-0 z-20 bg-[#1a1b1e]/80 backdrop-blur-lg">
+          <button 
+            onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} 
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
           <div className="flex flex-col items-center">
-            <h2 className="text-white font-bold text-lg leading-tight">{caseItem?.name || 'Case'}</h2>
-            <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">Available: {currentStock}</p>
+            <h2 className="text-white font-black text-xl uppercase tracking-tighter">{caseItem?.name || 'Case'}</h2>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">В наличии: {currentStock}</p>
+            </div>
           </div>
-          <div className="w-8" />
+          <div className="w-10" />
         </div>
 
         <div className="relative h-64 mx-4 mb-4">
@@ -213,14 +231,20 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/GiftBox.webp' : '/asset/Case/CaseBlack.png'} alt="Case" className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+            <img 
+              src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'} 
+              alt="Case" 
+              className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} 
+              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+              style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} 
+            />
           </div>
         </div>
 
         <AnimatePresence>
           {(isSpinning || hasSpun) && (
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-6">
-              <div className="glass-panel p-4">
+              <div className="glass-panel p-4 border-white/10 bg-white/[0.02]">
                 <div className="relative mb-4">
                   <div className="absolute left-1/2 top-0 transform -translate-x-1/2 z-30"><div className="w-0 h-0 border-l-4 border-r-4 border-t-8 border-l-transparent border-r-transparent border-t-white" /></div>
                   <div className="absolute left-1/2 top-2 transform -translate-x-1/2 w-0.5 h-40 bg-white/30 z-20 pointer-events-none" />
@@ -242,8 +266,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
                 {hasSpun && wonItems?.length > 0 && showResult && (
                   <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="mt-4">
-                    <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-wider font-rounded">
-                      {wonItems?.length > 1 ? `Вы выиграли ${wonItems.length} предмета!` : 'Вы выиграли!'}
+                    <p className="text-white/50 text-xs text-center mb-4 uppercase tracking-widest font-black">
+                      {wonItems?.length > 1 ? `ПОЗДРАВЛЯЕМ! +${wonItems.length} ПРЕДМЕТОВ` : 'ПОЗДРАВЛЯЕМ! ВЫ ВЫИГРАЛИ!'}
                     </p>
                     <div className={`grid gap-4 ${wonItems?.length > 2 ? 'grid-cols-2' : wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {wonItems?.map((wonItem, idx) => wonItem && (
@@ -263,7 +287,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                             style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} 
                           />
-                          <p className={`${wonItems?.length > 2 ? 'text-xs' : wonItems?.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
+                          <p className={`${wonItems?.length > 2 ? 'text-[10px]' : wonItems?.length > 1 ? 'text-xs' : 'text-xl'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
                           <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
                             <span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
                           </div>
@@ -282,7 +306,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             <motion.div initial={{ opacity: 1 }} exit={{ opacity: 0 }} className="mx-4 mb-6">
               {isPromo && (
                 <div className="mb-6 glass-panel p-4 bg-white/5 border-white/10">
-                  <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Введите промокод</h3>
+                  <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Введите промокод</h3>
                   <input 
                     type="text" 
                     value={promoCode}
@@ -293,23 +317,23 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 </div>
               )}
               <div className="mb-6">
-                <h3 className="text-white/50 text-[10px] uppercase tracking-widest mb-3 font-black">Количество открытий</h3>
+                <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
                   {[1, 3, 6, 10].map((q) => {
                     if (q !== 1 && (isDaily || isPromo)) return null;
                     return (
-                      <button key={q} onClick={() => { setQuantity(q); triggerHaptic('light'); }} className={`flex-1 py-3 rounded-xl border font-black transition-all ${quantity === q ? 'bg-white/10 border-white/40 text-white' : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'}`}>x{q}</button>
+                      <button key={q} onClick={() => { setQuantity(q); triggerHaptic('light'); }} className={`flex-1 py-3 rounded-xl border font-black transition-all ${quantity === q ? 'bg-white/10 border-white/40 text-white shadow-[0_0_15px_rgba(255,255,255,0.05)]' : 'bg-white/5 border-white/10 text-white/30 hover:bg-white/10'}`}>x{q}</button>
                     );
                   })}
                 </div>
               </div>
-              <h3 className="text-white/50 text-xs uppercase tracking-wider mb-3">Возможный дроп</h3>
-              <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
+              <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Возможный дроп</h3>
+              <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
                 {dropItems?.map((item, idx) => (
-                  <motion.div key={idx} className="glass-panel p-2 flex flex-col items-center">
+                  <motion.div key={idx} className="glass-panel p-2 flex flex-col items-center bg-white/[0.02] border-white/5">
                     <img src={getDynamicGiftImage(item)} alt="Gift" className="w-12 h-12 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
-                    <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item?.name || 'Gift'}</p>
-                    <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]"><span className="flex items-center gap-0.5">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
+                    <p className="text-white/80 text-[9px] font-bold text-center truncate w-full uppercase tracking-tighter">{item?.name || 'Gift'}</p>
+                    <div className="flex items-center justify-center gap-1 text-white/40 text-[8px] font-black"><span className="flex items-center gap-0.5">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                   </motion.div>
                 ))}
               </div>
@@ -318,17 +342,37 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         </AnimatePresence>
       </div>
 
-      <div className="glass-panel border-t border-white/10 p-4">
+      <div className="p-4 bg-[#1a1b1e] border-t border-white/10">
         {!isSpinning && !hasSpun ? (
-          <motion.button whileHover={{ scale: (isPromo && promoOpened) ? 1 : 1.02 }} whileTap={{ scale: (isPromo && promoOpened) ? 1 : 0.98 }} onClick={handleOpen} disabled={!canOpen || balance < getCost || isSpinning || (isPromo && promoOpened)} className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2" style={{ backgroundColor: canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}20` : 'rgba(255,255,255,0.05)', border: `1px solid ${canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}40` : 'rgba(255,255,255,0.1)'}`, color: canOpen && balance >= getCost && !isSpinning ? caseItem?.glowColor || '#ffffff' : 'rgba(255,255,255,0.3)' }}>
+          <motion.button 
+            whileHover={{ scale: 1.02 }} 
+            whileTap={{ scale: 0.98 }} 
+            onClick={handleOpen} 
+            className="w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-lg shadow-black/20" 
+            style={{ 
+              backgroundColor: (isPromo && promoOpened) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
+              border: `1px solid ${(isPromo && promoOpened) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
+              color: (isPromo && promoOpened) ? 'rgba(255,255,255,0.2)' : (caseItem?.glowColor || '#ffffff')
+            }}
+          >
             {isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
-              <span className="flex items-center justify-center gap-2">ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {isDaily ? 1 : getCost} <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
+              <div className="flex items-center justify-center gap-2">
+                <span>ОТКРЫТЬ x{isDaily ? 1 : quantity}</span>
+                <div className="w-px h-4 bg-white/20 mx-1" />
+                <span className="flex items-center gap-1">
+                  {isDaily ? 1 : getCost} 
+                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                </span>
+              </div>
             )}
           </motion.button>
         ) : hasSpun && showResult ? (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleClaim} disabled={isCollecting} className="w-full py-4 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center disabled:opacity-50">ЗАБРАТЬ</motion.button>
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleClaim} disabled={isCollecting} className="w-full py-5 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center disabled:opacity-50 shadow-lg shadow-black/20 uppercase tracking-widest">ЗАБРАТЬ</motion.button>
         ) : (
-          <div className="text-center py-2 text-white/30 text-sm font-rounded uppercase tracking-widest">Открытие...</div>
+          <div className="flex flex-col items-center justify-center py-2 gap-2">
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 border-3 border-white/10 border-t-white rounded-full" />
+            <div className="text-center text-white/30 text-[10px] font-black uppercase tracking-[0.3em]">Открытие...</div>
+          </div>
         )}
       </div>
     </div>
