@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "screamcase-mini-app"
+version = "1.0.0"
+description = "Premium Telegram Mini App for Case Opening"
+authors = ["Admin <admin@example.com>"]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+aiogram = "3.13.1"
+supabase = "2.4.0"
+pydantic-settings = "*"
+flet = ">=0.84.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
