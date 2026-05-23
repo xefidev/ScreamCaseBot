@@ -8,6 +8,7 @@ import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notifyTonSuccess } from './api';
+import { getDynamicGiftImage } from './giftUtils';
 
 const PAGE_BG = '#1a1b1e';
 const TON_WALLET = 'UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp';
@@ -222,7 +223,7 @@ export default function App() {
     const inventoryItem = {
       id: Date.now() + Math.random(),
       name: item?.name || 'Item',
-      image: item?.image || '',
+      image: getDynamicGiftImage(item),
       price: item?.price || 0,
       caseName: caseItem?.name
     };

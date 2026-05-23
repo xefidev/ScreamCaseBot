@@ -70,7 +70,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
 
         <div className="relative flex-1 flex items-center justify-center py-2 min-h-[120px] w-full overflow-visible">
           <img
-            src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox.png' : '/asset/Case/CaseBlack.png'}
+            src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'}
             alt={caseItem?.name || 'Case'}
             className={caseItem?.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
             onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}

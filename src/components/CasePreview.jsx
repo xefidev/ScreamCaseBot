@@ -207,13 +207,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {previewGifts?.map((gift, idx) => (
               <motion.div key={idx} animate={{ y: [0, -12, 0], rotate: [0, 4, -4, 0], scale: [1.3, 1.4, 1.3] }} transition={{ duration: 2.5 + idx * 0.4, repeat: Infinity, ease: "easeInOut", delay: idx * 0.6 }} className="absolute" style={{ left: previewGifts?.length === 1 ? '50%' : idx === 0 ? '35%' : '65%', top: '15%', transform: 'translateX(-50%)', zIndex: 10 }}>
                 <div className="rounded-3xl p-4" style={{ backgroundColor: `${caseItem?.glowColor || '#ffffff'}15` }}>
-                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
                 </div>
               </motion.div>
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/GiftBox.webp' : '/asset/Case/CaseBlack.png'} alt="Case" className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+            <img src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/GiftBox.webp' : '/asset/Case/CaseBlack.png'} alt="Case" className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
           </div>
         </div>
 
@@ -229,9 +229,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                       <motion.div key={spinData?.animKey} className="flex gap-3" initial={{ x: 0 }} animate={{ x: spinData?.targetX }} transition={{ duration: 4, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete}>
                         {spinData?.items?.map((item, idx) => (
                           <div key={idx} className="flex-shrink-0 w-36 h-36 rounded-2xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}40`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
+                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
-                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span>
+                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
                             </div>
                           </div>
                         ))}
@@ -258,14 +258,14 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                             src={getDynamicGiftImage(wonItem)} 
                             alt="Gift" 
                             className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} 
-                            onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }}
+                            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
                             animate={{ y: [0, -8, 0] }}
                             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                             style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} 
                           />
                           <p className={`${wonItems?.length > 2 ? 'text-xs' : wonItems?.length > 1 ? 'text-sm' : 'text-2xl'} text-white font-black mb-1 font-rounded truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
                           <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
-                            <span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span>
+                            <span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
                           </div>
                         </motion.div>
                       ))}
@@ -307,9 +307,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
                 {dropItems?.map((item, idx) => (
                   <motion.div key={idx} className="glass-panel p-2 flex flex-col items-center">
-                    <img src={getDynamicGiftImage(item)} alt="Gift" className="w-12 h-12 object-contain mb-1" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} />
+                    <img src={getDynamicGiftImage(item)} alt="Gift" className="w-12 h-12 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     <p className="text-white text-[10px] font-semibold text-center truncate w-full">{item?.name || 'Gift'}</p>
-                    <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]"><span className="flex items-center gap-0.5">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span></div>
+                    <div className="flex items-center justify-center gap-1 text-white/50 text-[8px]"><span className="flex items-center gap-0.5">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                   </motion.div>
                 ))}
               </div>
@@ -322,7 +322,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         {!isSpinning && !hasSpun ? (
           <motion.button whileHover={{ scale: (isPromo && promoOpened) ? 1 : 1.02 }} whileTap={{ scale: (isPromo && promoOpened) ? 1 : 0.98 }} onClick={handleOpen} disabled={!canOpen || balance < getCost || isSpinning || (isPromo && promoOpened)} className="w-full py-4 rounded-xl font-black text-lg disabled:opacity-50 transition-all flex items-center justify-center gap-2" style={{ backgroundColor: canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}20` : 'rgba(255,255,255,0.05)', border: `1px solid ${canOpen && balance >= getCost && !isSpinning ? `${caseItem?.glowColor || '#ffffff'}40` : 'rgba(255,255,255,0.1)'}`, color: canOpen && balance >= getCost && !isSpinning ? caseItem?.glowColor || '#ffffff' : 'rgba(255,255,255,0.3)' }}>
             {isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
-              <span className="flex items-center justify-center gap-2">ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {isDaily ? 1 : getCost} <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} /></span>
+              <span className="flex items-center justify-center gap-2">ОТКРЫТЬ x{isDaily ? 1 : quantity} ЗА {isDaily ? 1 : getCost} <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
             )}
           </motion.button>
         ) : hasSpun && showResult ? (

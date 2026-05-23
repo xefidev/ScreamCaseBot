@@ -1,6 +1,6 @@
 import { ALL_GIFTS } from './giftData';
 
-export const DEFAULT_GIFT_IMAGE = '/asset/Gifts/Case.webp';
+export const DEFAULT_GIFT_IMAGE = '/asset/Case/CaseBlack.png';
 
 /**
  * Clean and normalize gift image path
@@ -79,7 +79,7 @@ export function getGiftAsset(giftName) {
 
 /**
  * Get dynamic gift image from item object
- * Cleans name (removes prefixes like "100S_", replaces spaces with underscores)
+ * Cleans name (removes apostrophes, replaces spaces/special symbols with underscores)
  * Returns constructed path: /asset/Gifts/[price]S_[formattedName]_Original_[formattedName].webp
  */
 export function getDynamicGiftImage(item) {
@@ -88,6 +88,14 @@ export function getDynamicGiftImage(item) {
   }
   const price = item.price ?? item.cost ?? 0;
   const name = item.name || 'Gift';
-  const formattedName = name.trim().replace(/\s+/g, '_');
-  return `/asset/Gifts/${price}S_${formattedName}_Original_${formattedName}.webp`;
+  
+  // Clean name logic: 
+  // 1. Remove apostrophes
+  // 2. Replace all non-alphanumeric characters (spaces, hyphens, etc) with "_"
+  const cleanedName = name.trim()
+    .replace(/'/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/_+/g, '_'); // Ensure single underscore
+
+  return `/asset/Gifts/${price}S_${cleanedName}_Original_${cleanedName}.webp`;
 }

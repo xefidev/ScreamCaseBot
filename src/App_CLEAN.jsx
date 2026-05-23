@@ -6,6 +6,7 @@ import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { fetchBalance, createInvoice, notifyTonSuccess } from './api';
+import { getDynamicGiftImage } from './giftUtils';
 
 const LoadingSpinner = () => (
   <div className="flex flex-col items-center justify-center h-full">
@@ -163,7 +164,7 @@ export default function App() {
     const newItem = {
       id: Date.now(),
       name: item?.name || 'Item',
-      image: `/asset/Gifts/${item?.image || 'default.webp'}`,
+      image: getDynamicGiftImage(item),
       price: item?.price || 0,
       caseName: caseItem?.name
     };
@@ -177,7 +178,7 @@ export default function App() {
     const newItem = {
       id: Date.now(),
       name: segment?.label || 'Prize',
-      image: `/asset/Gifts/${segment?.image || 'default.webp'}`,
+      image: getDynamicGiftImage(segment.item || { name: segment.label, price: segment.price }),
       price: segment?.price || parseInt(segment?.label) || 0,
     };
     setInventory(prev => [newItem, ...prev]);

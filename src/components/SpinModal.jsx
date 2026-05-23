@@ -80,7 +80,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
               <motion.div ref={ribbonRef} className="flex gap-3" animate={controls}>
                 {TRIPLE_LOOT.map((item, idx) => (
                   <div key={idx} className="flex-shrink-0 w-28 h-28 rounded-xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: (item.color || '#ffffff') + '40', backgroundColor: (item.color || '#ffffff') + '10' }}>
-                    <img src={getDynamicGiftImage(item)} alt={item.name} className="w-14 h-14 object-contain mb-1" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} loading="lazy" />
+                    <img src={getDynamicGiftImage(item)} alt={item.name} className="w-14 h-14 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
                     <span className="text-white/70 text-[10px] text-center font-semibold uppercase">{item.rarity}</span>
                   </div>
                 ))}
@@ -91,7 +91,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
             {hasSpun && selectedItem && (
               <motion.div initial={{ opacity: 0, scale: 0.8, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} className="text-center p-6 rounded-3xl border relative overflow-hidden bg-white/[0.02]" style={{ borderColor: (selectedItem.color || '#ffffff') + '30' }}>
                 <p className="text-white/50 text-[10px] mb-3 uppercase tracking-[0.3em] font-black">Вы выиграли!</p>
-                <motion.img animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} src={getDynamicGiftImage(selectedItem)} alt={selectedItem.name} className="h-28 w-28 object-contain mx-auto mb-4 relative z-10" onError={(e) => { e.currentTarget.src = '/asset/Gifts/Case.webp'; }} style={{ filter: `drop-shadow(0 0 25px ${(selectedItem.color || '#ffffff')}80)` }} />
+                <motion.img animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} src={getDynamicGiftImage(selectedItem)} alt={selectedItem.name} className="h-28 w-28 object-contain mx-auto mb-4 relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 25px ${(selectedItem.color || '#ffffff')}80)` }} />
                 <p className="text-white font-black text-2xl mb-2 font-rounded" style={{ color: selectedItem.color }}>{selectedItem.name}</p>
                 <span className="inline-block px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest" style={{ backgroundColor: (selectedItem.color || '#ffffff') + '20', color: selectedItem.color, border: `1px solid ${(selectedItem.color || '#ffffff')}40` }}>{selectedItem.rarity}</span>
               </motion.div>
