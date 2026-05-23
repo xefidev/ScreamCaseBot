@@ -7,9 +7,10 @@ authors = ["Admin <admin@example.com>"]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 aiogram = "3.13.1"
-supabase = "^2.11.0"
+supabase = "^2.16.0"
 pydantic-settings = "*"
 flet = ">=0.84.0"
+aiohttp-cors = "*"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
