@@ -8,7 +8,7 @@ import { playSound } from '../App';
 
 const easeOutCirc = [0, 0.55, 0.45, 1];
 
-export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null }) {
+export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -66,6 +66,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   };
 
   const handleOpen = async () => {
+    // 1. Блокировка повторных нажатий
     if (isSpinning || !user?.id) return;
 
     if (isPromo && promoCode.toUpperCase() !== 'SCREAM') {
@@ -74,12 +75,15 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     }
 
     const totalCost = getCost;
+    
+    // 2. Умное пополнение
     if (balance < totalCost) {
+      const missing = totalCost - balance;
       window?.Telegram?.WebApp?.showConfirm?.(
-        `Недостаточно звёзд! У вас ${balance} ⭐, нужно ${totalCost} ⭐. Пополнить баланс?`,
+        `Не хватает ${missing} ⭐. Пополнить?`,
         (ok) => {
-          if (ok) {
-            window?.Telegram?.WebApp?.showAlert?.("Перейдите в профиль для пополнения!");
+          if (ok && onTopUpRequest) {
+            onTopUpRequest(missing);
           }
         }
       );
@@ -91,14 +95,19 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
        return;
     }
 
+    // 3. Жесткая логика списания баланса ДО анимации
+    if (setBalance && totalCost > 0) {
+        setBalance(prev => Math.max(0, prev - totalCost));
+    }
+
+    // 4. Запуск звука СТРОГО ПОСЛЕ всех проверок и списания
+    playSound('/asset/Sounds/go-new-gambling.mp3');
+    
     setIsSpinning(true);
     setWonItems([]);
-    
-    playSound('/asset/Sounds/go-new-gambling.mp3');
 
     try {
         const results = [];
-        let totalDeducted = 0;
         const targetQuantity = (isDaily || isPromo) ? 1 : quantity;
 
         for (let i = 0; i < targetQuantity; i++) {
@@ -107,13 +116,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             throw new Error(`Failed to open case ${i+1}`);
           }
           results.push(response.item);
-          totalDeducted += (response.deducted !== undefined ? response.deducted : (totalCost / quantity));
         }
 
         triggerHaptic();
         
-        if (setBalance) setBalance(prev => Math.max(0, prev - totalDeducted));
-        if (setSpent) setSpent(prev => prev + totalDeducted);
+        if (setSpent) setSpent(prev => prev + totalCost);
         if (isPromo && setPromoOpened) setPromoOpened(true);
         setCurrentStock(prev => Math.max(0, prev - targetQuantity));
 
@@ -141,6 +148,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     } catch (e) {
         console.error("Error in handleOpen:", e);
         setIsSpinning(false);
+        // Возвращаем баланс в случае критической ошибки API
+        if (setBalance && totalCost > 0) setBalance(prev => prev + totalCost);
+        
         let errorMsg = "❌ Ошибка при открытии кейса";
         if (e.errorCode === 'daily_cooldown_active' || e.message?.includes('daily_cooldown_active')) {
           const wait = e.waitSeconds || 86400;
@@ -325,7 +335,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               </div>
 
               <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-4 font-black text-center">Возможный дроп</h3>
-              <div className="flex flex-wrap justify-center items-center gap-4 p-4 w-full max-h-[32rem] overflow-y-auto custom-scrollbar">
+              <div className="flex flex-wrap justify-center items-center gap-4 p-4 w-full max-h-[32rem] overflow-y-auto pr-1 custom-scrollbar">
                 {dropItems?.map((item, idx) => (
                   <motion.div 
                     key={idx} 
