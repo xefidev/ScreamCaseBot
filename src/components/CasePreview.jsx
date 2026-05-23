@@ -6,8 +6,6 @@ import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 import { playSound } from '../App';
 
-const easeOutCirc = [0, 0.55, 0.45, 1];
-
 export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
@@ -66,7 +64,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   };
 
   const handleOpen = async () => {
-    // 1. Блокировка повторных нажатий
     if (isSpinning || !user?.id) return;
 
     if (isPromo && promoCode.toUpperCase() !== 'SCREAM') {
@@ -76,18 +73,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
     const totalCost = getCost;
     
-    // 2. Умное пополнение
     if (balance < totalCost) {
-      const missing = totalCost - balance;
-      window?.Telegram?.WebApp?.showConfirm?.(
-        `Не хватает ${missing} ⭐. Пополнить?`,
-        (ok) => {
-          if (ok && onTopUpRequest) {
-            onTopUpRequest(missing);
-          }
-        }
-      );
-      return;
+        // Мы теперь меняем поведение кнопки, но на случай прямого вызова оставляем алерт
+        window?.Telegram?.WebApp?.showAlert?.("Недостаточно звёзд!");
+        return;
     }
 
     if (!canOpen) {
@@ -95,12 +84,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
        return;
     }
 
-    // 3. Жесткая логика списания баланса ДО анимации
     if (setBalance && totalCost > 0) {
         setBalance(prev => Math.max(0, prev - totalCost));
     }
 
-    // 4. Запуск звука СТРОГО ПОСЛЕ всех проверок и списания
     playSound('/asset/Sounds/go-new-gambling.mp3');
     
     setIsSpinning(true);
@@ -112,14 +99,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         for (let i = 0; i < targetQuantity; i++) {
           const response = await openCase(user?.id, caseItem?.id);
-          if (!response?.success || !response?.item) {
-            throw new Error(`Failed to open case ${i+1}`);
-          }
+          if (!response?.success || !response?.item) throw new Error(`Failed to open case ${i+1}`);
           results.push(response.item);
         }
 
         triggerHaptic();
-        
         if (setSpent) setSpent(prev => prev + totalCost);
         if (isPromo && setPromoOpened) setPromoOpened(true);
         setCurrentStock(prev => Math.max(0, prev - targetQuantity));
@@ -148,19 +132,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     } catch (e) {
         console.error("Error in handleOpen:", e);
         setIsSpinning(false);
-        // Возвращаем баланс в случае критической ошибки API
         if (setBalance && totalCost > 0) setBalance(prev => prev + totalCost);
-        
-        let errorMsg = "❌ Ошибка при открытии кейса";
-        if (e.errorCode === 'daily_cooldown_active' || e.message?.includes('daily_cooldown_active')) {
-          const wait = e.waitSeconds || 86400;
-          const hours = Math.ceil(wait / 3600);
-          errorMsg = `⏳ Кейс будет доступен через ${hours} ч.`;
-        } else if (e.errorCode === 'already_opened' || e.message === 'already_opened') {
-          errorMsg = "❌ Вы уже открывали этот кейс!";
-          if (isPromo && setPromoOpened) setPromoOpened(true);
-        }
-        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(errorMsg);
+        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("❌ Ошибка при открытии кейса");
     }
   };
 
@@ -186,18 +159,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     onClose();
   };
 
-  React.useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' || e.key === 'ArrowLeft') {
-        if (!isSpinning && !showResult) {
-          onClose();
-          triggerHaptic();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSpinning, showResult, onClose]);
+  const isLowBalance = balance < getCost;
+  const missingAmount = getCost - balance;
 
   return (
     <div className="h-full flex flex-col bg-[#1a1b1e]">
@@ -209,10 +172,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
       <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar">
         <div className="px-6 py-4 flex items-center justify-between sticky top-0 z-20 bg-[#1a1b1e]/80 backdrop-blur-lg">
-          <button 
-            onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} 
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
-          >
+          <button onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <div className="flex flex-col items-center">
@@ -237,13 +197,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img 
-              src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'} 
-              alt="Case" 
-              className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} 
-              onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
-              style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} 
-            />
+            <img src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'} alt="Case" className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
           </div>
         </div>
 
@@ -277,26 +231,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     </p>
                     <div className={`grid gap-4 ${wonItems?.length > 2 ? 'grid-cols-2' : wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {wonItems?.map((wonItem, idx) => wonItem && (
-                        <motion.div 
-                          key={idx} 
-                          initial={{ opacity: 0, y: 20, scale: 0.8 }} 
-                          animate={{ opacity: 1, y: 0, scale: 1 }} 
-                          transition={{ delay: idx * 0.15, duration: 0.4 }}
-                          className="text-center p-4 rounded-3xl relative overflow-hidden border" 
-                          style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                          <motion.img 
-                            src={getDynamicGiftImage(wonItem)} 
-                            alt="Gift" 
-                            className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} 
-                            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
-                            animate={{ y: [0, -8, 0] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                            style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} 
-                          />
+                        <motion.div key={idx} initial={{ opacity: 0, y: 20, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: idx * 0.15, duration: 0.4 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
+                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
                           <p className={`${wonItems?.length > 2 ? 'text-[10px]' : wonItems?.length > 1 ? 'text-xs' : 'text-xl'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
-                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm">
-                            <span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
-                          </div>
+                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                         </motion.div>
                       ))}
                     </div>
@@ -313,13 +251,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               {isPromo && (
                 <div className="mb-6 glass-panel p-4 bg-white/5 border-white/10">
                   <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Введите промокод</h3>
-                  <input 
-                    type="text" 
-                    value={promoCode}
-                    onChange={(e) => setPromoCode(e.target.value)}
-                    placeholder="SCREAM"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black uppercase tracking-widest focus:outline-none focus:border-white/30"
-                  />
+                  <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} placeholder="SCREAM" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black uppercase tracking-widest focus:outline-none focus:border-white/30" />
                 </div>
               )}
               <div className="mb-8">
@@ -335,20 +267,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               </div>
 
               <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-4 font-black text-center">Возможный дроп</h3>
-              <div className="flex flex-wrap justify-center items-center gap-4 p-4 w-full max-h-[32rem] overflow-y-auto pr-1 custom-scrollbar">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full p-4 max-h-[32rem] overflow-y-auto pr-1 custom-scrollbar justify-items-center">
                 {dropItems?.map((item, idx) => (
-                  <motion.div 
-                    key={idx} 
-                    whileHover={{ scale: 1.05 }}
-                    className="glass-panel w-28 p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg"
-                  >
+                  <motion.div key={idx} whileHover={{ scale: 1.05 }} className="glass-panel w-full max-w-[140px] p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg">
                     <div className="w-16 h-16 flex items-center justify-center mb-2">
-                        <img 
-                            src={getDynamicGiftImage(item)} 
-                            alt="Gift" 
-                            className="w-full h-full object-contain" 
-                            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
-                        />
+                        <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
                     <p className="text-white font-bold text-[10px] text-center truncate w-full uppercase tracking-tight mb-1">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/5">
@@ -368,15 +291,20 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           <motion.button 
             whileHover={{ scale: 1.02 }} 
             whileTap={{ scale: 0.98 }} 
-            onClick={handleOpen} 
+            onClick={isLowBalance ? () => onTopUpRequest(missingAmount) : handleOpen} 
             className="w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-lg shadow-black/20" 
             style={{ 
-              backgroundColor: (isPromo && promoOpened) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
-              border: `1px solid ${(isPromo && promoOpened) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
-              color: (isPromo && promoOpened) ? 'rgba(255,255,255,0.2)' : (caseItem?.glowColor || '#ffffff')
+              backgroundColor: isLowBalance ? 'rgba(234, 179, 8, 0.2)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
+              border: `1px solid ${isLowBalance ? 'rgba(234, 179, 8, 0.4)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
+              color: isLowBalance ? '#eab308' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.2)' : (caseItem?.glowColor || '#ffffff')
             }}
           >
-            {isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
+            {isLowBalance ? (
+              <div className="flex items-center gap-2">
+                <span>ПОПОЛНИТЬ НА {missingAmount}</span>
+                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+              </div>
+            ) : isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
               <div className="flex items-center justify-center gap-2">
                 <span>ОТКРЫТЬ x{isDaily ? 1 : quantity}</span>
                 <div className="w-px h-4 bg-white/20 mx-1" />

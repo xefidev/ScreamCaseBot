@@ -111,7 +111,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
   );
 };
 
-export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent, promoOpened, setPromoOpened }) {
+export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent, promoOpened, setPromoOpened, onTopUpRequest }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [view, setView] = useState('grid');
   const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
@@ -186,6 +186,7 @@ export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, set
               flashDiscount={getCaseFlashDiscount(selectedCase.id)}
               promoOpened={promoOpened}
               setPromoOpened={setPromoOpened}
+              onTopUpRequest={onTopUpRequest}
             />
           </motion.div>
         )}
