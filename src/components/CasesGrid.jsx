@@ -5,16 +5,16 @@ import { getGiftsInRange } from '../giftData';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
 
 const CASES_DATA = [
-  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 15, maxPrice: 10000, stock: 100 },
-  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 0, maxPrice: 100, stock: 50 },
-  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 10000, maxPrice: 20000, stock: 100 },
-  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 10000, maxPrice: 20000, stock: 80 },
-  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Бюджет', minPrice: 10000, maxPrice: 20000, stock: 200 },
-  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Рискованный', minPrice: 10000, maxPrice: 20000, stock: 150 },
-  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Мистический', minPrice: 10000, maxPrice: 20000, stock: 300 },
-  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'Элитный', minPrice: 10000, maxPrice: 20000, stock: 120 },
-  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Подарки', minPrice: 10000, maxPrice: 20000, stock: 100 },
-  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'Яркий', minPrice: 10000, maxPrice: 20000, stock: 150 },
+  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 1, maxPrice: 600, stock: 100 },
+  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 1, maxPrice: 500, stock: 50 },
+  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 15, maxPrice: 2000, stock: 100 },
+  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 15, maxPrice: 1500, stock: 80 },
+  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Бюджет', minPrice: 15, maxPrice: 400, stock: 200 },
+  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Рискованный', minPrice: 15, maxPrice: 250, stock: 150 },
+  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Мистический', minPrice: 15, maxPrice: 300, stock: 300 },
+  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'Элитный', minPrice: 15, maxPrice: 1000, stock: 120 },
+  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Подарки', minPrice: 15, maxPrice: 500, stock: 100 },
+  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'Яркий', minPrice: 15, maxPrice: 600, stock: 150 },
 ];
 
 const getRandomFlashDiscount = () => {
@@ -70,15 +70,15 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
 
         <div className="flex items-center justify-between gap-2 relative z-10">
           <div className="flex-1 min-w-0">
-            <h3 className="text-white font-bold text-xs truncate">{caseItem?.name || 'Case'}</h3>
-            <p className="text-white/40 text-[9px] uppercase font-black">В наличии: {caseItem?.stock || 0}</p>
+            <h3 className="text-white font-bold text-xs truncate uppercase tracking-tighter">{caseItem?.name || 'Case'}</h3>
+            <p className="text-white/40 text-[9px] uppercase font-black tracking-widest">В наличии: {caseItem?.stock || 0}</p>
           </div>
           {isFlashDiscount ? (
-            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-red-500/20 border border-red-500/40 text-red-400 whitespace-nowrap font-rounded animate-pulse">
+            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-black bg-red-500/20 border border-red-500/40 text-red-400 whitespace-nowrap font-rounded animate-pulse">
               🔥 -15%
             </span>
           ) : (
-            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-semibold bg-white/10 border border-white/20 whitespace-nowrap text-white/60">
+            <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-black bg-white/5 border border-white/10 text-white/40 whitespace-nowrap uppercase tracking-tighter">
                 {caseItem?.badge || 'N/A'}
             </span>
           )}
@@ -92,12 +92,12 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
             onClick();
             triggerHaptic();
           }}
-          className="w-full py-3 rounded-2xl border border-white/20 bg-white/10 text-white font-black text-sm transition-all hover:border-white/30 flex items-center justify-center gap-2 font-rounded"
+          className="w-full py-3 rounded-2xl border border-white/10 bg-white/5 text-white font-black text-xs transition-all hover:border-white/20 flex items-center justify-center gap-2 font-rounded uppercase tracking-widest"
         >
           {caseItem?.price === 0 ? 'БЕСПЛАТНО' : (
             <div className="flex items-center justify-center gap-2">
               {isFlashDiscount && (caseItem?.price || 0) > 1 && (
-                <span className="line-through text-white/40 text-xs">{caseItem?.price}</span>
+                <span className="line-through text-white/20 text-[10px]">{caseItem?.price}</span>
               )}
               <span className={`flex items-center gap-1 ${isFlashDiscount ? 'text-red-400' : 'text-white'}`}>
                 {isFlashDiscount && (caseItem?.price || 0) > 1 ? discountedPrice : (caseItem?.price || 0)}

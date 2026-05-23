@@ -79,8 +79,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         `Недостаточно звёзд! У вас ${balance} ⭐, нужно ${totalCost} ⭐. Пополнить баланс?`,
         (ok) => {
           if (ok) {
-            // В App.jsx мы добавим логику открытия модалки пополнения, 
-            // но пока просто уведомление или вызов функции если бы она была пропсом
             window?.Telegram?.WebApp?.showAlert?.("Перейдите в профиль для пополнения!");
           }
         }
@@ -162,9 +160,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       setIsSpinning(false);
       setShowConfetti(true);
       setShowResult(true);
-      
       playSound('/asset/Sounds/win_sound.mp3');
-
       if (onWin && wonItems?.length > 0) {
         wonItems.forEach(item => { if (item) onWin(item, caseItem); });
       }
@@ -316,7 +312,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   />
                 </div>
               )}
-              <div className="mb-6">
+              <div className="mb-8">
                 <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Количество открытий</h3>
                 <div className="flex gap-2">
                   {[1, 3, 6, 10].map((q) => {
@@ -327,13 +323,28 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   })}
                 </div>
               </div>
-              <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Возможный дроп</h3>
-              <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
+
+              <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-4 font-black text-center">Возможный дроп</h3>
+              <div className="flex flex-wrap justify-center items-center gap-4 p-4 w-full max-h-[32rem] overflow-y-auto custom-scrollbar">
                 {dropItems?.map((item, idx) => (
-                  <motion.div key={idx} className="glass-panel p-2 flex flex-col items-center bg-white/[0.02] border-white/5">
-                    <img src={getDynamicGiftImage(item)} alt="Gift" className="w-12 h-12 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
-                    <p className="text-white/80 text-[9px] font-bold text-center truncate w-full uppercase tracking-tighter">{item?.name || 'Gift'}</p>
-                    <div className="flex items-center justify-center gap-1 text-white/40 text-[8px] font-black"><span className="flex items-center gap-0.5">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
+                  <motion.div 
+                    key={idx} 
+                    whileHover={{ scale: 1.05 }}
+                    className="glass-panel w-28 p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg"
+                  >
+                    <div className="w-16 h-16 flex items-center justify-center mb-2">
+                        <img 
+                            src={getDynamicGiftImage(item)} 
+                            alt="Gift" 
+                            className="w-full h-full object-contain" 
+                            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+                        />
+                    </div>
+                    <p className="text-white font-bold text-[10px] text-center truncate w-full uppercase tracking-tight mb-1">{item?.name || 'Gift'}</p>
+                    <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/5">
+                        <span className="text-white/60 text-[9px] font-black">{item?.price ?? item?.cost ?? 0}</span>
+                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                    </div>
                   </motion.div>
                 ))}
               </div>
