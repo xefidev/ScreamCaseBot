@@ -21,10 +21,10 @@ APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("Supabase URL or Key is missing. Check your .env file.")
+    logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Проверьте переменные окружения VITE_SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -50,16 +50,6 @@ def init_db():
     try:
         supabase.table("users").select("count", count="exact").limit(1).execute()
         logger.info("✅ Supabase connection verified")
-        
-        referral_tasks = [
-            {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
-            {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
-            {"id": 3, "title": "Пригласить 3 друзей", "reward": 3, "type": "referral_3", "url": "", "chat_id": ""},
-            {"id": 4, "title": "Пригласить 4 друзей", "reward": 4, "type": "referral_4", "url": "", "chat_id": ""},
-            {"id": 5, "title": "Пригласить 5 друзей", "reward": 5, "type": "referral_5", "url": "", "chat_id": ""},
-        ]
-        supabase.table("tasks").upsert(referral_tasks).execute()
-        logger.info("✅ Base tasks initialized in Supabase")
     except Exception as e:
         logger.error(f"❌ Supabase initialization error: {e}")
 
@@ -299,6 +289,8 @@ async def start_cmd(message: types.Message, command: CommandObject):
             referred_by=referred_by
         )
         
+        logger.info(f"User {message.from_user.id} balance: {data[0]} Stars")
+
         if is_new:
             logger.info(f"New user registered: {message.from_user.id} - {message.from_user.full_name}")
             for admin_id in ADMIN_IDS:

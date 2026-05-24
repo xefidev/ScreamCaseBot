@@ -116,10 +116,26 @@ export default function App() {
         if (tg) {
           tg.ready?.();
           tg.expand?.();
-          const userData = tg.initDataUnsafe?.user;
-          if (userData) {
+          
+          let userData = tg.initDataUnsafe?.user;
+          
+          // Test ID fallback for browser development
+          if (!userData || !userData.id) {
+            console.warn('Telegram initDataUnsafe is empty. Using Test ID.');
+            userData = {
+              id: 7782281997, // Ваш Test ID
+              first_name: 'Test',
+              last_name: 'User',
+              username: 'test_user',
+              photo_url: null
+            };
+          }
+          
+          if (userData && userData.id) {
             setUser(userData);
+            console.log('App initialized for user:', userData.id);
             await syncBalance(userData.id);
+            await loadAchievements(userData.id);
           }
         }
       } catch (e) {
