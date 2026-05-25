@@ -8,7 +8,7 @@ import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import QuestsTab from './components/QuestsTab';
-import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notifyTonSuccess, sendHeartbeat } from './api';
+import { createInvoice, fetchBalance, notifyTonSuccess, sendHeartbeat } from './api';
 import { getDynamicGiftImage } from './giftUtils';
 
 const PAGE_BG = '#1a1b1e';
@@ -56,7 +56,6 @@ export default function App() {
   const [tonConnectUI] = useTonConnectUI();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [achievements, setAchievements] = useState([]);
   const [promoOpened, setPromoOpened] = useState(false);
   const [inventory, setInventory] = useState(() => {
     try {
@@ -100,16 +99,6 @@ export default function App() {
     }
   };
 
-  const loadAchievements = async (userId = user?.id) => {
-    if (!userId) return;
-    try {
-      const data = await fetchAchievements(userId);
-      setAchievements(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Load achievements error:', error);
-    }
-  };
-
   useEffect(() => {
     const init = async () => {
       try {
@@ -136,7 +125,6 @@ export default function App() {
             setUser(userData);
             console.log('App initialized for user:', userData.id);
             await syncBalance(userData.id);
-            await loadAchievements(userData.id);
           }
         }
       } catch (e) {
@@ -146,10 +134,6 @@ export default function App() {
     };
     init();
   }, []);
-
-  useEffect(() => {
-    if (activeTab === 'achievements') loadAchievements();
-  }, [activeTab]);
 
   // Heartbeat to keep Render.com server awake (every 10 minutes)
   useEffect(() => {
@@ -252,20 +236,6 @@ export default function App() {
     }
   };
 
-  const handleClaimAchievement = async (aid) => {
-    triggerHaptic();
-    if (!user?.id) return;
-    try {
-      const res = await claimAchievement(user.id, aid);
-      if (res?.success) {
-        triggerHaptic('success');
-        await syncBalance(user.id);
-        await loadAchievements();
-      }
-    } catch (e) {
-      console.error('Claim achievement error:', e);
-    }
-  };
 
   const handleSpinComplete = (item, caseItem) => {
     const inventoryItem = {
@@ -299,7 +269,7 @@ export default function App() {
           />
         );
       case 'achievements':
-        return <QuestsTab achievements={achievements} onClaimAchievement={handleClaimAchievement} />;
+        return <QuestsTab userId={user?.id} onBalanceUpdate={() => syncBalance(user?.id)} />;
       case 'games':
         if (activeGame === 'wheel') {
           return (

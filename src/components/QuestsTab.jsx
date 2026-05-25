@@ -1,8 +1,42 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Gift, Star } from 'lucide-react';
+import { fetchQuests, claimQuest } from '../api';
 
-export default function QuestsTab({ achievements, onClaimAchievement }) {
+export default function QuestsTab({ userId, onBalanceUpdate }) {
+  const [quests, setQuests] = useState(null);
+
+  const loadQuests = async () => {
+    if (!userId) return;
+    const data = await fetchQuests(userId);
+    setQuests(data);
+  };
+
+  useEffect(() => {
+    loadQuests();
+  }, [userId]);
+
+  const handleClaim = async (questId) => {
+    try {
+      // Optimiztic UI update or just wait for response
+      const res = await claimQuest(userId, questId);
+      if (res && res.success) {
+        // Trigger haptic if available
+        try { window?.Telegram?.WebApp?.HapticFeedback?.notificationOccurred('success'); } catch(e){}
+        
+        // Refresh balance in header
+        if (onBalanceUpdate) {
+            onBalanceUpdate();
+        }
+        
+        // Update local state to avoid refetch
+        setQuests(prev => prev.map(q => q.id === questId ? { ...q, is_claimed: true } : q));
+      }
+    } catch (e) {
+      console.error('Failed to claim quest:', e);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto p-6 pb-24" style={{ backgroundColor: '#1a1b1e' }}>
       <h2 className="mb-6 font-rounded text-3xl font-black uppercase tracking-tight text-white flex items-center gap-3">
@@ -11,8 +45,9 @@ export default function QuestsTab({ achievements, onClaimAchievement }) {
       </h2>
       
       <div className="space-y-5">
-        {achievements?.length > 0 ? (
-          achievements.map((a, i) => {
+        {quests ? (
+          quests.length > 0 ? (
+            quests.map((a, i) => {
             const goal = a?.goal || 1;
             const progress = Math.min(a?.progress || 0, goal);
             const percent = (progress / goal) * 100;
@@ -88,7 +123,7 @@ export default function QuestsTab({ achievements, onClaimAchievement }) {
                   </div>
                 ) : (
                   <button
-                    onClick={() => onClaimAchievement(a?.id)}
+                    onClick={() => handleClaim(a?.id)}
                     disabled={!isComplete}
                     className={`relative overflow-hidden w-full py-3.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
                       isComplete
@@ -103,7 +138,9 @@ export default function QuestsTab({ achievements, onClaimAchievement }) {
             );
           })
         ) : (
-           <p className="text-white/50 text-center py-10 font-bold uppercase text-sm">Загрузка квестов...</p>
+           <p className="text-white/50 text-center py-10 font-bold uppercase text-sm">Нет доступных квестов.</p>
+        )) : (
+           <p className="text-white/50 text-center py-10 font-bold uppercase text-sm animate-pulse">Загрузка квестов...</p>
         )}
       </div>
     </div>

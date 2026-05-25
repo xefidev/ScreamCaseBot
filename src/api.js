@@ -461,3 +461,40 @@ export const openCase = async (userId, caseId) => {
     throw error;
   }
 };
+
+export const fetchQuests = async (userId) => {
+  try {
+    if (!userId) return [];
+    const response = await fetch(`${BACKEND_URL}/api/quests?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching quests:', error);
+    return [];
+  }
+};
+
+export const claimQuest = async (userId, questId) => {
+  try {
+    if (!userId || !questId) throw new Error('Missing data');
+    const response = await fetch(`${BACKEND_URL}/api/quests/claim`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, quest_id: questId })),
+    });
+    
+    if (!response.ok) {
+      const error = await handleApiError(response);
+      const message = formatErrorMessage(error);
+      showAlert(message);
+      throw new Error(message);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error claiming quest:', error);
+    throw error;
+  }
+};

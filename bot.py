@@ -935,6 +935,10 @@ async def api_open_case(request):
                 case_info = CASES_DATA.get(2)
                 won_item = _get_random_gift(case_info['min'], case_info['max'])
                 _increment_achievement_progress(uid, 'cases_opened')
+                try:
+                    supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+                except Exception as e:
+                    logger.error(f"Failed to increment case quests: {e}")
                 return web.json_response({"success": True, "item": won_item, "deducted": 1})
             return res
 
@@ -980,6 +984,10 @@ async def api_open_case(request):
         }).execute()
         
         _increment_achievement_progress(uid, 'cases_opened')
+        try:
+            supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+        except Exception as e:
+            logger.error(f"Failed to increment case quests: {e}")
         
         logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
         
@@ -1366,6 +1374,85 @@ async def api_claim_achievement(request):
         logger.error(f"Error in api_claim_achievement: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
+async def api_get_quests(request):
+    try:
+        uid = request.get('user_id')
+        if not uid: return web.json_response({"error": "unauthorized"}, status=401)
+        uid = int(uid)
+        
+        # Запрашиваем квесты из базы
+        res = supabase.table("user_quests").select("quest_id, progress, is_completed, reward_claimed").eq("user_id", uid).execute()
+        quests_data = {row['quest_id']: row for row in res.data} if res.data else {}
+        
+        QUESTS = [
+            {'id': 'open_1', 'title': 'Открыть 1 кейс', 'goal': 1, 'reward': 10},
+            {'id': 'open_5', 'title': 'Открыть 5 кейсов', 'goal': 5, 'reward': 50},
+            {'id': 'open_10', 'title': 'Открыть 10 кейсов', 'goal': 10, 'reward': 150}
+        ]
+        
+        response_data = []
+        for q in QUESTS:
+            user_q = quests_data.get(q['id'], {})
+            response_data.append({
+                "id": q['id'],
+                "title": q['title'],
+                "goal": q['goal'],
+                "reward": q['reward'],
+                "progress": user_q.get('progress', 0),
+                "is_completed": user_q.get('is_completed', False),
+                "is_claimed": user_q.get('reward_claimed', False)
+            })
+            
+        return web.json_response(response_data)
+    except Exception as e:
+        logger.error(f"Error in api_get_quests: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_quest(request):
+    try:
+        data = await request.json()
+        uid = request.get('user_id')
+        quest_id = data.get("quest_id")
+        
+        if not uid or not quest_id: return web.json_response({"error": "invalid_data"}, status=400)
+        uid = int(uid)
+        
+        QUESTS = {
+            'open_1': {'goal': 1, 'reward': 10},
+            'open_5': {'goal': 5, 'reward': 50},
+            'open_10': {'goal': 10, 'reward': 150}
+        }
+        
+        info = QUESTS.get(quest_id)
+        if not info: return web.json_response({"error": "quest_not_found"}, status=404)
+        
+        res = supabase.table("user_quests").select("is_completed, reward_claimed").eq("user_id", uid).eq("quest_id", quest_id).execute()
+        if not res.data: return web.json_response({"error": "not_found"}, status=404)
+        
+        q_status = res.data[0]
+        if q_status['reward_claimed']: return web.json_response({"error": "already_claimed"}, status=400)
+        if not q_status['is_completed']: return web.json_response({"error": "not_reached"}, status=400)
+        
+        # Обновляем флаг
+        supabase.table("user_quests").update({"reward_claimed": True}).eq("user_id", uid).eq("quest_id", quest_id).execute()
+        
+        # Начисляем звёзды
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
+        if user_res.data:
+            new_stars = user_res.data[0]['stars'] + info['reward']
+            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("payments").insert({
+                "user_id": uid, 
+                "amount": info['reward'], 
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+            
+        return web.json_response({"success": True, "reward": info['reward']})
+    except Exception as e:
+        logger.error(f"Error in api_claim_quest: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+
 async def background_tasks(app):
     """Управляет фоновыми задачами приложения."""
     app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
@@ -1395,6 +1482,8 @@ async def main():
     app.router.add_post('/api/upgrade', api_upgrade)
     app.router.add_get('/api/achievements', api_get_achievements)
     app.router.add_post('/api/achievements/claim', api_claim_achievement)
+    app.router.add_get('/api/quests', api_get_quests)
+    app.router.add_post('/api/quests/claim', api_claim_quest)
     
     cors = aiohttp_cors.setup(app, defaults={
         "*": aiohttp_cors.ResourceOptions(
