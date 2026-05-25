@@ -1373,6 +1373,9 @@ async def background_tasks(app):
     app['ton_monitor'].cancel()
     await app['ton_monitor']
 
+async def root_handler(request):
+    return web.Response(text="OK", status=200)
+
 async def main():
     init_db()
     
@@ -1380,6 +1383,7 @@ async def main():
     app.cleanup_ctx.append(background_tasks)
     
     app.router.add_post('/api/heartbeat', api_heartbeat)
+    app.router.add_get('/', root_handler)
     app.router.add_get('/api/check_sub', api_check_sub)
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/referrals', api_referrals)
@@ -1402,11 +1406,12 @@ async def main():
     for route in list(app.router.routes()):
         cors.add(route)
     
+    port = int(os.getenv("PORT", 8080))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', 8080)
+    site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logger.info("✅ API server started on port 8080 with Auth Middleware")
+    logger.info(f"✅ API server started on port {port} with Auth Middleware")
     
     logger.info("✅ Bot polling started")
     await dp.start_polling(bot)
