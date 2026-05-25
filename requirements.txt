@@ -2,3 +2,4 @@ flet>=0.84.0
 aiogram==3.13.1
 supabase==2.4.0
 pydantic-settings
+pytoniq

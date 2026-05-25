@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import os
+import aiohttp
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
@@ -13,20 +14,151 @@ import random
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+import base64
+from pytoniq import BeginCell
+
+import hmac
+import urllib.parse
+import json
+from aiohttp import web
+from functools import wraps
+
 # --- НАСТРОЙКИ ---
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# ... (rest of settings)
+
+def validate_init_data(init_data: str, bot_token: str) -> dict:
+    """Валидирует данные от Telegram Web App с защитой от таких лазеек."""
+    if not init_data or not isinstance(init_data, str):
+        logger.warning("❌ Пустые или невалидные initData")
+        return None
+        
+    try:
+        vals = {k: v for k, v in urllib.parse.parse_qsl(init_data)}
+        if 'hash' not in vals or 'user' not in vals:
+            logger.warning("❌ Missing 'hash' or 'user' in initData")
+            return None
+        
+        # Валидируем что hash корректный
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(vals.items()) if k != 'hash')
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        h = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+        
+        if h != vals['hash']:
+            logger.warning(f"❌ InitData hash mismatch for user")
+            return None
+            
+        user_data = json.loads(vals.get('user', '{}'))
+        if not user_data.get('id'):
+            logger.warning("❌ InitData missing user.id")
+            return None
+            
+        return user_data
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON decode error in initData: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error validating initData: {e}")
+        return None
+
+def require_auth(handler):
+    """Декоратор для проверки authorization на всех /api/ запросах."""
+    @wraps(handler)
+    async def wrapped(request):
+        # Получаем initData из запроса (может быть в body для POST или query для GET)
+        init_data = None
+        
+        try:
+            if request.method == 'POST':
+                data = await request.json()
+                init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            else:
+                init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        except Exception as e:
+            logger.error(f"Error extracting initData: {e}")
+            return web.json_response({"error": "invalid_request"}, status=400)
+        
+        # Валидируем
+        user_data = validate_init_data(init_data, TOKEN)
+        if not user_data:
+            logger.warning(f"❌ Auth failed for request to {request.path}")
+            return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+        
+        # Сохраняем user_id в request для дальнейшего использования
+        request['user_id'] = user_data.get('id')
+        request['user_data'] = user_data
+        
+        return await handler(request)
+    return wrapped
+
+def auth_middleware(app, handler):
+    @wraps(handler)
+    async def middleware(request):
+        # Применяем auth только к /api/ routes
+        if request.path.startswith('/api/'):
+            init_data = None
+            try:
+                if request.method == 'POST':
+                    data = await request.json()
+                    init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+                else:
+                    init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            except Exception as e:
+                logger.debug(f"Error extracting initData in middleware: {e}")
+                init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
+            
+            # Валидируем
+            user_data = validate_init_data(init_data, TOKEN)
+            if not user_data:
+                logger.warning(f"❌ Unauthorized access attempt to {request.path}")
+                return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+            
+            request['user_id'] = user_data.get('id')
+            request['user_data'] = user_data
+        
+        return await handler(request)
+    return middleware
+
+# Цены кейсов
+CASES_PRICES = {
+    1: 0,    # Promo Case
+    2: 1,    # Daily Case (1 ticket)
+    3: 15,   # Snoop Case
+    4: 25,   # Lover's Case
+    5: 5,    # Hobo Case
+    6: 10,   # Risky Box
+    7: 50,   # Scam Box
+    8: 100,  # Ebati Case
+    9: 75,   # Pussy Case
+    10: 150  # Skolnik Case
+}
 ADMIN_IDS = [7782281997, 5396975347]
 APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 
+# TON Blockchain Settings
+TON_WALLET = os.getenv("VITE_TON_WALLET", "UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp")
+TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY", "") 
+TONCENTER_BASE_URL = "https://toncenter.com/api/v2"
+
 SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Проверьте переменные окружения VITE_SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def create_comment_boc(text: str) -> str:
+    """Создает BOC с текстовым комментарием (opcode 0) в формате Base64."""
+    try:
+        cell = BeginCell().store_uint(0, 32).store_string(text).end_cell()
+        return base64.b64encode(cell.to_boc(False)).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error creating BOC: {e}")
+        return ""
 
 HYPE_TEMPLATES = [
     "@{username}, 20 секунд назад пользователь id {fake_id} выиграл Astral Shard за 20К ⭐\n\n🔥 Испытай свою удачу, твои шансы на победу в платной рулетке увеличены на 34% (всего на час)!",
@@ -45,11 +177,140 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
+# --- БЛОКЧЕЙН МОНИТОРИНГ ---
+
+async def check_ton_transactions():
+    """Фоновая задача для автоматической проверки платежей TON.
+    
+    ВАЖНО ДЛЯ RENDER.COM: 
+    На бесплатном плане Render приложение "засыпает" через 15 минут без запросов.
+    Эта задача будет заморожена вместе с приложением.
+    Решение: нужен heartbeat запрос каждые 10-15 минут из фронтенда.
+    """
+    logger.info(f"📡 Запущен мониторинг TON кошелька: {TON_WALLET}")
+    
+    consecutive_errors = 0
+    max_consecutive_errors = 5
+    
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                params = {
+                    "address": TON_WALLET,
+                    "limit": 20,
+                    "api_key": TONCENTER_API_KEY
+                }
+                
+                async with session.get(f"{TONCENTER_BASE_URL}/getTransactions", params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        logger.error(f"⚠️ Ошибка Toncenter API: {resp.status}")
+                        consecutive_errors += 1
+                        if consecutive_errors >= max_consecutive_errors:
+                            logger.error(f"⚠️ Слишком много ошибок. Ждём 5 минут...")
+                            await asyncio.sleep(300)
+                            consecutive_errors = 0
+                        else:
+                            await asyncio.sleep(60)
+                        continue
+                    
+                    consecutive_errors = 0
+                    result = await resp.json()
+                    transactions = result.get("result", [])
+                    
+                    for tx in transactions:
+                        in_msg = tx.get("in_msg", {})
+                        value = int(in_msg.get("value", 0))
+                        if value == 0: continue
+                        
+                        tx_hash = tx.get("transaction_id", {}).get("hash")
+                        comment = in_msg.get("message", "").strip()
+                        if not comment and in_msg.get("msg_data", {}).get("@type") == "msg.dataText":
+                             comment = in_msg.get("msg_data", {}).get("text", "").strip()
+                        
+                        try:
+                            if all(c in string.hexdigits for c in comment) and len(comment) % 2 == 0:
+                                decoded = bytes.fromhex(comment).decode('utf-8', errors='ignore')
+                                if "SC_" in decoded:
+                                    comment = decoded
+                        except:
+                            pass
+
+                        if not comment or not comment.startswith("SC_"): continue
+                        
+                        try:
+                            parts = comment.split("_")
+                            if len(parts) < 2: continue
+                            user_id = int(parts[1])
+                            
+                            existing = supabase.table("ton_transactions").select("tx_id").eq("tx_id", tx_hash).execute()
+                            if existing.data: continue
+                            
+                            amount_ton = value / 1_000_000_000
+                            stars_to_add = int(amount_ton * 100)
+                            
+                            if stars_to_add <= 0: continue
+                            
+                            logger.info(f"💰 Найдена оплата: {amount_ton} TON от {user_id} (TX: {tx_hash[:10]}...)")
+                            
+                            supabase.table("ton_transactions").insert({
+                                "tx_id": tx_hash,
+                                "user_id": user_id,
+                                "amount": amount_ton,
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }).execute()
+                            
+                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("user_id", user_id).execute()
+                            if user_res.data:
+                                u = user_res.data[0]
+                                new_stars = u['stars'] + stars_to_add
+                                new_donated_ton = (u.get('total_donated_ton') or 0.0) + amount_ton
+                                
+                                supabase.table("users").update({
+                                    "stars": new_stars, 
+                                    "total_donated_ton": new_donated_ton
+                                }).eq("user_id", user_id).execute()
+                                
+                                supabase.table("payments").insert({
+                                    "user_id": user_id, 
+                                    "amount": stars_to_add, 
+                                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }).execute()
+                                
+                                try:
+                                    await bot.send_message(user_id, f"✅ Оплата TON подтверждена!\n\nНа ваш баланс зачислено {stars_to_add} ⭐")
+                                    logger.info(f"📩 Пользователь {user_id} уведомлен о зачислении.")
+                                except Exception as e:
+                                    logger.error(f"❌ Не удалось отправить сообщение юзеру: {e}")
+                                    
+                        except Exception as e:
+                            logger.error(f"❌ Ошибка обработки транзакции {tx_hash}: {e}")
+                            
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout при запросе к Toncenter")
+                consecutive_errors += 1
+                await asyncio.sleep(60)
+            except Exception as e:
+                logger.error(f"❌ Ошибка мониторинга TON: {e}")
+                consecutive_errors += 1
+                await asyncio.sleep(60)
+            
+            await asyncio.sleep(30)
+
 # --- БАЗА ДАННЫХ ---
 def init_db():
     try:
         supabase.table("users").select("count", count="exact").limit(1).execute()
         logger.info("✅ Supabase connection verified")
+        
+        referral_tasks = [
+            {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
+            {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
+            {"id": 3, "title": "Пригласить 3 друзей", "reward": 3, "type": "referral_3", "url": "", "chat_id": ""},
+            {"id": 4, "title": "Пригласить 4 друзей", "reward": 4, "type": "referral_4", "url": "", "chat_id": ""},
+            {"id": 5, "title": "Пригласить 5 друзей", "reward": 5, "type": "referral_5", "url": "", "chat_id": ""},
+        ]
+        supabase.table("tasks").upsert(referral_tasks).execute()
+        logger.info("✅ Base tasks initialized in Supabase")
     except Exception as e:
         logger.error(f"❌ Supabase initialization error: {e}")
 
@@ -260,19 +521,6 @@ ALL_GIFTS = [
   {"price": 12595, "name": "Nail Bracelets", "image": "/asset/Gifts/12595S_Nail_Bracelets_Original_Nail_Bracelets.webp"},
   {"price": 19047, "name": "Stellar Rockets", "image": "/asset/Gifts/19047S_Stellar_Rockets_Original_Stellar_Rockets.webp"},
 ]
-
-CASES_PRICES = {
-    1: 0,   # Promo Case (Free once)
-    2: 1,   # Daily Case (1 Star)
-    3: 667, # Snoop Case
-    4: 599, # Lover's Case
-    5: 199, # Hobo Case
-    6: 50,  # Risky Box
-    7: 111, # Scam Box
-    8: 444, # Ebati Case
-    9: 222, # Pussy Case
-    10: 250 # Skolnik Case
-}
 
 # --- ОБРАБОТКА КОМАНД ---
 
@@ -572,6 +820,23 @@ async def check_membership(user_id: int):
 
 # --- API ДЛЯ САЙТА ---
 
+async def api_heartbeat(request):
+    """Хеартбит endpoint для пробуждения Render сервера.
+    
+    На Render.com Free плане сервер засыпает через 15 минут неактивности.
+    Фронтенд должен вызывать этот endpoint каждые 10-12 минут чтобы:
+    1. Пробудить сервер
+    2. Гарантировать что фоновый мониторинг TON продолжает работать
+    """
+    try:
+        uid = request.get('user_id')
+        if uid:
+            logger.debug(f"💓 Heartbeat от юзера {uid}")
+        return web.json_response({"status": "alive", "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        logger.error(f"Error in heartbeat: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
 async def api_check_sub(request):
     try:
         uid = request.query.get("user_id")
@@ -585,9 +850,16 @@ async def api_check_sub(request):
 
 async def api_balance(request):
     try:
-        uid = request.query.get("user_id")
+        # Используем авторизованный user_id из middleware, не из query параметра!
+        uid = request.get('user_id') or request.query.get("user_id")
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
+        
+        # Проверяем что user_id из auth совпадает с запрашиваемым (если оба есть)
+        request_uid = request.query.get("user_id")
+        if request_uid and int(request_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to access balance of user {request_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         
         res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", int(uid)).execute()
         
@@ -640,7 +912,8 @@ async def api_referrals(request):
 async def api_open_case(request):
     try:
         data = await request.json()
-        uid = data.get("user_id")
+        # ВАЖНО: Используем user_id из авторизации, не из body!
+        uid = request.get('user_id')
         case_id = data.get("case_id")
         
         if not uid or case_id is None:
@@ -648,6 +921,12 @@ async def api_open_case(request):
         
         case_id = int(case_id)
         uid = int(uid)
+        
+        # Дополнительная проверка: if user отправил другой user_id в body, отклоняем
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to open case for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         
         # Daily Case
         if case_id == 2: 
@@ -753,12 +1032,19 @@ def _increment_achievement_progress(user_id, achievement_type):
 async def api_upgrade(request):
     try:
         data = await request.json()
-        uid = data.get("user_id")
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
         cost = int(data.get("cost", 0))
         chance = float(data.get("chance", 0))
         item_price = int(data.get("item_price", 0))
         
         if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to upgrade for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         
         user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
         if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
@@ -800,11 +1086,18 @@ async def api_upgrade(request):
 async def api_wheel_spin(request):
     try:
         data = await request.json()
-        uid = data.get("user_id")
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
         
         uid = int(uid)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to spin for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         cost = 50
         
         SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
@@ -894,103 +1187,47 @@ async def api_claim_daily(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_ton_success(request):
+    """Устаревший эндпоинт. Теперь проверка идет автоматически в фоне."""
     try:
         data = await request.json()
         uid = data.get("user_id")
-        amount_ton = data.get("amount")
-        tx_hash = data.get("tx_id") or data.get("boc")
-        
-        if not uid or amount_ton is None or not tx_hash:
-            logger.warning(f"Incomplete TON payment data: user_id={uid}, amount={amount_ton}, tx_hash={bool(tx_hash)}")
-            return web.json_response({"error": "invalid_data"}, status=400)
-        
-        uid = int(uid)
-        
-        try:
-            amount_ton = float(amount_ton)
-            if amount_ton <= 0:
-                return web.json_response({"error": "invalid_amount"}, status=400)
-        except ValueError:
-            return web.json_response({"error": "invalid_amount"}, status=400)
-        
-        tx_hash_normalized = hashlib.sha256(str(tx_hash).encode()).hexdigest()
-        stars_to_add = int(amount_ton * 100)
-        
-        existing = supabase.table("ton_transactions").select("tx_id").eq("tx_id", tx_hash_normalized).execute()
-        if existing.data:
-            logger.warning(f"Duplicate TON transaction detected: {tx_hash_normalized}")
-            return web.json_response({"error": "transaction_already_processed"}, status=400)
-        
-        supabase.table("ton_transactions").insert({
-            "tx_id": tx_hash_normalized, 
-            "user_id": uid, 
-            "amount": amount_ton, 
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-        
-        user_res = supabase.table("users").select("stars, total_donated_ton").eq("user_id", uid).execute()
-        if user_res.data:
-            u = user_res.data[0]
-            new_stars = u['stars'] + stars_to_add
-            new_donated_ton = (u.get('total_donated_ton') or 0.0) + amount_ton
-            supabase.table("users").update({"stars": new_stars, "total_donated_ton": new_donated_ton}).eq("user_id", uid).execute()
-            
-            supabase.table("payments").insert({
-                "user_id": uid, 
-                "amount": stars_to_add, 
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
-            
-            logger.info(f"TON payment processed: User {uid}, {amount_ton} TON = {stars_to_add} stars")
-        
-        try:
-            await bot.send_message(uid, f"✅ Пополнение успешно! +{stars_to_add} ⭐")
-        except Exception as e:
-            logger.error(f"Failed to send user notification: {e}")
-        
-        try:
-            for admin_id in ADMIN_IDS:
-                await bot.send_message(admin_id, f"💰 User {uid} topped up: {amount_ton} TON = {stars_to_add} ⭐")
-        except Exception as e:
-            logger.error(f"Failed to notify admins: {e}")
-        
-        return web.json_response({"success": True, "stars_added": stars_to_add})
-    
-    except Exception as e:
-        logger.error(f"Error in api_ton_success: {e}")
-        return web.json_response({"error": "server_error"}, status=500)
+        logger.info(f"🔄 Получено ручное уведомление об оплате от {uid}. Ожидаем подтверждения блокчейна...")
+        return web.json_response({"success": True, "message": "Verification is now automatic. Please wait."})
+    except:
+        return web.json_response({"success": True})
 
 async def api_invoice(request):
+    """Генерирует данные для оплаты через TON: кошелек и уникальный комментарий."""
     try:
         data = await request.json()
-        user_id = data.get("user_id")
-        amount = data.get("amount")
+        # Используем авторизованный user_id
+        user_id = request.get('user_id')
         
-        if not user_id or not amount:
-            return web.json_response({"error": "invalid_data"}, status=400)
+        if not user_id:
+            return web.json_response({"error": "no_user_id"}, status=400)
         
-        try:
-            amount = int(amount)
-            if amount <= 0:
-                return web.json_response({"error": "invalid_amount"}, status=400)
-        except ValueError:
-            return web.json_response({"error": "invalid_amount"}, status=400)
+        # Проверяем что user существует в БД
+        user_check = supabase.table("users").select("user_id").eq("user_id", int(user_id)).limit(1).execute()
+        if not user_check.data:
+            logger.warning(f"❌ Invoice requested for non-existent user {user_id}")
+            return web.json_response({"error": "user_not_found"}, status=404)
+            
+        # Генерируем уникальный комментарий
+        # Формат: SC_UserID_RandomString
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        comment = f"SC_{user_id}_{random_str}"
         
-        try:
-            link = await bot.create_invoice_link(
-                title="Пополнение Stars",
-                description=f"Покупка {amount} звёзд",
-                payload=f"stars_{user_id}_{amount}",
-                provider_token="",
-                currency="XTR",
-                prices=[LabeledPrice(label="Stars", amount=amount)]
-            )
-            logger.info(f"Invoice created for user {user_id}: {amount} stars")
-            return web.json_response({"link": link})
-        except Exception as e:
-            logger.error(f"Failed to create invoice: {e}")
-            return web.json_response({"error": "invoice_creation_failed"}, status=500)
-    
+        # Генерируем BOC для TON Connect
+        payload_boc = create_comment_boc(comment)
+        
+        logger.info(f"📝 Создан инвойс для {user_id}: {comment} (BOC: {payload_boc[:15]}...)")
+        
+        return web.json_response({
+            "wallet": TON_WALLET,
+            "comment": comment,
+            "payload_boc": payload_boc,
+            "rate": 100 # 1 TON = 100 Stars
+        })
     except Exception as e:
         logger.error(f"Error in api_invoice: {e}")
         return web.json_response({"error": "server_error"}, status=500)
@@ -1038,10 +1275,17 @@ async def success_pay(m: types.Message):
 
 async def api_get_achievements(request):
     try:
-        uid = request.query.get("user_id")
+        # Используем авторизованный user_id
+        uid = request.get('user_id') or request.query.get("user_id")
         if not uid: return web.json_response({"error": "no_id"}, status=400)
         
         uid = int(uid)
+        
+        # Проверка: if user отправил другой user_id в query
+        query_uid = request.query.get("user_id")
+        if query_uid and int(query_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to get achievements for user {query_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         ACHIEVEMENTS = [
             {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
             {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
@@ -1075,10 +1319,17 @@ async def api_get_achievements(request):
 async def api_claim_achievement(request):
     try:
         data = await request.json()
-        uid = data.get("user_id")
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
         aid = data.get("achievement_id")
         
         if not uid or not aid: return web.json_response({"error": "invalid_data"}, status=400)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to claim achievement for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
         
         ACHIEVEMENTS = [
             {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
@@ -1115,11 +1366,20 @@ async def api_claim_achievement(request):
         logger.error(f"Error in api_claim_achievement: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
+async def background_tasks(app):
+    """Управляет фоновыми задачами приложения."""
+    app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
+    yield
+    app['ton_monitor'].cancel()
+    await app['ton_monitor']
+
 async def main():
     init_db()
     
-    app = web.Application()
+    app = web.Application(middlewares=[auth_middleware])
+    app.cleanup_ctx.append(background_tasks)
     
+    app.router.add_post('/api/heartbeat', api_heartbeat)
     app.router.add_get('/api/check_sub', api_check_sub)
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/referrals', api_referrals)
@@ -1146,7 +1406,7 @@ async def main():
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 8080)
     await site.start()
-    logger.info("✅ API server started on port 8080")
+    logger.info("✅ API server started on port 8080 with Auth Middleware")
     
     logger.info("✅ Bot polling started")
     await dp.start_polling(bot)

@@ -2,12 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import CountUp from 'react-countup';
 import { useTonConnectUI } from '@tonconnect/ui-react';
-import { Briefcase, Trophy, Gamepad2, User, Zap, ChevronLeft } from 'lucide-react';
+import { Briefcase, Trophy, Gamepad2, User, Zap, ChevronLeft, Plus } from 'lucide-react';
 import CasesGrid from './components/CasesGrid';
 import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
-import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notifyTonSuccess } from './api';
+import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notifyTonSuccess, sendHeartbeat } from './api';
 import { getDynamicGiftImage } from './giftUtils';
 
 const PAGE_BG = '#1a1b1e';
@@ -150,6 +150,17 @@ export default function App() {
     if (activeTab === 'achievements') loadAchievements();
   }, [activeTab]);
 
+  // Heartbeat to keep Render.com server awake (every 10 minutes)
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const heartbeatInterval = setInterval(() => {
+      sendHeartbeat(user.id).catch(err => console.warn('Heartbeat error:', err));
+    }, 10 * 60 * 1000); // 10 minutes
+    
+    return () => clearInterval(heartbeatInterval);
+  }, [user?.id]);
+
   useEffect(() => {
     try {
       localStorage?.setItem('inventory', JSON.stringify(inventory));
@@ -180,28 +191,63 @@ export default function App() {
     }
   };
 
+  const copyToClipboard = (text, label) => {
+    navigator.clipboard.writeText(text);
+    window?.Telegram?.WebApp?.showAlert?.(`${label} скопирован!`);
+  };
+
+  const [tonPaymentData, setTonInvoiceData] = useState(null);
+
   const handleTonPayment = async () => {
     triggerHaptic();
     if (!user?.id) {
       window?.Telegram?.WebApp?.showAlert?.('❌ Пользователь не определен');
       return;
     }
+    
     const amount = parseFloat(tonAmount) || 0.1;
-    const nanotons = (amount * 1000000000).toString();
+    
     try {
-      const result = await tonConnectUI?.sendTransaction?.({
-        validUntil: Math.floor(Date.now() / 1000) + 600,
-        messages: [{ address: TON_WALLET, amount: nanotons }],
-      });
-      triggerHaptic('success');
-      setShowTopUp(false);
-      if (user?.id && result) {
-        await notifyTonSuccess(user.id, amount, result.boc);
-        await syncBalance(user.id);
+      // 1. Получаем кошелек и уникальный комментарий от бэкенда
+      const invoice = await createInvoice(user.id, amount);
+      
+      if (!invoice.wallet || !invoice.comment) {
+          throw new Error('Invalid invoice data from server');
       }
+
+      setTonInvoiceData(invoice);
+
+      // 2. Если кошелек подключен через TON Connect, пробуем отправить транзакцию автоматически
+      if (tonConnectUI.account) {
+        const nanotons = (amount * 1000000000).toString();
+        
+        const transaction = {
+          validUntil: Math.floor(Date.now() / 1000) + 600,
+          messages: [
+            {
+              address: invoice.wallet,
+              amount: nanotons,
+              payload: invoice.payload_boc || invoice.comment
+            },
+          ],
+        };
+
+        try {
+            const result = await tonConnectUI.sendTransaction(transaction);
+            if (result) {
+              triggerHaptic('success');
+              window?.Telegram?.WebApp?.showAlert?.('🚀 Транзакция отправлена! Баланс обновится автоматически в течение минуты.');
+              setShowTopUp(false);
+              setTonInvoiceData(null);
+            }
+        } catch (err) {
+            console.warn('Auto-transaction declined or failed, showing manual details');
+        }
+      }
+      
     } catch (e) {
       console.error('TON payment error:', e);
-      window?.Telegram?.WebApp?.showAlert?.('❌ Ошибка или отмена транзакции');
+      window?.Telegram?.WebApp?.showAlert?.('❌ Ошибка при подготовке платежа');
     }
   };
 
@@ -435,8 +481,11 @@ export default function App() {
                 </span>
                 <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">Звёзд</span>
               </div>
-              <div className="w-8 h-8 rounded-xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <div className="w-8 h-8 rounded-xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform relative">
                 <img src="/asset/Icons/TelegramStar.png" alt="star" className="h-6 w-6" />
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center border-2 border-[#1a1b1e]">
+                  <Plus size={8} className="text-black stroke-[4px]" />
+                </div>
               </div>
             </button>
           </div>
@@ -490,71 +539,110 @@ export default function App() {
               className="w-full max-w-sm mx-auto rounded-[2.5rem] border border-white/10 bg-[#1a1b1f] overflow-hidden shadow-2xl"
             >
               <div className="relative p-8 text-center border-b border-white/5">
-                <button onClick={() => setShowTopUp(false)} className="absolute top-6 right-6 text-white/20 hover:text-white transition-colors">✕</button>
+                <button onClick={() => { setShowTopUp(false); setTonInvoiceData(null); }} className="absolute top-6 right-6 text-white/20 hover:text-white transition-colors">✕</button>
                 <h2 className="text-2xl font-black uppercase tracking-tighter text-white mb-1">Пополнение</h2>
                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Выберите способ оплаты</p>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-yellow-500/30 transition-all group">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="stars" />
-                    </div>
-                    <div>
-                      <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Stars</h3>
-                      <p className="text-[9px] text-white/30 font-black uppercase">1 ⭐ = 1 звезда</p>
-                    </div>
-                  </div>
-                  <div className="relative mb-4">
-                    <input
-                      type="number"
-                      value={starsAmount}
-                      onChange={(e) => setStarsAmount(e.target.value)}
-                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-yellow-500 focus:outline-none focus:border-yellow-500/50"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">⭐</span>
-                  </div>
-                  <button
-                    onClick={() => handleStarsPayment()}
-                    className="w-full py-4 rounded-2xl bg-yellow-500 text-black font-black uppercase tracking-widest text-xs hover:bg-yellow-600 transition-all active:scale-95 shadow-lg"
-                  >
-                    ОПЛАТИТЬ {starsAmount} ⭐
-                  </button>
-                </div>
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                {tonPaymentData ? (
+                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                     <div className="p-6 rounded-[2rem] bg-blue-500/10 border border-blue-500/30">
+                        <h3 className="text-blue-400 font-black text-xs uppercase tracking-widest mb-4 text-center">Данные для оплаты TON</h3>
+                        
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-[8px] text-white/30 uppercase font-black mb-1 ml-1">Кошелек</p>
+                            <button onClick={() => copyToClipboard(tonPaymentData.wallet, 'Кошелек')} className="w-full p-3 bg-black/40 border border-white/5 rounded-xl text-[10px] text-white font-mono break-all text-left hover:bg-black/60 transition-all">
+                              {tonPaymentData.wallet}
+                            </button>
+                          </div>
 
-                <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-blue-500/30 transition-all group">
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <img src="/asset/Icons/TonCoin.png" className="h-8 w-8" alt="ton" />
+                          <div>
+                            <p className="text-[8px] text-white/30 uppercase font-black mb-1 ml-1">Комментарий (ОБЯЗАТЕЛЬНО)</p>
+                            <button onClick={() => copyToClipboard(tonPaymentData.comment, 'Комментарий')} className="w-full p-3 bg-blue-500/20 border border-blue-500/40 rounded-xl text-xs text-blue-300 font-black break-all text-left hover:bg-blue-500/30 transition-all flex justify-between items-center">
+                              <span>{tonPaymentData.comment}</span>
+                              <Zap size={14} />
+                            </button>
+                          </div>
+
+                          <div className="pt-2">
+                            <p className="text-[10px] text-white/60 text-center font-bold">
+                              Отправьте <span className="text-blue-400">{tonAmount} TON</span> одним платежом.
+                            </p>
+                            <p className="text-[9px] text-white/30 text-center mt-2 uppercase tracking-tighter">
+                              Баланс обновится автоматически сразу после подтверждения сетью.
+                            </p>
+                          </div>
+                        </div>
+                     </div>
+                     <button onClick={() => setTonInvoiceData(null)} className="w-full py-3 text-[10px] font-black uppercase text-white/20 hover:text-white/40 transition-colors">
+                       ← Назад к выбору
+                     </button>
+                  </motion.div>
+                ) : (
+                  <>
+                    <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-yellow-500/30 transition-all group">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="stars" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Stars</h3>
+                          <p className="text-[9px] text-white/30 font-black uppercase">1 ⭐ = 1 звезда</p>
+                        </div>
+                      </div>
+                      <div className="relative mb-4">
+                        <input
+                          type="number"
+                          value={starsAmount}
+                          onChange={(e) => setStarsAmount(e.target.value)}
+                          className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-yellow-500 focus:outline-none focus:border-yellow-500/50"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">⭐</span>
+                      </div>
+                      <button
+                        onClick={() => handleStarsPayment()}
+                        className="w-full py-4 rounded-2xl bg-yellow-500 text-black font-black uppercase tracking-widest text-xs hover:bg-yellow-600 transition-all active:scale-95 shadow-lg"
+                      >
+                        ОПЛАТИТЬ {starsAmount} ⭐
+                      </button>
                     </div>
-                    <div>
-                      <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Coin</h3>
-                      <p className="text-[9px] text-white/30 font-black uppercase">1 TON = 100 ⭐</p>
+
+                    <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-blue-500/30 transition-all group">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <img src="/asset/Icons/TonCoin.png" className="h-8 w-8" alt="ton" />
+                        </div>
+                        <div>
+                          <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Coin</h3>
+                          <p className="text-[9px] text-white/30 font-black uppercase">1 TON = 100 ⭐</p>
+                        </div>
+                      </div>
+                      <div className="relative mb-2">
+                        <input
+                          type="number"
+                          value={tonAmount}
+                          onChange={(e) => setTonAmount(e.target.value)}
+                          className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-blue-400 focus:outline-none focus:border-blue-400/50"
+                          step="0.1"
+                        />
+                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">TON</span>
+                      </div>
+                      <div className="text-center mb-4">
+                         <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">
+                           Вы получите: <span className="text-white">{(parseFloat(tonAmount) || 0) * 100}</span> ⭐
+                         </p>
+                      </div>
+                      <button
+                        onClick={handleTonPayment}
+                        className="w-full py-4 rounded-2xl bg-blue-500 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-blue-500/10"
+                      >
+                        ОПЛАТИТЬ {tonAmount} TON
+                      </button>
                     </div>
-                  </div>
-                  <div className="relative mb-2">
-                    <input
-                      type="number"
-                      value={tonAmount}
-                      onChange={(e) => setTonAmount(e.target.value)}
-                      className="w-full bg-black/40 border border-white/5 rounded-2xl p-4 pr-12 text-right font-black text-blue-400 focus:outline-none focus:border-blue-400/50"
-                      step="0.1"
-                    />
-                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 font-black">TON</span>
-                  </div>
-                  <div className="text-center mb-4">
-                     <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">
-                       Вы получите: <span className="text-white">{(parseFloat(tonAmount) || 0) * 100}</span> ⭐
-                     </p>
-                  </div>
-                  <button
-                    onClick={handleTonPayment}
-                    className="w-full py-4 rounded-2xl bg-blue-500 text-white font-black uppercase tracking-widest text-xs hover:bg-blue-600 transition-all active:scale-95 shadow-lg shadow-blue-500/10"
-                  >
-                    ОПЛАТИТЬ {tonAmount} TON
-                  </button>
-                </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </motion.div>

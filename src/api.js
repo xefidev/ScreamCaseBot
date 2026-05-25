@@ -1,6 +1,34 @@
 const BACKEND_URL = 'https://screamcasebot.onrender.com';
 
 /**
+ * Get initData from Telegram WebApp
+ * CRITICAL: Every API request must include initData for server-side authentication
+ */
+const getInitData = () => {
+  try {
+    return window?.Telegram?.WebApp?.initData || '';
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Build fetch options with initData authentication
+ */
+const getAuthHeaders = () => ({
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${getInitData()}`
+});
+
+/**
+ * Build request body with initData
+ */
+const addAuthToBody = (body) => ({
+  ...body,
+  initData: getInitData()
+});
+
+/**
  * API Error Handler - Extracts error details from response
  */
 const handleApiError = async (response) => {
@@ -59,7 +87,9 @@ const formatErrorMessage = (errorData) => {
 export const checkSubscription = async (userId) => {
   try {
     if (!userId) return false;
-    const response = await fetch(`${BACKEND_URL}/api/check_sub?user_id=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/check_sub?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
     if (!response.ok) return false;
     const data = await response.json();
     return data.is_subscribed || false;
@@ -72,7 +102,9 @@ export const checkSubscription = async (userId) => {
 export const fetchTasks = async (userId) => {
   try {
     if (!userId) return [];
-    const response = await fetch(`${BACKEND_URL}/api/tasks?user_id=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/tasks?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
@@ -86,8 +118,8 @@ export const verifyTask = async (userId, taskId) => {
     if (!userId || !taskId) throw new Error('Missing user_id or task_id');
     const response = await fetch(`${BACKEND_URL}/api/tasks/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, task_id: taskId }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, task_id: taskId })),
     });
     
     if (!response.ok) {
@@ -109,7 +141,9 @@ export const fetchBalance = async (userId) => {
   try {
     if (!userId) return { stars: 0, tickets: 0, donor: 0, spent: 0, promo_opened: 0 };
     
-    const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/balance?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
     
     if (!response.ok) {
       const error = await handleApiError(response);
@@ -135,7 +169,9 @@ export const fetchReferrals = async (userId) => {
   try {
     if (!userId) return { count: 0, referrals: [] };
     
-    const response = await fetch(`${BACKEND_URL}/api/referrals?user_id=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/referrals?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
     
     if (!response.ok) {
       const error = await handleApiError(response);
@@ -156,8 +192,8 @@ export const spinWheel = async (userId) => {
     
     const response = await fetch(`${BACKEND_URL}/api/wheel/spin`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId })),
     });
     
     if (!response.ok) {
@@ -187,8 +223,8 @@ export const upgradeItem = async (userId, cost, chance, itemPrice) => {
     
     const response = await fetch(`${BACKEND_URL}/api/upgrade`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, cost, chance, item_price: itemPrice }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, cost, chance, item_price: itemPrice })),
     });
     
     if (!response.ok) {
@@ -211,7 +247,9 @@ export const upgradeItem = async (userId, cost, chance, itemPrice) => {
 export const fetchAchievements = async (userId) => {
   try {
     if (!userId) return [];
-    const response = await fetch(`${BACKEND_URL}/api/achievements?user_id=${userId}`);
+    const response = await fetch(`${BACKEND_URL}/api/achievements?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
     if (!response.ok) return [];
     return await response.json();
   } catch (error) {
@@ -225,8 +263,8 @@ export const claimAchievement = async (userId, achievementId) => {
     if (!userId || !achievementId) throw new Error('Missing data');
     const response = await fetch(`${BACKEND_URL}/api/achievements/claim`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, achievement_id: achievementId }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, achievement_id: achievementId })),
     });
     
     if (!response.ok) {
@@ -251,8 +289,8 @@ export const createInvoice = async (userId, amount) => {
     
     const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, amount }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, amount })),
     });
     
     if (!response.ok) {
@@ -261,7 +299,8 @@ export const createInvoice = async (userId, amount) => {
       throw new Error(error.error || 'Failed to create invoice');
     }
     
-    return await response.json();
+    const data = await response.json();
+    return data;
   } catch (error) {
     console.error('Error creating invoice:', error);
     throw error;
@@ -276,8 +315,8 @@ export const notifyTonSuccess = async (userId, amount, txId) => {
     
     const response = await fetch(`${BACKEND_URL}/api/ton_success`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, amount, tx_id: txId }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, amount, tx_id: txId })),
     });
     
     if (!response.ok) {
@@ -296,6 +335,35 @@ export const notifyTonSuccess = async (userId, amount, txId) => {
   } catch (error) {
     console.error('Error notifying TON success:', error);
     throw error;
+  }
+};
+
+/**
+ * Heartbeat - Keep Render.com server awake
+ * Must be called every 10-12 minutes to prevent server hibernation
+ * and keep TON monitor background task running
+ */
+export const sendHeartbeat = async (userId) => {
+  try {
+    if (!userId) return { status: 'skipped' };
+    
+    const response = await fetch(`${BACKEND_URL}/api/heartbeat`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId })),
+    });
+    
+    if (!response.ok) {
+      console.warn('Heartbeat failed:', response.status);
+      return { status: 'failed' };
+    }
+    
+    const data = await response.json();
+    console.log('💓 Heartbeat sent, server alive:', data.timestamp);
+    return { status: 'success', ...data };
+  } catch (error) {
+    console.error('Error sending heartbeat:', error);
+    return { status: 'error' };
   }
 };
 
