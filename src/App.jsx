@@ -7,6 +7,7 @@ import CasesGrid from './components/CasesGrid';
 import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
+import QuestsTab from './components/QuestsTab';
 import { createInvoice, fetchBalance, fetchAchievements, claimAchievement, notifyTonSuccess, sendHeartbeat } from './api';
 import { getDynamicGiftImage } from './giftUtils';
 
@@ -277,62 +278,6 @@ export default function App() {
     setInventory((prev) => [inventoryItem, ...prev]);
   };
 
-  const renderAchievements = () => (
-    <div className="h-full overflow-y-auto p-6 pb-24" style={{ backgroundColor: PAGE_BG }}>
-      <h2 className="mb-6 font-rounded text-2xl font-black uppercase tracking-tight text-white">Достижения</h2>
-      <div className="space-y-4">
-        {achievements?.map?.((a) => {
-          const progress = Math.min(a?.progress || 0, a?.goal || 1);
-          const percent = (progress / (a?.goal || 1)) * 100;
-          const isComplete = progress >= (a?.goal || 1);
-          return (
-            <div key={a?.id} className="glass-panel p-5 border-white/10 bg-white/[0.02] relative overflow-hidden">
-              {isComplete && !a?.is_claimed && (
-                <div className="absolute inset-0 bg-yellow-500/5 animate-pulse-slow pointer-events-none" />
-              )}
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <h3 className="font-black text-sm uppercase tracking-tight text-white">
-                    {a?.title || 'Достижение'}
-                  </h3>
-                  <p className="text-[10px] text-white/40 font-bold uppercase">
-                    Награда: {a?.reward || 0} ⭐
-                  </p>
-                </div>
-                <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">
-                  {progress}/{a?.goal || 1}
-                </span>
-              </div>
-              <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden mb-4">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${percent}%` }}
-                  className="h-full bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.5)]"
-                />
-              </div>
-              {a?.is_claimed ? (
-                <div className="w-full py-2 rounded-xl bg-white/5 border border-white/5 text-center">
-                  <span className="text-[10px] font-black uppercase text-white/20">Награда получена</span>
-                </div>
-              ) : (
-                <button
-                  onClick={() => handleClaimAchievement(a?.id)}
-                  disabled={!isComplete}
-                  className={`w-full py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                    isComplete
-                      ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 cursor-pointer hover:bg-yellow-600'
-                      : 'bg-white/5 text-white/20 cursor-not-allowed'
-                  }`}
-                >
-                  Забрать награду
-                </button>
-              )}
-            </div>
-          );
-        }) || <p className="text-white/50 text-center">Загрузка достижений...</p>}
-      </div>
-    </div>
-  );
 
   const renderContent = () => {
     if (loading) return <LoadingSpinner />;
@@ -354,7 +299,7 @@ export default function App() {
           />
         );
       case 'achievements':
-        return renderAchievements();
+        return <QuestsTab achievements={achievements} onClaimAchievement={handleClaimAchievement} />;
       case 'games':
         if (activeGame === 'wheel') {
           return (

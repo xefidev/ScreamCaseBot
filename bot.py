@@ -87,7 +87,7 @@ def require_auth(handler):
             return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
         
         # Сохраняем user_id в request для дальнейшего использования
-        request['user_id'] = user_data.get('id')
+        request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
         request['user_data'] = user_data
         
         return await handler(request)
@@ -115,7 +115,7 @@ def auth_middleware(app, handler):
                 logger.warning(f"❌ Unauthorized access attempt to {request.path}")
                 return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
             
-            request['user_id'] = user_data.get('id')
+            request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
             request['user_data'] = user_data
         
         return await handler(request)
