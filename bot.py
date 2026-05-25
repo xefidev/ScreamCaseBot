@@ -15,7 +15,7 @@ from supabase import create_client, Client
 from dotenv import load_dotenv
 
 import base64
-from pytoniq import BeginCell
+from pytoniq import Builder
 
 import hmac
 import urllib.parse
@@ -154,7 +154,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 def create_comment_boc(text: str) -> str:
     """Создает BOC с текстовым комментарием (opcode 0) в формате Base64."""
     try:
-        cell = BeginCell().store_uint(0, 32).store_string(text).end_cell()
+        cell = Builder().store_uint(0, 32).store_string(text).end_cell()
         return base64.b64encode(cell.to_boc(False)).decode('utf-8')
     except Exception as e:
         logger.error(f"Error creating BOC: {e}")
