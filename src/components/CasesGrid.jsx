@@ -1,20 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CasePreview from './CasePreview';
 import { getGiftsInRange } from '../giftData';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
+import { fetchCases } from '../api';
 
 const CASES_DATA = [
-  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 1, maxPrice: 600, stock: 100 },
-  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 1, maxPrice: 500, stock: 50 },
-  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 15, maxPrice: 2000, stock: 100 },
-  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 15, maxPrice: 1500, stock: 80 },
-  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Бюджет', minPrice: 15, maxPrice: 400, stock: 200 },
-  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Рискованный', minPrice: 15, maxPrice: 250, stock: 150 },
-  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Мистический', minPrice: 15, maxPrice: 300, stock: 300 },
-  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'Элитный', minPrice: 15, maxPrice: 1000, stock: 120 },
-  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Подарки', minPrice: 15, maxPrice: 500, stock: 100 },
-  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'Яркий', minPrice: 15, maxPrice: 600, stock: 150 },
+  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 1, maxPrice: 600, stock: 100, image: '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' },
+  { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 1, maxPrice: 500, stock: 50, image: '/asset/Gifts/100S_Red_Star_Original_Red_Star.webp' },
+  { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 15, maxPrice: 2000, stock: 100, image: '/asset/Gifts/1188S_Snoop_Cigar_Original_Snoop_Cigar.webp' },
+  { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 15, maxPrice: 1500, stock: 80, image: '/asset/Gifts/2S_I_love_you_Original_I_love_you.webp' },
+  { id: 5, name: 'Hobo Case', price: 199, glowColor: '#78350f', badge: 'Бюджет', minPrice: 15, maxPrice: 400, stock: 200, image: '/asset/Gifts/370S_Instant_Ramen_Original_Instant_Ramen.webp' },
+  { id: 6, name: 'Risky Box', price: 50, glowColor: '#eab308', badge: 'Рискованный', minPrice: 15, maxPrice: 250, stock: 150, image: '/asset/Gifts/800S_Evil_Eye_Original_Evil_Eye.webp' },
+  { id: 7, name: 'Scam Box', price: 111, glowColor: '#4b5563', badge: 'Мистический', minPrice: 15, maxPrice: 300, stock: 300, image: '/asset/Gifts/850S_Trojan_Horse_Original_Trojan_Horse.webp' },
+  { id: 8, name: 'Ebati Case', price: 444, glowColor: '#3b82f6', badge: 'Элитный', minPrice: 15, maxPrice: 1000, stock: 120, image: '/asset/Gifts/7942S_Diamond_Ring_Original_Diamond_Ring.webp' },
+  { id: 9, name: 'Pussy Case', price: 222, glowColor: '#ec4899', badge: '💝 Подарки', minPrice: 15, maxPrice: 500, stock: 100, image: '/asset/Gifts/3579S_Pink_Bear_Original_Pink_Bear.webp' },
+  { id: 10, name: 'Skolnik Case', price: 250, glowColor: '#f97316', badge: 'Яркий', minPrice: 15, maxPrice: 600, stock: 150, image: '/asset/Gifts/2500S_Pen_Original_Pen.webp' },
 ];
 
 const getRandomFlashDiscount = () => {
@@ -57,9 +58,9 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
 
         <div className="relative flex-1 flex items-center justify-center py-2 min-h-[120px] w-full overflow-visible">
           <img
-            src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'}
+            src={caseItem?.image || '/asset/Case/CaseBlack.png'}
             alt={caseItem?.name || 'Case'}
-            className={caseItem?.name === 'Pussy Case' ? "w-24 h-24 object-contain relative z-10" : "w-full h-28 object-contain relative z-10"}
+            className="w-24 h-24 object-contain relative z-10"
             onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
             loading="lazy"
             style={{
@@ -71,7 +72,9 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
         <div className="flex items-center justify-between gap-2 relative z-10">
           <div className="flex-1 min-w-0">
             <h3 className="text-white font-bold text-xs truncate uppercase tracking-tighter">{caseItem?.name || 'Case'}</h3>
-            <p className="text-white/40 text-[9px] uppercase font-black tracking-widest">В наличии: {caseItem?.stock || 0}</p>
+            <p className="text-white/40 text-[9px] uppercase font-black tracking-widest">
+                {caseItem.total_limit === -1 ? 'Бесконечно' : `Осталось: ${caseItem?.remaining_limit ?? '?'} / ${caseItem?.total_limit ?? '?'}`}
+            </p>
           </div>
           {isFlashDiscount ? (
             <span className="px-1.5 py-0.5 rounded-lg text-[10px] font-black bg-red-500/20 border border-red-500/40 text-red-400 whitespace-nowrap font-rounded animate-pulse">
@@ -115,8 +118,28 @@ export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, set
   const [selectedCase, setSelectedCase] = useState(null);
   const [view, setView] = useState('grid');
   const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
+  const [dbCases, setDbCases] = useState([]);
 
-  const sortedCases = useMemo(() => [...CASES_DATA].sort((a, b) => a.price - b.price), []);
+  useEffect(() => {
+    const loadDbCases = async () => {
+      const casesFromApi = await fetchCases();
+      setDbCases(casesFromApi);
+    };
+    loadDbCases();
+  }, []);
+
+  const mergedCases = useMemo(() => {
+    return CASES_DATA.map(localCase => {
+      const dbMatch = dbCases.find(db => db.id === localCase.id);
+      return {
+        ...localCase,
+        total_limit: dbMatch?.total_limit ?? -1,
+        remaining_limit: dbMatch?.remaining_limit ?? -1,
+      };
+    });
+  }, [dbCases]);
+
+  const sortedCases = useMemo(() => [...mergedCases].sort((a, b) => a.price - b.price), [mergedCases]);
 
   const handlePreview = (caseItem) => {
     setSelectedCase(caseItem);

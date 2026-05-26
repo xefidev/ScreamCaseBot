@@ -78,7 +78,8 @@ const formatErrorMessage = (errorData) => {
     'already_completed': '❌ Задание уже выполнено',
     'task_not_found': '❌ Задание не найдено',
     'task_not_met': '❌ Условия задания не выполнены',
-    'already_opened': '❌ Вы уже открывали этот кейс!'
+    'already_opened': '❌ Вы уже открывали этот кейс!',
+    'case_limit_reached': '❌ Кейсы этого типа закончились!'
   };
   
   return errorMessages[errorData.error] || `❌ ${errorData.error || 'Ошибка'}`;
@@ -496,5 +497,16 @@ export const claimQuest = async (userId, questId) => {
   } catch (error) {
     console.error('Error claiming quest:', error);
     throw error;
+  }
+};
+
+export const fetchCases = async () => {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/cases`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching cases:', error);
+    return [];
   }
 };

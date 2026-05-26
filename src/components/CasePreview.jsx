@@ -13,7 +13,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [showResult, setShowResult] = useState(false);
   const [wonItems, setWonItems] = useState([]);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
-  const [currentStock, setCurrentStock] = useState(caseItem?.stock || 0);
+  const [currentStock, setCurrentStock] = useState(caseItem?.remaining_limit !== undefined ? caseItem?.remaining_limit : (caseItem?.stock || 0));
   const [quantity, setQuantity] = useState(1);
   const [promoCode, setPromoCode] = useState('');
   const [isCollecting, setIsCollecting] = useState(false);
@@ -23,7 +23,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
   const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
   const isPromo = caseItem?.name?.toLowerCase()?.includes('promo');
-  const canOpen = currentStock >= quantity && !(isPromo && promoOpened) && (!isPromo || promoCode.trim().length > 0);
+  const hasLimit = caseItem?.total_limit !== -1;
+  const canOpen = (!hasLimit || currentStock >= quantity) && !(isPromo && promoOpened) && (!isPromo || promoCode.trim().length > 0);
 
   const getCost = useMemo(() => {
     if (isPromo) return 0;
@@ -179,7 +180,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             <h2 className="text-white font-black text-xl uppercase tracking-tighter">{caseItem?.name || 'Case'}</h2>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">В наличии: {currentStock}</p>
+              <p className="text-white/40 text-[10px] uppercase font-black tracking-widest">
+                {caseItem?.total_limit === -1 ? 'Бесконечно' : `Осталось: ${currentStock} / ${caseItem?.total_limit ?? '?'}`}
+              </p>
             </div>
           </div>
           <div className="w-10" />
@@ -197,7 +200,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img src={caseItem?.name === 'Pussy Case' ? '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' : '/asset/Case/CaseBlack.png'} alt="Case" className={caseItem?.name === 'Pussy Case' ? "w-32 h-32 object-contain mb-8" : "w-48 h-48 object-contain"} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+            <img src={caseItem?.image || '/asset/Case/CaseBlack.png'} alt="Case" className="w-48 h-48 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
           </div>
         </div>
 
