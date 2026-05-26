@@ -11,6 +11,7 @@ import aiohttp_cors
 import hashlib
 import string
 import random
+import re
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
@@ -93,33 +94,31 @@ def require_auth(handler):
         return await handler(request)
     return wrapped
 
-def auth_middleware(app, handler):
-    @wraps(handler)
-    async def middleware(request):
-        # Применяем auth только к /api/ routes
-        if request.path.startswith('/api/'):
-            init_data = None
-            try:
-                if request.method == 'POST':
-                    data = await request.json()
-                    init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
-                else:
-                    init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
-            except Exception as e:
-                logger.debug(f"Error extracting initData in middleware: {e}")
-                init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
-            
-            # Валидируем
-            user_data = validate_init_data(init_data, TOKEN)
-            if not user_data:
-                logger.warning(f"❌ Unauthorized access attempt to {request.path}")
-                return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
-            
-            request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
-            request['user_data'] = user_data
+@web.middleware
+async def auth_middleware(request, handler):
+    # Применяем auth только к /api/ routes
+    if request.path.startswith('/api/'):
+        init_data = None
+        try:
+            if request.method == 'POST':
+                data = await request.json()
+                init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            else:
+                init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        except Exception as e:
+            logger.debug(f"Error extracting initData in middleware: {e}")
+            init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
         
-        return await handler(request)
-    return middleware
+        # Валидируем
+        user_data = validate_init_data(init_data, TOKEN)
+        if not user_data:
+            logger.warning(f"❌ Unauthorized access attempt to {request.path}")
+            return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+        
+        request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
+        request['user_data'] = user_data
+    
+    return await handler(request)
 
 # Цены кейсов
 CASES_PRICES = {
@@ -134,7 +133,7 @@ CASES_PRICES = {
     9: 75,   # Pussy Case
     10: 150  # Skolnik Case
 }
-ADMIN_IDS = [7782281997, 5396975347]
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 
@@ -195,13 +194,24 @@ async def check_ton_transactions():
     async with aiohttp.ClientSession() as session:
         while True:
             try:
+                if not TONCENTER_API_KEY:
+                    logger.warning("⚠️ TONCENTER_API_KEY is not set; skipping TON verification iteration")
+                    await asyncio.sleep(300)
+                    continue
+
                 params = {
                     "address": TON_WALLET,
-                    "limit": 20,
-                    "api_key": TONCENTER_API_KEY
+                    "limit": 20
                 }
+                headers = {"X-API-Key": TONCENTER_API_KEY}
                 
-                async with session.get(f"{TONCENTER_BASE_URL}/getTransactions", params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                async with session.get(f"{TONCENTER_BASE_URL}/getTransactions", params=params, headers=headers, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status == 401:
+                        logger.warning("⚠️ Ошибка Toncenter API: 401 Unauthorized. Check TONCENTER_API_KEY; skipping iteration.")
+                        consecutive_errors += 1
+                        await asyncio.sleep(300)
+                        continue
+
                     if resp.status != 200:
                         logger.error(f"⚠️ Ошибка Toncenter API: {resp.status}")
                         consecutive_errors += 1
@@ -259,7 +269,7 @@ async def check_ton_transactions():
                                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }).execute()
                             
-                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("user_id", user_id).execute()
+                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("id", user_id).execute()
                             if user_res.data:
                                 u = user_res.data[0]
                                 new_stars = u['stars'] + stars_to_add
@@ -268,7 +278,7 @@ async def check_ton_transactions():
                                 supabase.table("users").update({
                                     "stars": new_stars, 
                                     "total_donated_ton": new_donated_ton
-                                }).eq("user_id", user_id).execute()
+                                }).eq("id", user_id).execute()
                                 
                                 supabase.table("payments").insert({
                                     "user_id": user_id, 
@@ -301,16 +311,6 @@ def init_db():
     try:
         supabase.table("users").select("count", count="exact").limit(1).execute()
         logger.info("✅ Supabase connection verified")
-        
-        referral_tasks = [
-            {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
-            {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
-            {"id": 3, "title": "Пригласить 3 друзей", "reward": 3, "type": "referral_3", "url": "", "chat_id": ""},
-            {"id": 4, "title": "Пригласить 4 друзей", "reward": 4, "type": "referral_4", "url": "", "chat_id": ""},
-            {"id": 5, "title": "Пригласить 5 друзей", "reward": 5, "type": "referral_5", "url": "", "chat_id": ""},
-        ]
-        supabase.table("tasks").upsert(referral_tasks).execute()
-        logger.info("✅ Base tasks initialized in Supabase")
     except Exception as e:
         logger.error(f"❌ Supabase initialization error: {e}")
 
@@ -319,7 +319,7 @@ def get_gifts_in_range(min_p, max_p):
 
 def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
     try:
-        res = supabase.table("users").select("stars, join_date").eq("user_id", user_id).execute()
+        res = supabase.table("users").select("stars, join_date").eq("id", user_id).execute()
         
         if res.data:
             update_user_profile(user_id, username, first_name, photo_url)
@@ -333,12 +333,12 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
             if ref_id == user_id:
                 ref_id = None
             else:
-                ref_check = supabase.table("users").select("user_id").eq("user_id", ref_id).execute()
+                ref_check = supabase.table("users").select("id").eq("id", ref_id).execute()
                 if not ref_check.data:
                     ref_id = None
 
         user_data = {
-            "user_id": user_id,
+            "id": user_id,
             "stars": 0,
             "join_date": date,
             "username": username,
@@ -350,10 +350,10 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
         supabase.table("users").insert(user_data).execute()
         
         if ref_id:
-            ref_user = supabase.table("users").select("tickets").eq("user_id", ref_id).execute()
+            ref_user = supabase.table("users").select("tickets").eq("id", ref_id).execute()
             if ref_user.data:
                 new_tickets = (ref_user.data[0].get('tickets') or 0) + 1
-                supabase.table("users").update({"tickets": new_tickets}).eq("user_id", ref_id).execute()
+                supabase.table("users").update({"tickets": new_tickets}).eq("id", ref_id).execute()
             logger.info(f"User {user_id} joined via referral {ref_id}")
             
         return (0, date), True
@@ -369,13 +369,13 @@ def update_user_profile(user_id, username=None, first_name=None, photo_url=None)
         if photo_url: updates["photo_url"] = photo_url
         
         if updates:
-            supabase.table("users").update(updates).eq("user_id", user_id).execute()
+            supabase.table("users").update(updates).eq("id", user_id).execute()
     except Exception as e:
         logger.error(f"Error in update_user_profile: {e}")
 
 def update_balance(user_id, amount, mode="add", is_donation=False):
     try:
-        user_res = supabase.table("users").select("stars, total_donated_stars, referred_by").eq("user_id", user_id).execute()
+        user_res = supabase.table("users").select("stars, total_donated_stars, referred_by").eq("id", user_id).execute()
         if not user_res.data:
             return
         
@@ -392,19 +392,19 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
                 if ref_id:
                     reward = int(amount * 0.1)
                     if reward > 0:
-                        ref_res = supabase.table("users").select("stars").eq("user_id", ref_id).execute()
+                        ref_res = supabase.table("users").select("stars").eq("id", ref_id).execute()
                         if ref_res.data:
                             new_ref_stars = ref_res.data[0]['stars'] + reward
-                            supabase.table("users").update({"stars": new_ref_stars}).eq("user_id", ref_id).execute()
+                            supabase.table("users").update({"stars": new_ref_stars}).eq("id", ref_id).execute()
                             supabase.table("payments").insert({
                                 "user_id": ref_id, 
                                 "amount": reward, 
                                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }).execute()
                             logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
-            supabase.table("users").update(updates).eq("user_id", user_id).execute()
+            supabase.table("users").update(updates).eq("id", user_id).execute()
         else:
-            supabase.table("users").update({"stars": amount}).eq("user_id", user_id).execute()
+            supabase.table("users").update({"stars": amount}).eq("id", user_id).execute()
         
         supabase.table("payments").insert({
             "user_id": user_id, 
@@ -588,46 +588,37 @@ async def help_cmd(message: types.Message):
         logger.error(f"Error in help_cmd: {e}")
         await message.answer("❌ Ошибка при получении справки.")
 
-@dp.message(F.text.startswith('/+'))
+@dp.message(F.text.regexp(r'^\/\+\s*(?:(\d+)\s+)?(\d+)'))
 async def admin_add(message: types.Message):
     try:
-        # Приводим ID админов к типу int на случай, если они загружены как строки из .env
-        admin_ints = [int(admin_id) for admin_id in ADMIN_IDS]
-        if message.from_user.id not in admin_ints:
+        if int(message.from_user.id) not in ADMIN_IDS:
             await message.answer("❌ Вы не администратор.")
             return
         
-        parts = message.text.split()
-        if len(parts) < 2:
+        match = re.match(r'^\/\+\s*(?:(\d+)\s+)?(\d+)', message.text or "")
+        if not match:
             await message.answer("❌ Пример: `/+ 100` (в ответ на сообщение) или `/+ 12345 100`", parse_mode="Markdown")
             return
         
-        target_user_id = None
-        amount = 0
+        target_arg, amount_arg = match.groups()
+        amount = int(amount_arg)
         
-        if len(parts) == 2:
-            amount = int(parts[1])
-            if message.reply_to_message:
-                target_user_id = message.reply_to_message.from_user.id
-            else:
-                target_user_id = message.from_user.id
-        elif len(parts) == 3:
-            target_user_id = int(parts[1])
-            amount = int(parts[2])
+        if target_arg:
+            target_user_id = int(target_arg)
+        elif message.reply_to_message:
+            target_user_id = int(message.reply_to_message.from_user.id)
+        else:
+            target_user_id = int(message.from_user.id)
             
         if amount <= 0:
             await message.answer("❌ Количество должно быть > 0.")
             return
-            
-        if not target_user_id:
-            await message.answer("❌ Не указан пользователь.")
-            return
         
         try:
             update_balance(target_user_id, amount, "add")
-        except Exception as db_err:
-            logger.error(f"Database error in admin_add: {db_err}")
-            await message.answer(f"❌ Ошибка БД при сохранении: `{db_err}`", parse_mode="Markdown")
+        except Exception as e:
+            logger.error(f"Database error in admin_add: {e}")
+            await message.answer(f"❌ Ошибка БД: {e}")
             return
             
         logger.info(f"Admin {message.from_user.id} added {amount} stars to {target_user_id}")
@@ -679,7 +670,7 @@ async def admin_user_info(message: types.Message):
             return
         
         user_id = int(parts[1])
-        res = supabase.table("users").select("user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("user_id", user_id).execute()
+        res = supabase.table("users").select("id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("id", user_id).execute()
         
         if not res.data:
             await message.answer(f"❌ Пользователь `{user_id}` не найден.", parse_mode="Markdown")
@@ -687,7 +678,7 @@ async def admin_user_info(message: types.Message):
         
         user = res.data[0]
         text = f"""👤 **Информация о пользователе**
-🆔 ID: `{user['user_id']}`
+🆔 ID: `{user['id']}`
 ⭐ Баланс: `{user['stars']}`
 🎫 Билеты: `{user['tickets']}`
 📅 Дата присоединения: `{user['join_date']}`
@@ -770,13 +761,13 @@ async def admin_send(message: types.Message, command: CommandObject):
 
         await message.answer("⏳ Рассылка запущена...")
         
-        res = supabase.table("users").select("user_id").execute()
+        res = supabase.table("users").select("id").execute()
         users = res.data
         
         sent = 0
         failed = 0
         for u in users:
-            uid = u['user_id']
+            uid = u['id']
             try:
                 await bot.send_message(uid, text_to_send)
                 sent += 1
@@ -811,13 +802,13 @@ async def admin_hype(message: types.Message, command: CommandObject):
 
         template = HYPE_TEMPLATES[template_index]
         
-        res = supabase.table("users").select("user_id, username, first_name").execute()
+        res = supabase.table("users").select("id, username, first_name").execute()
         users = res.data
         
         sent = 0
         failed = 0
         for u in users:
-            uid, username, first_name = u['user_id'], u.get('username'), u.get('first_name')
+            uid, username, first_name = u['id'], u.get('username'), u.get('first_name')
             try:
                 clean_username = (username or first_name or "игрок").strip() or "игрок"
                 text = template.format(
@@ -886,7 +877,7 @@ async def api_balance(request):
             logger.warning(f"❌ User {uid} tried to access balance of user {request_uid}")
             return web.json_response({"error": "forbidden"}, status=403)
         
-        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", int(uid)).execute()
+        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("id", int(uid)).execute()
         
         if not res.data:
             return web.json_response({"stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
@@ -912,11 +903,11 @@ async def api_referrals(request):
             return web.json_response({"error": "no_id"}, status=400)
         
         uid = int(uid)
-        res = supabase.table("users").select("user_id, username, first_name, photo_url, total_donated_stars").eq("referred_by", uid).execute()
+        res = supabase.table("users").select("id, username, first_name, photo_url, total_donated_stars").eq("referred_by", uid).execute()
         
         referrals = [
             {
-                "user_id": r['user_id'],
+                "user_id": r['id'],
                 "username": r.get('username'),
                 "first_name": r.get('first_name'),
                 "photo_url": r.get('photo_url'),
@@ -933,6 +924,19 @@ async def api_referrals(request):
     except Exception as e:
         logger.error(f"Error in api_referrals: {e}")
         return web.json_response({"error": "server_error"}, status=500)
+
+def _consume_case_limit(case_id: int) -> bool:
+    rpc_res = supabase.rpc("consume_case_limit", {"p_case_id": int(case_id)}).execute()
+    data = rpc_res.data
+    if data is False:
+        return False
+    if isinstance(data, list) and data:
+        first = data[0]
+        if first is False:
+            return False
+        if isinstance(first, dict) and False in first.values():
+            return False
+    return True
 
 async def api_open_case(request):
     try:
@@ -971,7 +975,7 @@ async def api_open_case(request):
         if price is None:
             return web.json_response({"error": "invalid_case"}, status=400)
         
-        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("id", uid).execute()
         if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
         
         u = user_res.data[0]
@@ -982,22 +986,20 @@ async def api_open_case(request):
         if case_id == 1:
             if promo_opened:
                 return web.json_response({"error": "already_opened"}, status=403)
-            supabase.table("users").update({"promo_opened": 1}).eq("user_id", uid).execute()
             price = 0
 
         if balance < price:
             return web.json_response({"error": "insufficient_funds"}, status=403)
             
-        # Уменьшаем лимит атомарно
-        if case_id not in (1, 2):
-            try:
-                rpc_res = supabase.rpc("consume_case_limit", {"p_case_id": case_id}).execute()
-                # rpc_res.data will be True if successful, False if out of stock
-                if rpc_res.data is False:
-                    return web.json_response({"error": "case_limit_reached"}, status=400)
-            except Exception as e:
-                logger.error(f"Error consuming case limit: {e}")
-                return web.json_response({"error": "server_error"}, status=500)
+        try:
+            if not _consume_case_limit(case_id):
+                return web.json_response({"error": "Cases of this type are sold out."}, status=400)
+        except Exception as e:
+            logger.error(f"Error consuming case limit: {e}")
+            return web.json_response({"error": "server_error"}, status=500)
+        
+        if case_id == 1:
+            supabase.table("users").update({"promo_opened": 1}).eq("id", uid).execute()
         
         case_info = CASES_DATA.get(case_id)
         if not case_info:
@@ -1011,7 +1013,7 @@ async def api_open_case(request):
             "stars": balance - price, 
             "total_spent": new_spent, 
             "cases_opened_count": new_count
-        }).eq("user_id", uid).execute()
+        }).eq("id", uid).execute()
 
         supabase.table("payments").insert({
             "user_id": uid, 
@@ -1090,7 +1092,7 @@ async def api_upgrade(request):
             logger.warning(f"❌ User {uid} tried to upgrade for user {body_uid}")
             return web.json_response({"error": "forbidden"}, status=403)
         
-        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
+        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("id", int(uid)).execute()
         if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
         
         u = user_res.data[0]
@@ -1115,7 +1117,7 @@ async def api_upgrade(request):
             updates["successful_upgrades_count"] = (u.get('successful_upgrades_count') or 0) + 1
             _increment_achievement_progress(int(uid), 'upgrades_successful')
 
-        supabase.table("users").update(updates).eq("user_id", int(uid)).execute()
+        supabase.table("users").update(updates).eq("id", int(uid)).execute()
         supabase.table("payments").insert({
             "user_id": int(uid), 
             "amount": -cost, 
@@ -1146,7 +1148,7 @@ async def api_wheel_spin(request):
         
         SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
         
-        user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars, total_spent").eq("id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
         
@@ -1168,7 +1170,7 @@ async def api_wheel_spin(request):
         new_balance = balance - cost + prize
         new_spent = (u.get('total_spent') or 0) + cost
         
-        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
+        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("id", uid).execute()
         
         supabase.table("payments").insert([
             {"user_id": uid, "amount": -cost, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
@@ -1192,7 +1194,7 @@ async def api_claim_daily_internal(uid):
         uid = int(uid)
         now = datetime.now()
         
-        user_res = supabase.table("users").select("last_daily").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("last_daily").eq("id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
         
@@ -1213,7 +1215,7 @@ async def api_claim_daily_internal(uid):
             except ValueError:
                 pass
         
-        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("user_id", uid).execute()
+        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("id", uid).execute()
         logger.info(f"User {uid} claimed daily case")
         
         return web.json_response({"success": True})
@@ -1225,7 +1227,14 @@ async def api_claim_daily_internal(uid):
 async def api_claim_daily(request):
     try:
         data = await request.json()
-        return await api_claim_daily_internal(data.get("user_id"))
+        uid = request.get('user_id')
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to claim daily for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        return await api_claim_daily_internal(uid)
     except Exception as e:
         logger.error(f"Error in api_claim_daily: {e}")
         return web.json_response({"error": "server_error"}, status=500)
@@ -1255,7 +1264,7 @@ async def api_invoice(request):
             return web.json_response({"error": "no_amount"}, status=400)
             
         # Проверяем что user существует в БД
-        user_check = supabase.table("users").select("user_id").eq("user_id", int(user_id)).limit(1).execute()
+        user_check = supabase.table("users").select("id").eq("id", int(user_id)).limit(1).execute()
         if not user_check.data:
             logger.warning(f"❌ Invoice requested for non-existent user {user_id}")
             return web.json_response({"error": "user_not_found"}, status=404)
@@ -1275,7 +1284,7 @@ async def api_invoice(request):
                     prices=prices
                 )
                 logger.info(f"✨ Создан инвойс-ссылка Stars для {user_id} на сумму {amount}: {link}")
-                return web.json_response({"link": link})
+                return web.json_response({"invoice_url": link, "link": link, "url": link})
             except Exception as telegram_err:
                 logger.error(f"❌ Ошибка Telegram при создании ссылки Stars: {telegram_err}")
                 return web.json_response({"error": f"Telegram API error: {telegram_err}"}, status=500)
@@ -1420,10 +1429,10 @@ async def api_claim_achievement(request):
         
         supabase.table("user_achievements").update({"is_claimed": 1}).eq("user_id", uid).eq("achievement_id", aid).execute()
         
-        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars").eq("id", uid).execute()
         if user_res.data:
             new_stars = user_res.data[0]['stars'] + info['reward']
-            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("users").update({"stars": new_stars}).eq("id", uid).execute()
             supabase.table("payments").insert({
                 "user_id": uid, 
                 "amount": info['reward'], 
@@ -1498,10 +1507,10 @@ async def api_claim_quest(request):
         supabase.table("user_quests").update({"reward_claimed": True}).eq("user_id", uid).eq("quest_id", quest_id).execute()
         
         # Начисляем звёзды
-        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars").eq("id", uid).execute()
         if user_res.data:
             new_stars = user_res.data[0]['stars'] + info['reward']
-            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("users").update({"stars": new_stars}).eq("id", uid).execute()
             supabase.table("payments").insert({
                 "user_id": uid, 
                 "amount": info['reward'], 
@@ -1513,12 +1522,40 @@ async def api_claim_quest(request):
         logger.error(f"Error in api_claim_quest: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
+def _limit_to_int(value) -> int:
+    if value is None:
+        return -1
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return -1
+
+def _normalize_case_row(row: dict) -> dict:
+    item = dict(row)
+    raw_case_id = item.get("id") or item.get("case_id")
+    try:
+        case_id = int(raw_case_id)
+    except (TypeError, ValueError):
+        case_id = None
+    case_name = str(item.get("name") or item.get("title") or "").lower()
+
+    item["remaining_limit"] = _limit_to_int(item.get("remaining_limit"))
+    item["total_limit"] = _limit_to_int(item.get("total_limit"))
+
+    if case_id == 1 or "promo" in case_name:
+        promo_asset = "/asset/Gifts/5000S_Case_Original_Case.webp"
+        item["asset"] = promo_asset
+        item["asset_url"] = promo_asset
+        item["image"] = promo_asset
+        item["image_url"] = promo_asset
+
+    return item
+
 async def api_cases(request):
     try:
         res = supabase.table("cases").select("*").execute()
-        if res.data:
-            return web.json_response(res.data)
-        return web.json_response([])
+        cases = [_normalize_case_row(row) for row in (res.data or [])]
+        return web.json_response(cases)
     except Exception as e:
         logger.error(f"Error in api_cases: {e}")
         return web.json_response({"error": "server_error"}, status=500)
@@ -1538,14 +1575,18 @@ async def keep_alive_task():
         except Exception as e:
             logger.error(f"[Keep-Alive] Self-ping error: {e}")
 
-async def background_tasks(app):
-    """Управляет фоновыми задачами приложения."""
+async def start_background_tasks(app):
+    """Launch non-blocking background tasks from aiohttp startup."""
     app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
     app['keep_alive'] = asyncio.create_task(keep_alive_task())
-    yield
-    app['ton_monitor'].cancel()
-    app['keep_alive'].cancel()
-    await asyncio.gather(app['ton_monitor'], app['keep_alive'], return_exceptions=True)
+
+async def cleanup_background_tasks(app):
+    tasks = [app.get('ton_monitor'), app.get('keep_alive')]
+    tasks = [task for task in tasks if task is not None]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 async def root_handler(request):
     return web.Response(text="OK", status=200)
@@ -1554,7 +1595,8 @@ async def main():
     init_db()
     
     app = web.Application(middlewares=[auth_middleware])
-    app.cleanup_ctx.append(background_tasks)
+    app.on_startup.append(start_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
     
     app.router.add_post('/api/heartbeat', api_heartbeat)
     app.router.add_get('/', root_handler)
