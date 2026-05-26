@@ -413,6 +413,7 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
         }).execute()
     except Exception as e:
         logger.error(f"Error in update_balance: {e}")
+        raise e
 
 # --- CASE DATA (Server Side) ---
 CASES_DATA = {
@@ -433,7 +434,7 @@ ALL_GIFTS = [
   {"price": 25, "name": "Rosae", "image": "/asset/Gifts/25S_Rosae_Original_Rosae.webp"},
   {"price": 40, "name": "Lol Pops", "image": "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp"},
   {"price": 50, "name": "Cake", "image": "/asset/Gifts/50S_Cake_Original_Cake.webp"},
-  {"price": 50, "name": "GiftBox", "image": "/asset/Gifts/50S_GiftBox_Original_GiftBox.webp"},
+  {"price": 50, "name": "May Bear", "image": "/asset/Gifts/50S_May_Bear_Original_May_Bear.webp"},
   {"price": 100, "name": "Flowers", "image": "/asset/Gifts/100S_Flowers_Original_Flowers.webp"},
   {"price": 300, "name": "Instant Ramens", "image": "/asset/Gifts/300S_Instant_Ramens_Original_Instant_Ramens.webp"},
   {"price": 300, "name": "Xmas Stockings", "image": "/asset/Gifts/300S_Xmas_Stockings_Original_Xmas_Stockings.webp"},
@@ -587,10 +588,12 @@ async def help_cmd(message: types.Message):
         logger.error(f"Error in help_cmd: {e}")
         await message.answer("❌ Ошибка при получении справки.")
 
-@dp.message(Command("+"))
+@dp.message(F.text.startswith('/+'))
 async def admin_add(message: types.Message):
     try:
-        if message.from_user.id not in ADMIN_IDS:
+        # Приводим ID админов к типу int на случай, если они загружены как строки из .env
+        admin_ints = [int(admin_id) for admin_id in ADMIN_IDS]
+        if message.from_user.id not in admin_ints:
             await message.answer("❌ Вы не администратор.")
             return
         
@@ -620,14 +623,20 @@ async def admin_add(message: types.Message):
             await message.answer("❌ Не указан пользователь.")
             return
         
-        update_balance(target_user_id, amount, "add")
+        try:
+            update_balance(target_user_id, amount, "add")
+        except Exception as db_err:
+            logger.error(f"Database error in admin_add: {db_err}")
+            await message.answer(f"❌ Ошибка БД при сохранении: `{db_err}`", parse_mode="Markdown")
+            return
+            
         logger.info(f"Admin {message.from_user.id} added {amount} stars to {target_user_id}")
         await message.answer(f"✅ Добавлено {amount} ⭐ пользователю {target_user_id}")
     except ValueError:
         await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error in admin_add: {e}")
-        await message.answer("❌ Ошибка при добавлении звезд.")
+        await message.answer(f"❌ Системная ошибка: {e}")
 
 @dp.message(Command("setbalance"))
 async def admin_set(message: types.Message):
@@ -1232,37 +1241,62 @@ async def api_ton_success(request):
         return web.json_response({"success": True})
 
 async def api_invoice(request):
-    """Генерирует данные для оплаты через TON: кошелек и уникальный комментарий."""
+    """Генерирует ссылку для оплаты Telegram Stars или данные для оплаты через TON."""
     try:
         data = await request.json()
-        # Используем авторизованный user_id
         user_id = request.get('user_id')
+        amount = data.get('amount')
+        payment_type = data.get('payment_type', 'stars')
         
         if not user_id:
             return web.json_response({"error": "no_user_id"}, status=400)
         
+        if not amount:
+            return web.json_response({"error": "no_amount"}, status=400)
+            
         # Проверяем что user существует в БД
         user_check = supabase.table("users").select("user_id").eq("user_id", int(user_id)).limit(1).execute()
         if not user_check.data:
             logger.warning(f"❌ Invoice requested for non-existent user {user_id}")
             return web.json_response({"error": "user_not_found"}, status=404)
             
-        # Генерируем уникальный комментарий
-        # Формат: SC_UserID_RandomString
-        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-        comment = f"SC_{user_id}_{random_str}"
-        
-        # Генерируем BOC для TON Connect
-        payload_boc = create_comment_boc(comment)
-        
-        logger.info(f"📝 Создан инвойс для {user_id}: {comment} (BOC: {payload_boc[:15]}...)")
-        
-        return web.json_response({
-            "wallet": TON_WALLET,
-            "comment": comment,
-            "payload_boc": payload_boc,
-            "rate": 100 # 1 TON = 100 Stars
-        })
+        if payment_type == 'stars':
+            try:
+                # В aiogram 3.x prices это список LabeledPrice
+                prices = [LabeledPrice(label="Telegram Stars", amount=int(amount))]
+                
+                # Для Stars provider_token ДОЛЖЕН быть строго пустой строкой
+                link = await bot.create_invoice_link(
+                    title="Пополнение баланса",
+                    description=f"Покупка {amount} звёзд",
+                    payload=f"stars_{user_id}_{amount}",
+                    provider_token="",
+                    currency="XTR",
+                    prices=prices
+                )
+                logger.info(f"✨ Создан инвойс-ссылка Stars для {user_id} на сумму {amount}: {link}")
+                return web.json_response({"link": link})
+            except Exception as telegram_err:
+                logger.error(f"❌ Ошибка Telegram при создании ссылки Stars: {telegram_err}")
+                return web.json_response({"error": f"Telegram API error: {telegram_err}"}, status=500)
+        else:
+            # Оплата через TON
+            # Генерируем уникальный комментарий
+            # Формат: SC_UserID_RandomString
+            random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            comment = f"SC_{user_id}_{random_str}"
+            
+            # Генерируем BOC для TON Connect
+            payload_boc = create_comment_boc(comment)
+            
+            logger.info(f"📝 Создан инвойс TON для {user_id}: {comment} (BOC: {payload_boc[:15]}...)")
+            
+            return web.json_response({
+                "wallet": TON_WALLET,
+                "comment": comment,
+                "payload_boc": payload_boc,
+                "rate": 100 # 1 TON = 100 Stars
+            })
     except Exception as e:
         logger.error(f"Error in api_invoice: {e}")
         return web.json_response({"error": "server_error"}, status=500)

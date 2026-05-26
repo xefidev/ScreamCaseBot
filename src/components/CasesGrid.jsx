@@ -6,7 +6,7 @@ import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
 import { fetchCases } from '../api';
 
 const CASES_DATA = [
-  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 1, maxPrice: 600, stock: 100, image: '/asset/Gifts/50S_GiftBox_Original_GiftBox.webp' },
+  { id: 1, name: 'Promo Case', price: 0, glowColor: '#3b82f6', badge: 'Бесплатно', minPrice: 1, maxPrice: 600, stock: 100, image: '/asset/Gifts/5000S_Case_Original_Case.webp' },
   { id: 2, name: 'Daily Case', price: 1, glowColor: '#dc2626', badge: '1 звезда', minPrice: 1, maxPrice: 500, stock: 50, image: '/asset/Gifts/100S_Red_Star_Original_Red_Star.webp' },
   { id: 3, name: 'Snoop Case', price: 667, glowColor: '#22c55e', badge: 'Премиум', minPrice: 15, maxPrice: 2000, stock: 100, image: '/asset/Gifts/1188S_Snoop_Cigar_Original_Snoop_Cigar.webp' },
   { id: 4, name: "Lover's Case", price: 599, glowColor: '#ec4899', badge: 'Романтик', minPrice: 15, maxPrice: 1500, stock: 80, image: '/asset/Gifts/2S_I_love_you_Original_I_love_you.webp' },

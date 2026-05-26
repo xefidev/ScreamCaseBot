@@ -282,7 +282,7 @@ export const claimAchievement = async (userId, achievementId) => {
   }
 };
 
-export const createInvoice = async (userId, amount) => {
+export const createInvoice = async (userId, amount, paymentType = 'stars') => {
   try {
     if (!userId || !amount) {
       throw new Error('Missing userId or amount');
@@ -291,7 +291,7 @@ export const createInvoice = async (userId, amount) => {
     const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(addAuthToBody({ user_id: userId, amount })),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, amount, payment_type: paymentType })),
     });
     
     if (!response.ok) {

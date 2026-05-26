@@ -167,8 +167,22 @@ export default function App() {
       if (!window.Telegram?.WebApp) {
           console.warn('Telegram WebApp is undefined');
       }
-      const { link } = await createInvoice(user.id, amount);
-      window?.Telegram?.WebApp?.openTelegramLink?.(link);
+      const { link } = await createInvoice(user.id, amount, 'stars');
+      if (link) {
+        window?.Telegram?.WebApp?.openInvoice?.(link, (status) => {
+          if (status === 'paid') {
+            triggerHaptic('success');
+            window?.Telegram?.WebApp?.showAlert?.('✅ Баланс успешно пополнен!');
+            fetchBalance(user.id).then(newBal => {
+              if (newBal !== undefined) setBalance(newBal);
+            }).catch(console.error);
+          } else if (status === 'failed') {
+            window?.Telegram?.WebApp?.showAlert?.('❌ Не удалось оплатить счёт');
+          }
+        });
+      } else {
+        throw new Error('No invoice link returned from server');
+      }
       setShowTopUp(false);
     } catch (error) {
       console.error('Invoice error:', error);
@@ -194,7 +208,7 @@ export default function App() {
     
     try {
       // 1. Получаем кошелек и уникальный комментарий от бэкенда
-      const invoice = await createInvoice(user.id, amount);
+      const invoice = await createInvoice(user.id, amount, 'ton');
       
       if (!invoice.wallet || !invoice.comment) {
           throw new Error('Invalid invoice data from server');

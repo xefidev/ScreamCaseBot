@@ -7,7 +7,7 @@ export const ALL_GIFTS = [
   { price: 25, name: "Rosae", image: "/asset/Gifts/25S_Rosae_Original_Rosae.webp" },
   { price: 40, name: "Lol Pops", image: "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp" },
   { price: 50, name: "Cake", image: "/asset/Gifts/50S_Cake_Original_Cake.webp" },
-  { price: 50, name: "GiftBox", image: "/asset/Gifts/50S_GiftBox_Original_GiftBox.webp" },
+  { price: 50, name: "May Bear", image: "/asset/Gifts/50S_May_Bear_Original_May_Bear.webp" },
   { price: 100, name: "Flowers", image: "/asset/Gifts/100S_Flowers_Original_Flowers.webp" },
   { price: 300, name: "Instant Ramens", image: "/asset/Gifts/300S_Instant_Ramens_Original_Instant_Ramens.webp" },
   { price: 300, name: "Xmas Stockings", image: "/asset/Gifts/300S_Xmas_Stockings_Original_Xmas_Stockings.webp" },
