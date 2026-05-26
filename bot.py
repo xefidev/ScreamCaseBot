@@ -596,17 +596,33 @@ async def admin_add(message: types.Message):
         
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("❌ Пример: `/+ 100`", parse_mode="Markdown")
+            await message.answer("❌ Пример: `/+ 100` (в ответ на сообщение) или `/+ 12345 100`", parse_mode="Markdown")
             return
         
-        amount = int(parts[1])
+        target_user_id = None
+        amount = 0
+        
+        if len(parts) == 2:
+            amount = int(parts[1])
+            if message.reply_to_message:
+                target_user_id = message.reply_to_message.from_user.id
+            else:
+                target_user_id = message.from_user.id
+        elif len(parts) == 3:
+            target_user_id = int(parts[1])
+            amount = int(parts[2])
+            
         if amount <= 0:
             await message.answer("❌ Количество должно быть > 0.")
             return
+            
+        if not target_user_id:
+            await message.answer("❌ Не указан пользователь.")
+            return
         
-        update_balance(message.from_user.id, amount, "add")
-        logger.info(f"Admin {message.from_user.id} added {amount} stars to themselves")
-        await message.answer(f"✅ Добавлено {amount} ⭐")
+        update_balance(target_user_id, amount, "add")
+        logger.info(f"Admin {message.from_user.id} added {amount} stars to {target_user_id}")
+        await message.answer(f"✅ Добавлено {amount} ⭐ пользователю {target_user_id}")
     except ValueError:
         await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
@@ -962,6 +978,17 @@ async def api_open_case(request):
 
         if balance < price:
             return web.json_response({"error": "insufficient_funds"}, status=403)
+            
+        # Уменьшаем лимит атомарно
+        if case_id not in (1, 2):
+            try:
+                rpc_res = supabase.rpc("consume_case_limit", {"p_case_id": case_id}).execute()
+                # rpc_res.data will be True if successful, False if out of stock
+                if rpc_res.data is False:
+                    return web.json_response({"error": "case_limit_reached"}, status=400)
+            except Exception as e:
+                logger.error(f"Error consuming case limit: {e}")
+                return web.json_response({"error": "server_error"}, status=500)
         
         case_info = CASES_DATA.get(case_id)
         if not case_info:
@@ -1452,13 +1479,39 @@ async def api_claim_quest(request):
         logger.error(f"Error in api_claim_quest: {e}")
         return web.json_response({"error": "server_error"}, status=500)
 
+async def api_cases(request):
+    try:
+        res = supabase.table("cases").select("*").execute()
+        if res.data:
+            return web.json_response(res.data)
+        return web.json_response([])
+    except Exception as e:
+        logger.error(f"Error in api_cases: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def keep_alive_task():
+    """Фоновая задача для предотвращения засыпания Render."""
+    url = "https://screamcasebot.onrender.com/"
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 минут
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as response:
+                    if response.status == 200:
+                        logger.info("[Keep-Alive] Self-ping successful")
+                    else:
+                        logger.warning(f"[Keep-Alive] Self-ping failed with status {response.status}")
+        except Exception as e:
+            logger.error(f"[Keep-Alive] Self-ping error: {e}")
 
 async def background_tasks(app):
     """Управляет фоновыми задачами приложения."""
     app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
+    app['keep_alive'] = asyncio.create_task(keep_alive_task())
     yield
     app['ton_monitor'].cancel()
-    await app['ton_monitor']
+    app['keep_alive'].cancel()
+    await asyncio.gather(app['ton_monitor'], app['keep_alive'], return_exceptions=True)
 
 async def root_handler(request):
     return web.Response(text="OK", status=200)
@@ -1484,6 +1537,7 @@ async def main():
     app.router.add_post('/api/achievements/claim', api_claim_achievement)
     app.router.add_get('/api/quests', api_get_quests)
     app.router.add_post('/api/quests/claim', api_claim_quest)
+    app.router.add_get('/api/cases', api_cases)
     
     cors = aiohttp_cors.setup(app, defaults={
         "*": aiohttp_cors.ResourceOptions(
