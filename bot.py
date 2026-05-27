@@ -576,23 +576,69 @@ async def api_claim_task(request: web.Request) -> web.Response:
 
 
 # ============================================================================
-# 9. AUTHENTICATION & MIDDLEWARE
+# 9. ADDITIONAL API HANDLERS (cases list, user profile)
 # ============================================================================
+
+async def api_get_inventory(request: web.Request) -> web.Response:
+    """Get user's inventory. BUG FIX #3: was using asyncio.run() inside async context → RuntimeError."""
+    try:
+        user_id = int(request["user_id"])
+        inventory = await get_user_inventory(user_id)
+        return web.json_response({"inventory": inventory})
+    except Exception as e:
+        logger.error(f"Error getting inventory: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def api_get_cases(request: web.Request) -> web.Response:
+    """Return list of all available cases (BUG FIX #4: this endpoint was missing → 404)."""
+    return web.json_response({"cases": STATIC_CASES})
+
+
+async def api_get_user(request: web.Request) -> web.Response:
+    """Return current user's profile and balance (BUG FIX #4: this endpoint was missing → 404)."""
+    try:
+        user_id = int(request["user_id"])
+        user = await get_user(user_id)
+        if not user:
+            return web.json_response({"error": "User not found"}, status=404)
+        referrals = await count_user_referrals(user_id)
+        return web.json_response({
+            "id": user["id"],
+            "username": user.get("username", ""),
+            "stars": user.get("stars", 0),
+            "referrals": referrals,
+        })
+    except Exception as e:
+        logger.error(f"Error getting user: {e}")
+        return web.json_response({"error": str(e)}, status=500)
 
 def validate_init_data(init_data: str, bot_token: str) -> dict:
     """Validate Telegram init_data using HMAC signature."""
     try:
-        parsed = urllib.parse.parse_qs(init_data)
+        parsed = urllib.parse.parse_qs(init_data, keep_blank_values=True)
         signature = parsed.get("hash", [""])[0]
-        
-        # Remove hash from data
+
+        if not signature:
+            logger.warning("validate_init_data: no hash in init_data")
+            return None
+
+        # Rebuild data string without hash
         query_data = {k: v[0] for k, v in parsed.items() if k != "hash"}
         sorted_pairs = "\n".join(f"{k}={v}" for k, v in sorted(query_data.items()))
-        
+
+        # BUG FIX #1 (guard): correct Telegram HMAC chain
+        # Step 1: secret = HMAC-SHA256(key="WebAppData", msg=bot_token)
+        # Step 2: hash   = HMAC-SHA256(key=secret,       msg=data_check_string)
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
         computed_hash = hmac.new(secret_key, sorted_pairs.encode(), hashlib.sha256).hexdigest()
-        
-        return computed_hash == signature and query_data
+
+        if computed_hash != signature:
+            logger.warning("validate_init_data: signature mismatch")
+            return None
+
+        # BUG FIX #5: return None (falsy) on empty data, not empty dict
+        return query_data if query_data else None
     except Exception as e:
         logger.error(f"Init data validation failed: {e}")
         return None
@@ -600,10 +646,22 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
 
 @web.middleware
 async def cors_middleware(request: web.Request, handler) -> web.Response:
-    """Add CORS headers."""
+    """Add CORS headers. Handle OPTIONS preflight immediately to avoid auth blocking."""
+    # BUG FIX #2: OPTIONS preflight must be answered before auth_middleware runs.
+    # Previously, OPTIONS was passed to handler → auth_middleware → 401 → browser blocked all requests.
+    if request.method == "OPTIONS":
+        return web.Response(
+            status=204,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Telegram-Init-Data",
+                "Access-Control-Max-Age": "86400",
+            },
+        )
     response = await handler(request)
     response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Telegram-Init-Data"
     return response
 
@@ -814,12 +872,37 @@ async def main():
     app = web.Application(middlewares=[cors_middleware, auth_middleware])
     
     # Add routes
+    # ── Case opening ──────────────────────────────────────────────────────────
     app.router.add_post("/api/open_case", api_open_case)
+
+    # ── Cases list (BUG FIX #4: was missing → 404 on frontend load) ──────────
+    app.router.add_get("/api/cases", api_get_cases)
+
+    # ── User profile + balance (BUG FIX #4: was missing → frontend can't show stars) ──
+    app.router.add_get("/api/user", api_get_user)
+
+    # ── Promo codes ───────────────────────────────────────────────────────────
     app.router.add_post("/api/activate_promo", api_activate_promo)
+
+    # ── Tasks / Quests ────────────────────────────────────────────────────────
     app.router.add_get("/api/tasks", api_get_tasks)
     app.router.add_post("/api/claim_task", api_claim_task)
-    app.router.add_get("/api/inventory", lambda r: web.json_response({"inventory": asyncio.run(get_user_inventory(int(r["user_id"])))}))
+
+    # ── Inventory (BUG FIX #3: was asyncio.run() inside async context → RuntimeError 500) ──
+    app.router.add_get("/api/inventory", api_get_inventory)
+
+    # ── Health check (no auth required) ──────────────────────────────────────
     app.router.add_get("/health", lambda r: web.json_response({"status": "ok"}))
+
+    # ── OPTIONS preflight catch-all (BUG FIX #2 redundant guard) ─────────────
+    app.router.add_route("OPTIONS", "/{path_info:.*}", lambda r: web.Response(
+        status=204,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Telegram-Init-Data",
+        },
+    ))
     
     # Start HTTP server
     runner = web.AppRunner(app)
