@@ -16,8 +16,13 @@ from aiohttp import web
 from aiogram import Bot, Dispatcher, Router, F, types
 from aiogram.filters import Command, CommandObject
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, WebAppInfo
-from dotenv import load_dotenv
 from supabase import Client, create_client
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args: Any, **kwargs: Any) -> bool:
+        return False
 
 
 load_dotenv()
@@ -37,30 +42,37 @@ SUPABASE_KEY = (
 )
 
 if not BOT_TOKEN:
-    logger.critical("TELEGRAM_BOT_TOKEN is missing")
+    logger.critical("TELEGRAM_BOT_TOKEN or BOT_TOKEN is missing")
     sys.exit(1)
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logger.critical("Supabase credentials are missing")
+    logger.critical("Supabase URL/key is missing")
     sys.exit(1)
 
 ROOT_ADMIN_ID = 7782281997
-ADMIN_IDS = [ROOT_ADMIN_ID]
-env_admins = os.getenv("ADMIN_IDS", "")
-if env_admins:
-    for x in env_admins.split(","):
-        if x.strip().isdigit():
-            ADMIN_IDS.append(int(x.strip()))
+SECOND_ADMIN_ID = 5396975347
+ADMIN_BYPASS_IDS = {ROOT_ADMIN_ID, SECOND_ADMIN_ID}
+ADMIN_IDS = [ROOT_ADMIN_ID, SECOND_ADMIN_ID]
+
+for env_name in ("ADMIN_IDS", "VITE_ADMIN_IDS"):
+    env_admins = os.getenv(env_name, "")
+    if env_admins:
+        for value in env_admins.split(","):
+            value = value.strip()
+            if value.isdigit():
+                ADMIN_IDS.append(int(value))
 ADMIN_IDS = list(dict.fromkeys(ADMIN_IDS))
 
 APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
+CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@ScreamCase")
 PORT = int(os.getenv("PORT", "8080"))
+KEEP_ALIVE_URL = os.getenv("KEEP_ALIVE_URL", "")
+TON_WALLET = os.getenv("TON_WALLET") or os.getenv("VITE_TON_WALLET", "")
 TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY", "")
 TONCENTER_BASE_URL = os.getenv("TONCENTER_BASE_URL", "https://toncenter.com/api/v2")
-TON_WALLET = os.getenv("TON_WALLET") or os.getenv("VITE_TON_WALLET", "")
 TON_STARS_RATE = int(os.getenv("TON_STARS_RATE", "100"))
-KEEP_ALIVE_URL = os.getenv("KEEP_ALIVE_URL", "")
+INVENTORY_TABLE = os.getenv("INVENTORY_TABLE", "user_inventory")
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 bot = Bot(token=BOT_TOKEN)
@@ -68,7 +80,7 @@ dp = Dispatcher()
 router = Router()
 
 
-CASE_PRICES = {
+CASE_PRICES: dict[int, int] = {
     1: 0,
     2: 0,
     3: 15,
@@ -81,7 +93,7 @@ CASE_PRICES = {
     10: 150,
 }
 
-CASE_RANGES = {
+CASE_RANGES: dict[int, dict[str, int]] = {
     1: {"min": 15, "max": 500},
     2: {"min": 0, "max": 100},
     3: {"min": 100, "max": 667},
@@ -94,7 +106,7 @@ CASE_RANGES = {
     10: {"min": 100, "max": 250},
 }
 
-GIFTS = [
+GIFTS: list[dict[str, Any]] = [
     {"price": 15, "name": "Bear", "image": "/asset/Gifts/15S_Bear_Original_Bear.webp"},
     {"price": 25, "name": "Rosae", "image": "/asset/Gifts/25S_Rosae_Original_Rosae.webp"},
     {"price": 40, "name": "Lol Pops", "image": "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp"},
@@ -102,13 +114,55 @@ GIFTS = [
     {"price": 50, "name": "May Bear", "image": "/asset/Gifts/50S_May_Bear_Original_May_Bear.webp"},
     {"price": 100, "name": "Flowers", "image": "/asset/Gifts/100S_Flowers_Original_Flowers.webp"},
     {"price": 300, "name": "Instant Ramens", "image": "/asset/Gifts/300S_Instant_Ramens_Original_Instant_Ramens.webp"},
+    {"price": 320, "name": "Spring Baskets", "image": "/asset/Gifts/320S_Spring_Baskets_Original_Spring_Baskets.webp"},
+    {"price": 330, "name": "Swag Bags", "image": "/asset/Gifts/330S_Swag_Bags_Original_Swag_Bags.webp"},
+    {"price": 340, "name": "Winter Wreaths", "image": "/asset/Gifts/340S_Winter_Wreaths_Original_Winter_Wreaths.webp"},
+    {"price": 350, "name": "Jester Hats", "image": "/asset/Gifts/350S_Jester_Hats_Original_Jester_Hats.webp"},
+    {"price": 380, "name": "Hex Pots", "image": "/asset/Gifts/380S_Hex_Pots_Original_Hex_Pots.webp"},
+    {"price": 400, "name": "Easter Eggs", "image": "/asset/Gifts/400S_Easter_Eggs_Original_Easter_Eggs.webp"},
+    {"price": 400, "name": "Pool Floats", "image": "/asset/Gifts/400S_Pool_Floats_Original_Pool_Floats.webp"},
+    {"price": 400, "name": "Restless Jars", "image": "/asset/Gifts/400S_Restless_Jars_Original_Restless_Jars.webp"},
+    {"price": 400, "name": "Witch Hats", "image": "/asset/Gifts/400S_Witch_Hats_Original_Witch_Hats.webp"},
+    {"price": 420, "name": "Magic Potions", "image": "/asset/Gifts/420S_Magic_Potions_Original_Magic_Potions.webp"},
     {"price": 420, "name": "Snoop Cigars", "image": "/asset/Gifts/420S_Snoop_Cigars_Original_Snoop_Cigars.webp"},
+    {"price": 430, "name": "Desk Calendars", "image": "/asset/Gifts/430S_Desk_Calendars_Original_Desk_Calendars.webp"},
     {"price": 430, "name": "Love Potions", "image": "/asset/Gifts/430S_Love_Potions_Original_Love_Potions.webp"},
+    {"price": 440, "name": "Fresh Socks", "image": "/asset/Gifts/440S_Fresh_Socks_Original_Fresh_Socks.webp"},
+    {"price": 440, "name": "Westside Signs", "image": "/asset/Gifts/440S_Westside_Signs_Original_Westside_Signs.webp"},
+    {"price": 450, "name": "Top Hats", "image": "/asset/Gifts/450S_Top_Hats_Original_Top_Hats.webp"},
+    {"price": 480, "name": "Vice Creams", "image": "/asset/Gifts/480S_Vice_Creams_Original_Vice_Creams.webp"},
     {"price": 500, "name": "Ice Creams", "image": "/asset/Gifts/500S_Ice_Creams_Original_Ice_Creams.webp"},
+    {"price": 500, "name": "Jolly Chimps", "image": "/asset/Gifts/500S_Jolly_Chimps_Original_Jolly_Chimps.webp"},
+    {"price": 500, "name": "Sakura Flowers", "image": "/asset/Gifts/500S_Sakura_Flowers_Original_Sakura_Flowers.webp"},
+    {"price": 500, "name": "Swiss Watches", "image": "/asset/Gifts/500S_Swiss_Watches_Original_Swiss_Watches.webp"},
+    {"price": 510, "name": "Input Keys", "image": "/asset/Gifts/510S_Input_Keys_Original_Input_Keys.webp"},
+    {"price": 550, "name": "Scared Cats", "image": "/asset/Gifts/550S_Scared_Cats_Original_Scared_Cats.webp"},
+    {"price": 555, "name": "Clover Pins", "image": "/asset/Gifts/555S_Clover_Pins_Original_Clover_Pins.webp"},
+    {"price": 600, "name": "Lush Bouquets", "image": "/asset/Gifts/600S_Lush_Bouquets_Original_Lush_Bouquets.webp"},
+    {"price": 600, "name": "Victory Medals", "image": "/asset/Gifts/600S_Victory_Medals_Original_Victory_Medals.webp"},
+    {"price": 605, "name": "Hypno Lollipops", "image": "/asset/Gifts/605S_Hypno_Lollipops_Original_Hypno_Lollipops.webp"},
+    {"price": 650, "name": "Valentine Boxes", "image": "/asset/Gifts/650S_Valentine_Boxes_Original_Valentine_Boxes.webp"},
     {"price": 666, "name": "Voodoo Dolls", "image": "/asset/Gifts/666S_Voodoo_Dolls_Original_Voodoo_Dolls.webp"},
+    {"price": 700, "name": "Heroic Helmets", "image": "/asset/Gifts/700S_Heroic_Helmets_Original_Heroic_Helmets.webp"},
+    {"price": 705, "name": "Cookie Hearts", "image": "/asset/Gifts/705S_Cookie_Hearts_Original_Cookie_Hearts.webp"},
+    {"price": 750, "name": "Moon Pendants", "image": "/asset/Gifts/750S_Moon_Pendants_Original_Moon_Pendants.webp"},
     {"price": 777, "name": "Trapped Hearts", "image": "/asset/Gifts/777S_Trapped_Hearts_Original_Trapped_Hearts.webp"},
+    {"price": 800, "name": "Snake Boxes", "image": "/asset/Gifts/800S_Snake_Boxes_Original_Snake_Boxes.webp"},
+    {"price": 850, "name": "Bunny Muffins", "image": "/asset/Gifts/850S_Bunny_Muffins_Original_Bunny_Muffins.webp"},
+    {"price": 900, "name": "Bonded Rings", "image": "/asset/Gifts/900S_Bonded_Rings_Original_Bonded_Rings.webp"},
     {"price": 950, "name": "Crystal Balls", "image": "/asset/Gifts/950S_Crystal_Balls_Original_Crystal_Balls.webp"},
+    {"price": 990, "name": "Vintage Cigars", "image": "/asset/Gifts/990S_Vintage_Cigars_Original_Vintage_Cigars.webp"},
+    {"price": 1000, "name": "Artisan Bricks", "image": "/asset/Gifts/1000S_Artisan_Bricks_Original_Artisan_Bricks.webp"},
+    {"price": 1100, "name": "Electric Skulls", "image": "/asset/Gifts/1100S_Electric_Skulls_Original_Electric_Skulls.webp"},
+    {"price": 1200, "name": "Diamond Rings", "image": "/asset/Gifts/1200S_Diamond_Rings_Original_Diamond_Rings.webp"},
     {"price": 1300, "name": "Astral Shards", "image": "/asset/Gifts/1300S_Astral_Shards_Original_Astral_Shards.webp"},
+    {"price": 1500, "name": "Santa Hats", "image": "/asset/Gifts/1500S_Santa_Hats_Original_Santa_Hats.webp"},
+    {"price": 2000, "name": "Light Swords", "image": "/asset/Gifts/2000S_Light_Swords_Original_Light_Swords.webp"},
+    {"price": 2500, "name": "Loot Bags", "image": "/asset/Gifts/2500S_Loot_Bags_Original_Loot_Bags.webp"},
+    {"price": 3500, "name": "Money Pots", "image": "/asset/Gifts/3500S_Money_Pots_Original_Money_Pots.webp"},
+    {"price": 5000, "name": "Genie Lamps", "image": "/asset/Gifts/5000S_Genie_Lamps_Original_Genie_Lamps.webp"},
+    {"price": 7500, "name": "Low Riders", "image": "/asset/Gifts/7500S_Low_Riders_Original_Low_Riders.webp"},
+    {"price": 12595, "name": "Nail Bracelets", "image": "/asset/Gifts/12595S_Nail_Bracelets_Original_Nail_Bracelets.webp"},
     {"price": 19047, "name": "Stellar Rockets", "image": "/asset/Gifts/19047S_Stellar_Rockets_Original_Stellar_Rockets.webp"},
 ]
 
@@ -125,12 +179,18 @@ def is_admin(user_id: int | None) -> bool:
     return user_id is not None and int(user_id) in ADMIN_IDS
 
 
-def parse_positive_int(value: Any) -> int | None:
+def parse_int(value: Any) -> int | None:
     try:
-        parsed = int(value)
+        return int(value)
     except (TypeError, ValueError):
         return None
-    return parsed if parsed > 0 else None
+
+
+def parse_positive_int(value: Any) -> int | None:
+    parsed = parse_int(value)
+    if parsed is None or parsed <= 0:
+        return None
+    return parsed
 
 
 async def execute(query: Any) -> Any:
@@ -142,50 +202,58 @@ async def read_json(request: web.Request) -> dict[str, Any]:
         return request["json_body"]
 
     try:
-        body = await request.json()
+        data = await request.json()
     except Exception:
-        body = {}
+        data = {}
 
-    if not isinstance(body, dict):
-        body = {}
+    if not isinstance(data, dict):
+        data = {}
 
-    request["json_body"] = body
-    return body
+    request["json_body"] = data
+    return data
 
 
 def parse_init_data(init_data: str | None) -> dict[str, str]:
     if not init_data:
         return {}
-    return dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+    try:
+        return dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+    except Exception:
+        return {}
 
 
 def parse_user_from_init_data(init_data: str | None) -> dict[str, Any] | None:
     values = parse_init_data(init_data)
-    user_raw = values.get("user")
-    if not user_raw:
+    raw_user = values.get("user")
+    if not raw_user:
         return None
 
     try:
-        user = json.loads(user_raw)
-    except json.JSONDecodeError:
+        user = json.loads(raw_user)
+    except Exception:
         return None
 
-    if not isinstance(user, dict) or not user.get("id"):
+    if not isinstance(user, dict) or parse_int(user.get("id")) is None:
         return None
     return user
 
 
-def validate_telegram_init_data(init_data: str | None) -> dict[str, Any] | None:
+def extract_bearer_init_data(request: web.Request) -> str | None:
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header.removeprefix("Bearer ").strip()
+    return request.headers.get("X-Telegram-Init-Data")
+
+
+def validate_init_data(init_data: str | None) -> dict[str, Any] | None:
     values = parse_init_data(init_data)
     user = parse_user_from_init_data(init_data)
     if not values or not user:
         return None
 
-    try:
-        if int(user["id"]) == ROOT_ADMIN_ID:
-            return user
-    except (TypeError, ValueError):
-        return None
+    user_id = parse_int(user.get("id"))
+    if user_id in ADMIN_BYPASS_IDS:
+        return user
 
     received_hash = values.pop("hash", None)
     if not received_hash:
@@ -201,11 +269,20 @@ def validate_telegram_init_data(init_data: str | None) -> dict[str, Any] | None:
     return user
 
 
-def extract_init_data_from_headers(request: web.Request) -> str | None:
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        return auth_header.removeprefix("Bearer ").strip()
-    return request.headers.get("X-Telegram-Init-Data")
+def admin_id_from_unverified_request(request: web.Request, body: dict[str, Any]) -> int | None:
+    candidates = [
+        body.get("user_id"),
+        body.get("id"),
+        request.query.get("user_id"),
+        request.query.get("id"),
+        request.headers.get("X-User-Id"),
+        request.headers.get("X-Telegram-User-Id"),
+    ]
+    for candidate in candidates:
+        user_id = parse_int(candidate)
+        if user_id in ADMIN_BYPASS_IDS:
+            return user_id
+    return None
 
 
 @web.middleware
@@ -217,7 +294,7 @@ async def cors_middleware(request: web.Request, handler: Any) -> web.StreamRespo
 
     response.headers["Access-Control-Allow-Origin"] = request.headers.get("Origin", "*")
     response.headers["Access-Control-Allow-Credentials"] = "true"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Telegram-Init-Data"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Telegram-Init-Data, X-User-Id, X-Telegram-User-Id"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
     return response
 
@@ -228,18 +305,30 @@ async def auth_middleware(request: web.Request, handler: Any) -> web.StreamRespo
         return await handler(request)
 
     body = await read_json(request) if request.method in {"POST", "PUT", "PATCH"} else {}
-    init_data = body.get("initData") or request.query.get("initData") or extract_init_data_from_headers(request)
-    user = validate_telegram_init_data(init_data)
-    if not user:
-        return web.json_response({"error": "Вы не авторизованы"}, status=401)
+    init_data = body.get("initData") or request.query.get("initData") or extract_bearer_init_data(request)
+    telegram_user = validate_init_data(init_data)
 
-    request["telegram_user"] = user
-    request["user_id"] = int(user["id"])
-    return await handler(request)
+    if telegram_user:
+        request["telegram_user"] = telegram_user
+        request["user_id"] = int(telegram_user["id"])
+        return await handler(request)
+
+    admin_id = admin_id_from_unverified_request(request, body)
+    if admin_id in ADMIN_BYPASS_IDS:
+        request["telegram_user"] = {"id": admin_id, "username": "admin"}
+        request["user_id"] = admin_id
+        return await handler(request)
+
+    return web.json_response({"error": "Вы не авторизованы"}, status=401)
 
 
 async def get_user(user_id: int) -> dict[str, Any] | None:
-    result = await execute(supabase.table("users").select("id, stars, referred_by, username, join_date").eq("id", int(user_id)).limit(1))
+    result = await execute(
+        supabase.table("users")
+        .select("id, stars, referred_by, username, join_date")
+        .eq("id", int(user_id))
+        .limit(1)
+    )
     return result.data[0] if result.data else None
 
 
@@ -248,8 +337,11 @@ async def ensure_user(user_id: int, username: str | None = None, referred_by: in
     user = await get_user(user_id)
     if user:
         if username and username != user.get("username"):
-            await execute(supabase.table("users").update({"username": username}).eq("id", user_id))
-            user["username"] = username
+            try:
+                await execute(supabase.table("users").update({"username": username}).eq("id", user_id))
+                user["username"] = username
+            except Exception as exc:
+                logger.debug("Username update failed for %s: %s", user_id, exc)
         return user
 
     payload = {
@@ -286,12 +378,30 @@ async def insert_deposit(user_id: int, amount: int) -> None:
     )
 
 
+async def deposits_sum_last_24h(user_id: int) -> int:
+    since = (utc_now() - timedelta(hours=24)).isoformat()
+    result = await execute(
+        supabase.table("user_deposits")
+        .select("amount")
+        .eq("user_id", int(user_id))
+        .gte("created_at", since)
+    )
+    return sum(int(row.get("amount") or 0) for row in (result.data or []))
+
+
 async def init_db() -> None:
-    await execute(supabase.table("users").select("id", count="exact").limit(1))
-    await execute(supabase.table("promo_codes").select("code", count="exact").limit(1))
-    await execute(supabase.table("promo_uses").select("id", count="exact").limit(1))
-    await execute(supabase.table("user_deposits").select("id", count="exact").limit(1))
-    logger.info("Supabase schema verified")
+    checks = [
+        ("users", supabase.table("users").select("id", count="exact").limit(1)),
+        ("promo_codes", supabase.table("promo_codes").select("code", count="exact").limit(1)),
+        ("promo_uses", supabase.table("promo_uses").select("id", count="exact").limit(1)),
+        ("user_deposits", supabase.table("user_deposits").select("id", count="exact").limit(1)),
+    ]
+    for table_name, query in checks:
+        try:
+            await execute(query)
+            logger.info("Supabase table verified: %s", table_name)
+        except Exception as exc:
+            logger.error("Supabase table check failed for %s: %s", table_name, exc)
 
 
 def normalize_asset_path(value: Any) -> str:
@@ -315,12 +425,9 @@ def limit_to_int(value: Any) -> int:
 def normalize_case_row(row: dict[str, Any]) -> dict[str, Any]:
     case_row = dict(row)
     raw_case_id = case_row.get("id") or case_row.get("case_id")
-    try:
-        case_id = int(raw_case_id)
-    except (TypeError, ValueError):
-        case_id = None
-
+    case_id = parse_int(raw_case_id)
     name = str(case_row.get("name") or case_row.get("title") or "").lower()
+
     case_row["remaining_limit"] = limit_to_int(case_row.get("remaining_limit"))
     case_row["total_limit"] = limit_to_int(case_row.get("total_limit"))
 
@@ -336,6 +443,26 @@ def normalize_case_row(row: dict[str, Any]) -> dict[str, Any]:
                 case_row[key] = normalize_asset_path(case_row[key])
 
     return case_row
+
+
+async def get_case_row(case_id: int) -> dict[str, Any] | None:
+    try:
+        result = await execute(supabase.table("cases").select("*").eq("id", int(case_id)).limit(1))
+        if result.data:
+            return normalize_case_row(result.data[0])
+    except Exception as exc:
+        logger.debug("Case row lookup failed for %s: %s", case_id, exc)
+    return None
+
+
+async def get_case_price(case_id: int) -> int:
+    case_row = await get_case_row(case_id)
+    if case_row:
+        for field in ("price", "stars_price", "cost", "open_price"):
+            price = parse_int(case_row.get(field))
+            if price is not None:
+                return max(0, price)
+    return int(CASE_PRICES.get(int(case_id), 0))
 
 
 def random_gift(case_id: int) -> dict[str, Any]:
@@ -359,13 +486,14 @@ def random_gift(case_id: int) -> dict[str, Any]:
         gift = random.choice(pool)
 
     result = dict(gift)
-    result["image"] = normalize_asset_path(result["image"])
+    result["image"] = normalize_asset_path(result.get("image"))
     return result
 
 
 async def consume_case_limit(case_id: int) -> bool:
     result = await execute(supabase.rpc("consume_case_limit", {"p_case_id": int(case_id)}))
     data = result.data
+
     if isinstance(data, bool):
         return data
     if isinstance(data, list) and data:
@@ -379,15 +507,42 @@ async def consume_case_limit(case_id: int) -> bool:
     return data is not False
 
 
-async def deposits_sum_last_24h(user_id: int) -> int:
-    since = (utc_now() - timedelta(hours=24)).isoformat()
+async def add_inventory_item(user_id: int, item: dict[str, Any], case_id: int, promo_code: str | None) -> None:
+    base_payload = {
+        "user_id": int(user_id),
+        "case_id": int(case_id),
+        "name": item.get("name"),
+        "image": normalize_asset_path(item.get("image")),
+        "price": int(item.get("price") or 0),
+        "promo_code": promo_code,
+        "created_at": iso_now(),
+    }
+    fallback_payload = {
+        "user_id": int(user_id),
+        "item_name": item.get("name"),
+        "item_image": normalize_asset_path(item.get("image")),
+        "item_price": int(item.get("price") or 0),
+        "created_at": iso_now(),
+    }
+
+    for payload in (base_payload, fallback_payload):
+        try:
+            await execute(supabase.table(INVENTORY_TABLE).insert(payload))
+            return
+        except Exception as exc:
+            logger.debug("Inventory insert attempt failed: %s", exc)
+
+
+async def get_valid_promo_code(code: str) -> dict[str, Any] | None:
     result = await execute(
-        supabase.table("user_deposits")
-        .select("amount")
-        .eq("user_id", int(user_id))
-        .gte("created_at", since)
+        supabase.table("promo_codes")
+        .select("code, expires_at, reward_stars, is_active")
+        .eq("code", code)
+        .eq("is_active", True)
+        .gt("expires_at", iso_now())
+        .limit(1)
     )
-    return sum(int(row.get("amount") or 0) for row in (result.data or []))
+    return result.data[0] if result.data else None
 
 
 async def check_toncenter_once(session: aiohttp.ClientSession) -> None:
@@ -470,6 +625,7 @@ async def cmd_help(message: Message) -> None:
             "\n\nАдмин:"
             "\n/create_promo CODE REWARD_STARS DURATION_HOURS"
             "\n/+ USER_ID AMOUNT"
+            "\n/+ AMOUNT в reply"
             "\n/stats"
         )
     await message.answer(text)
@@ -535,6 +691,7 @@ async def cmd_add_stars(message: Message) -> None:
         target_user_id = int(message.from_user.id)
 
     try:
+        await ensure_user(target_user_id)
         await update_balance(target_user_id, amount, "add")
     except Exception as exc:
         await message.answer(f"❌ Ошибка БД: {exc}")
@@ -549,11 +706,15 @@ async def cmd_stats(message: Message) -> None:
         await message.answer("❌ Недостаточно прав.")
         return
 
-    users = await execute(supabase.table("users").select("id, stars", count="exact").limit(1000))
-    deposits = await execute(supabase.table("user_deposits").select("amount").limit(1000))
-    total_users = int(users.count or len(users.data or []))
-    total_stars = sum(int(row.get("stars") or 0) for row in (users.data or []))
-    total_deposits = sum(int(row.get("amount") or 0) for row in (deposits.data or []))
+    try:
+        users = await execute(supabase.table("users").select("id, stars", count="exact").limit(1000))
+        deposits = await execute(supabase.table("user_deposits").select("amount").limit(1000))
+        total_users = int(users.count or len(users.data or []))
+        total_stars = sum(int(row.get("stars") or 0) for row in (users.data or []))
+        total_deposits = sum(int(row.get("amount") or 0) for row in (deposits.data or []))
+    except Exception as exc:
+        await message.answer(f"❌ Ошибка БД: {exc}")
+        return
 
     await message.answer(
         f"📊 Статистика\nПользователей: {total_users}\nЗвёзд на балансах: {total_stars}\nДепозитов: {total_deposits} ⭐"
@@ -598,9 +759,24 @@ async def root_handler(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "service": "ScreamCase"})
 
 
+async def api_heartbeat(request: web.Request) -> web.Response:
+    return web.json_response({"status": "alive", "timestamp": iso_now()})
+
+
+async def api_check_sub(request: web.Request) -> web.Response:
+    user_id = int(request["user_id"])
+    try:
+        member = await bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        is_subscribed = member.status in {"member", "administrator", "creator"}
+    except Exception:
+        is_subscribed = False
+    return web.json_response({"is_subscribed": is_subscribed})
+
+
 async def api_balance(request: web.Request) -> web.Response:
     user_id = int(request["user_id"])
-    user = await ensure_user(user_id, username=(request.get("telegram_user") or {}).get("username"))
+    telegram_user = request.get("telegram_user") or {}
+    user = await ensure_user(user_id, username=telegram_user.get("username"))
     return web.json_response({"stars": int(user.get("stars") or 0)})
 
 
@@ -611,7 +787,8 @@ async def api_invoice(request: web.Request) -> web.Response:
     if amount is None:
         return web.json_response({"error": "Некорректная сумма"}, status=400)
 
-    await ensure_user(user_id, username=(request.get("telegram_user") or {}).get("username"))
+    telegram_user = request.get("telegram_user") or {}
+    await ensure_user(user_id, username=telegram_user.get("username"))
     try:
         invoice_url = await bot.create_invoice_link(
             title="Пополнение ScreamCase",
@@ -635,41 +812,32 @@ async def api_claim_promo(request: web.Request) -> web.Response:
     if not code:
         return web.json_response({"error": "Введите промокод"}, status=400)
 
-    now = iso_now()
-    promo_result = await execute(
-        supabase.table("promo_codes")
-        .select("code, expires_at, reward_stars, is_active")
-        .eq("code", code)
-        .eq("is_active", True)
-        .gt("expires_at", now)
-        .limit(1)
-    )
-    if not promo_result.data:
-        return web.json_response({"error": "Промокод не найден или истёк"}, status=404)
+    promo = await get_valid_promo_code(code)
+    if not promo:
+        return web.json_response({"error": "Неверный или истекший промокод"}, status=400)
 
-    use_result = await execute(
+    used = await execute(
         supabase.table("promo_uses")
         .select("id")
         .eq("user_id", user_id)
         .eq("code", code)
         .limit(1)
     )
-    if use_result.data:
+    if used.data:
         return web.json_response({"error": "Вы уже активировали этот промокод"}, status=400)
 
     if code == "Im GAY":
         deposited = await deposits_sum_last_24h(user_id)
         if deposited < 50:
             return web.json_response(
-                {
-                    "error": "Для активации этого промокода необходимо пополнить баланс минимум на 50 звёзд за последние 24 часа"
-                },
+                {"error": "Для активации этого промокода необходимо пополнить баланс минимум на 50 звёзд за последние 24 часа"},
                 status=403,
             )
 
-    reward = int(promo_result.data[0]["reward_stars"])
+    reward = int(promo.get("reward_stars") or 0)
     try:
-        await ensure_user(user_id, username=(request.get("telegram_user") or {}).get("username"))
+        telegram_user = request.get("telegram_user") or {}
+        await ensure_user(user_id, username=telegram_user.get("username"))
         await update_balance(user_id, reward, "add")
         await execute(supabase.table("promo_uses").insert({"user_id": user_id, "code": code}))
     except Exception as exc:
@@ -682,23 +850,42 @@ async def api_claim_promo(request: web.Request) -> web.Response:
 async def api_cases(request: web.Request) -> web.Response:
     try:
         result = await execute(supabase.table("cases").select("*"))
+        cases = [normalize_case_row(row) for row in (result.data or [])]
     except Exception as exc:
         logger.exception("Cases query failed")
         return web.json_response({"error": f"Ошибка БД: {exc}"}, status=500)
 
-    return web.json_response([normalize_case_row(row) for row in (result.data or [])])
+    return web.json_response(cases)
 
 
 async def api_open_case(request: web.Request) -> web.Response:
     user_id = int(request["user_id"])
     body = await read_json(request)
     case_id = parse_positive_int(body.get("case_id"))
+    promo_code = str(body.get("promo_code") or "").strip() or None
+
     if case_id is None:
         return web.json_response({"error": "Некорректный кейс"}, status=400)
 
-    user = await ensure_user(user_id, username=(request.get("telegram_user") or {}).get("username"))
-    price = int(CASE_PRICES.get(case_id, 0))
-    if int(user.get("stars") or 0) < price:
+    telegram_user = request.get("telegram_user") or {}
+    user = await ensure_user(user_id, username=telegram_user.get("username"))
+
+    use_promo_pass = False
+    if promo_code:
+        promo = await get_valid_promo_code(promo_code)
+        if not promo:
+            return web.json_response({"error": "Неверный или истекший промокод"}, status=400)
+
+        deposited = await deposits_sum_last_24h(user_id)
+        if deposited < 50:
+            return web.json_response(
+                {"error": "Для открытия кейса по этому промокоду необходимо пополнить баланс минимум на 50 звёзд за последние 24 часа"},
+                status=403,
+            )
+        use_promo_pass = True
+
+    price = await get_case_price(case_id)
+    if not use_promo_pass and int(user.get("stars") or 0) < price:
         return web.json_response({"error": "Недостаточно звёзд"}, status=403)
 
     try:
@@ -708,13 +895,25 @@ async def api_open_case(request: web.Request) -> web.Response:
         return web.json_response({"error": f"Ошибка лимита кейса: {exc}"}, status=500)
 
     if not available:
-        return web.json_response({"error": "Cases of this type are sold out."}, status=400)
+        return web.json_response({"error": "Кейсы этого типа закончились"}, status=400)
 
-    if price > 0:
-        await update_balance(user_id, -price, "add")
+    if not use_promo_pass and price > 0:
+        try:
+            await update_balance(user_id, -price, "add")
+        except Exception as exc:
+            return web.json_response({"error": str(exc)}, status=403)
 
     item = random_gift(case_id)
-    return web.json_response({"success": True, "item": item, "deducted": price})
+    await add_inventory_item(user_id, item, case_id, promo_code)
+
+    return web.json_response(
+        {
+            "success": True,
+            "item": item,
+            "deducted": 0 if use_promo_pass else price,
+            "promo_used": bool(use_promo_pass),
+        }
+    )
 
 
 async def api_referrals(request: web.Request) -> web.Response:
@@ -726,6 +925,14 @@ async def api_referrals(request: web.Request) -> web.Response:
     )
     referrals = result.data or []
     return web.json_response({"count": len(referrals), "referrals": referrals})
+
+
+async def api_tasks(request: web.Request) -> web.Response:
+    return web.json_response([])
+
+
+async def api_verify_task(request: web.Request) -> web.Response:
+    return web.json_response({"error": "task_not_found"}, status=404)
 
 
 async def api_ton_invoice(request: web.Request) -> web.Response:
@@ -760,6 +967,8 @@ async def cleanup_background_tasks(app: web.Application) -> None:
 
 def setup_routes(app: web.Application) -> None:
     app.router.add_get("/", root_handler)
+    app.router.add_post("/api/heartbeat", api_heartbeat)
+    app.router.add_get("/api/check_sub", api_check_sub)
     app.router.add_get("/api/balance", api_balance)
     app.router.add_post("/api/invoice", api_invoice)
     app.router.add_post("/api/create_invoice", api_invoice)
@@ -767,6 +976,8 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/cases", api_cases)
     app.router.add_post("/api/open_case", api_open_case)
     app.router.add_get("/api/referrals", api_referrals)
+    app.router.add_get("/api/tasks", api_tasks)
+    app.router.add_post("/api/tasks/verify", api_verify_task)
     app.router.add_post("/api/ton_invoice", api_ton_invoice)
     app.router.add_post("/api/ton_success", api_ton_success)
 
