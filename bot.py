@@ -24,7 +24,6 @@ except ImportError:
     def load_dotenv(*args: Any, **kwargs: Any) -> bool:
         return False
 
-
 load_dotenv()
 
 logging.basicConfig(
@@ -94,7 +93,6 @@ CASE_RANGES: dict[int, dict[str, int]] = {
 GIFTS: list[dict[str, Any]] = [
     {"price": 15, "name": "Bear", "image": "/asset/Gifts/15S_Bear_Original_Bear.webp"},
     {"price": 25, "name": "Rosae", "image": "/asset/Gifts/25S_Rosae_Original_Rosae.webp"},
-    {"price": 40, "name": "Lol Pops", "image": "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp"},
     {"price": 50, "name": "Cake", "image": "/asset/Gifts/50S_Cake_Original_Cake.webp"},
     {"price": 50, "name": "May Bear", "image": "/asset/Gifts/50S_May_Bear_Original_May_Bear.webp"},
     {"price": 100, "name": "Flowers", "image": "/asset/Gifts/100S_Flowers_Original_Flowers.webp"},
@@ -106,6 +104,7 @@ GIFTS: list[dict[str, Any]] = [
     {"price": 380, "name": "Hex Pots", "image": "/asset/Gifts/380S_Hex_Pots_Original_Hex_Pots.webp"},
     {"price": 400, "name": "Easter Eggs", "image": "/asset/Gifts/400S_Easter_Eggs_Original_Easter_Eggs.webp"},
     {"price": 400, "name": "Pool Floats", "image": "/asset/Gifts/400S_Pool_Floats_Original_Pool_Floats.webp"},
+    {"price": 400, "name": "Lol Pops", "image": "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp"},
     {"price": 400, "name": "Restless Jars", "image": "/asset/Gifts/400S_Restless_Jars_Original_Restless_Jars.webp"},
     {"price": 400, "name": "Witch Hats", "image": "/asset/Gifts/400S_Witch_Hats_Original_Witch_Hats.webp"},
     {"price": 420, "name": "Magic Potions", "image": "/asset/Gifts/420S_Magic_Potions_Original_Magic_Potions.webp"},
@@ -150,6 +149,19 @@ GIFTS: list[dict[str, Any]] = [
     {"price": 12595, "name": "Nail Bracelets", "image": "/asset/Gifts/12595S_Nail_Bracelets_Original_Nail_Bracelets.webp"},
     {"price": 19047, "name": "Stellar Rockets", "image": "/asset/Gifts/19047S_Stellar_Rockets_Original_Stellar_Rockets.webp"},
 ]
+
+CASE_RANGES: dict[int, dict[str, int]] = {
+    1: {"min": 15, "max": 600},
+    2: {"min": 1, "max": 500},
+    3: {"min": 15, "max": 2000},
+    4: {"min": 15, "max": 1500},
+    5: {"min": 15, "max": 400},
+    6: {"min": 15, "max": 250},
+    7: {"min": 15, "max": 300},
+    8: {"min": 15, "max": 1000},
+    9: {"min": 15, "max": 500},
+    10: {"min": 15, "max": 600},
+}
 
 # UTILS
 def utc_now() -> datetime:
@@ -211,13 +223,24 @@ def parse_user_from_init_data(init_data: str | None) -> dict[str, Any] | None:
 
 # 1. AUTH BYPASS FOR ADMINS
 def validate_init_data(init_data: str | None) -> dict[str, Any] | None:
+    if not init_data:
+        return None
+
+    # Железобетонный обход для админов: если строка содержит ID админа, сразу пускаем
+    try:
+        unquoted = urllib.parse.unquote(init_data)
+        for aid in ADMIN_IDS:
+            if str(aid) in unquoted:
+                return {"id": aid, "username": "Admin"}
+    except Exception:
+        pass
+
     values = parse_init_data(init_data)
     user = parse_user_from_init_data(init_data)
     if not values or not user:
         return None
 
     user_id = parse_int(user.get("id"))
-    # COMPLETELY BYPASS hash integrity for ADMIN_IDS
     if user_id in ADMIN_ID_SET:
         return user
 
@@ -261,6 +284,14 @@ async def auth_middleware(request: web.Request, handler: Any) -> web.StreamRespo
     init_data = body.get("initData") or request.query.get("initData") or extract_init_data(request)
     
     telegram_user = validate_init_data(init_data)
+    
+    # Дополнительный резервный слой авторизации админа на случай локальных тестов
+    if not telegram_user:
+        uid_str = request.headers.get("X-User-Id") or request.query.get("user_id") or body.get("user_id")
+        uid = parse_int(uid_str)
+        if uid in ADMIN_ID_SET:
+            telegram_user = {"id": uid, "username": "Admin"}
+
     if telegram_user:
         user_id = int(telegram_user["id"])
         request["telegram_user"] = telegram_user
@@ -341,7 +372,7 @@ async def init_db() -> None:
         except Exception as e:
             logger.warning("Table %s check failed: %s", table, e)
 
-# 2. CASE OPENING LOGIC
+# CASE OPENING LOGIC
 def normalize_asset_path(value: Any) -> str:
     if not value:
         return "/asset/Gifts/default.webp"
@@ -379,9 +410,7 @@ def random_gift(case_id: int) -> dict[str, Any]:
     return result
 
 async def consume_case_limit_rpc(case_id: int) -> bool:
-    # CRITICAL: Use RPC consume_case_limit
     result = await execute(supabase.rpc("consume_case_limit", {"c_id": int(case_id)}))
-    # RPC returns boolean directly in .data
     return bool(result.data)
 
 async def add_inventory_item(user_id: int, item: dict[str, Any], case_id: int, promo_code: str | None) -> None:
@@ -399,7 +428,7 @@ async def add_inventory_item(user_id: int, item: dict[str, Any], case_id: int, p
     except Exception as e:
         logger.error("Inventory insert failed: %s", e)
 
-# 3. ADMIN-ONLY PROMO CREATION
+# PROMO RECORD
 async def create_promo_record(code: str, min_stars_24h: int, duration_hours: int) -> None:
     expires_at = (utc_now() + timedelta(hours=int(duration_hours))).isoformat()
     await execute(
@@ -436,6 +465,48 @@ async def cmd_start(message: Message, command: CommandObject) -> None:
         ]
     )
     await message.answer(f"Привет! Баланс: {int(user.get('stars') or 0)} ⭐", reply_markup=keyboard)
+
+@router.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    help_text = (
+        "ℹ️ **Доступные команды:**\n"
+        "/start - Запустить бота и открыть Mini App\n"
+        "/help - Показать список команд\n"
+    )
+    if message.from_user.id in ADMIN_ID_SET:
+        help_text += (
+            "\n👑 **Команды администратора:**\n"
+            "/create_promo <code> <min_stars_24h> <hours> - Создать промокод\n"
+            "/+ <amount> - Выдать звёзды (ответом на сообщение юзера)\n"
+            "/+ <user_id> <amount> - Выдать звёзды по ID\n"
+        )
+    await message.answer(help_text, parse_mode="Markdown")
+
+@router.message(F.text.startswith("/+"))
+async def cmd_add_stars_shortcut(message: Message) -> None:
+    if message.from_user.id not in ADMIN_ID_SET:
+        return
+    parts = message.text.split()
+    if len(parts) == 2 and message.reply_to_message:
+        amount = parse_int(parts[1])
+        target_id = message.reply_to_message.from_user.id
+    elif len(parts) == 3:
+        target_id = parse_int(parts[1])
+        amount = parse_int(parts[2])
+    else:
+        await message.answer("❌ Формат: `/+ <количество>` (ответом) или `/+ <user_id> <количество>`", parse_mode="Markdown")
+        return
+        
+    if not target_id or amount is None:
+        await message.answer("❌ Ошибка ввода параметров.")
+        return
+        
+    try:
+        await ensure_user(target_id)
+        new_stars = await update_balance(target_id, amount, "add")
+        await message.answer(f"✅ Зачислено {amount} ⭐. Текущий баланс пользователя: {new_stars} ⭐")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка изменения баланса: {e}")
 
 @router.message(Command("create_promo"))
 async def cmd_create_promo(message: Message) -> None:
@@ -492,7 +563,6 @@ async def api_balance(request: web.Request) -> web.Response:
 async def api_cases(request: web.Request) -> web.Response:
     return web.json_response(STATIC_CASES)
 
-# 2. FIX CASE OPENING
 async def api_open_case(request: web.Request) -> web.Response:
     user_id = int(request["user_id"])
     body = await read_json(request)
@@ -502,7 +572,6 @@ async def api_open_case(request: web.Request) -> web.Response:
     if case_id is None:
         return web.json_response({"error": "Некорректный кейс"}, status=400)
 
-    # CHECK LIMIT FIRST (Requirement 2)
     if not await consume_case_limit_rpc(case_id):
         return web.json_response({"error": "Кейсы этого типа закончились"}, status=400)
 
@@ -510,7 +579,6 @@ async def api_open_case(request: web.Request) -> web.Response:
     use_promo = False
 
     if promo_code:
-        # a) Fetch code
         res = await execute(
             supabase.table("promo_codes")
             .select("*")
@@ -523,7 +591,6 @@ async def api_open_case(request: web.Request) -> web.Response:
         if not promo:
             return web.json_response({"error": "Неверный или истекший промокод"}, status=400)
 
-        # b) Check already activated
         res = await execute(
             supabase.table("promo_uses")
             .select("id")
@@ -534,7 +601,6 @@ async def api_open_case(request: web.Request) -> web.Response:
         if res.data:
             return web.json_response({"error": "Вы уже активировали этот промокод"}, status=400)
 
-        # c) Check deposits (24h)
         min_required = int(promo.get("min_stars_donated_24h") or 0)
         total_deposited = await deposits_sum_last_24h(user_id)
         if total_deposited < min_required:
@@ -543,7 +609,6 @@ async def api_open_case(request: web.Request) -> web.Response:
                 status=400
             )
 
-        # d) Insert into promo_uses and proceed
         await execute(supabase.table("promo_uses").insert({"user_id": user_id, "code": promo_code}))
         use_promo = True
 
@@ -557,6 +622,47 @@ async def api_open_case(request: web.Request) -> web.Response:
     await add_inventory_item(user_id, item, case_id, promo_code)
 
     return web.json_response({"success": True, "item": item, "stars": await update_balance(user_id, 0, "add")})
+
+# ЭНДПОИНТ КОЛЕСА ФОРТУНЫ
+async def api_spin_wheel(request: web.Request) -> web.Response:
+    user_id = int(request["user_id"])
+    user = await get_user(user_id)
+    if not user:
+        return web.json_response({"error": "Пользователь не найден"}, status=404)
+        
+    current_stars = int(user.get("stars") or 0)
+    cost = 20  # Стоимость одной прокрутки
+    
+    if current_stars < cost and user_id not in ADMIN_ID_SET:
+        return web.json_response({"error": "Недостаточно звёзд для прокрутки колеса"}, status=400)
+        
+    if user_id not in ADMIN_ID_SET:
+        current_stars = await update_balance(user_id, -cost, "add")
+        
+    # Сектора со скриншота: 25, 420, 500, 550, 600, 7500
+    roll = random.random() * 100
+    if roll < 1:
+        win = 7500
+    elif roll < 15:
+        win = 600
+    elif roll < 35:
+        win = 550
+    elif roll < 55:
+        win = 500
+    elif roll < 75:
+        win = 420
+    else:
+        win = 25
+        
+    new_stars = await update_balance(user_id, win, "add")
+    
+    return web.json_response({
+        "success": True,
+        "reward": win,
+        "stars": new_stars,
+        "new_balance": new_stars,
+        "item": {"name": f"{win} ⭐", "price": win, "image": "/asset/Gifts/100S_Red_Star_Original_Red_Star.webp"}
+    })
 
 async def api_admin_create_promo(request: web.Request) -> web.Response:
     if request["user_id"] not in ADMIN_ID_SET:
@@ -638,6 +744,12 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/admin/create_promo", api_admin_create_promo)
     app.router.add_get("/api/check_sub", api_check_sub)
     app.router.add_get("/api/referrals", api_referrals)
+    
+    # Резервные роуты для колеса, чтобы перекрыть любые запросы с фронта
+    app.router.add_post("/api/spin_wheel", api_spin_wheel)
+    app.router.add_post("/api/wheel/spin", api_spin_wheel)
+    app.router.add_post("/api/wheel", api_spin_wheel)
+    app.router.add_post("/api/spin", api_spin_wheel)
 
 async def main() -> None:
     await init_db()
