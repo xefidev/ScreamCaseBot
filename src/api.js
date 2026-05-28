@@ -376,8 +376,8 @@ export const claimDaily = async (userId) => {
     
     const response = await fetch(`${BACKEND_URL}/api/open_case`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: userId, case_id: 2 }),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, case_id: 2 })),
     });
     
     if (!response.ok) {
@@ -425,8 +425,8 @@ export const openCase = async (userId, caseId) => {
     
     const response = await fetch(`${BACKEND_URL}/api/open_case`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody(payload)),
     });
     
     if (!response.ok) {
@@ -497,6 +497,44 @@ export const claimQuest = async (userId, questId) => {
   } catch (error) {
     console.error('Error claiming quest:', error);
     throw error;
+  }
+};
+
+export const fetchCases = async () => {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/cases`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      console.error('Cases fetch error:', response.status);
+      return [];
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching cases:', error);
+    return [];
+  }
+};
+
+export const fetchInventory = async (userId) => {
+  try {
+    if (!userId) return { user_id: userId, total_items: 0, total_value: 0, items: [] };
+    
+    const response = await fetch(`${BACKEND_URL}/api/inventory?user_id=${userId}&initData=${encodeURIComponent(getInitData())}`, {
+      headers: getAuthHeaders()
+    });
+    
+    if (!response.ok) {
+      console.error('Inventory fetch error:', response.status);
+      return { user_id: userId, total_items: 0, total_value: 0, items: [] };
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    return { user_id: userId, total_items: 0, total_value: 0, items: [] };
   }
 };
 

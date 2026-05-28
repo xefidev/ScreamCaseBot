@@ -1,853 +1,1646 @@
-import os
-import re
-import sys
-import json
-import hmac
-import hashlib
-import asyncio
 import logging
-import random
-import urllib.parse
-from datetime import datetime, timedelta, timezone
-from typing import Any
-
+import asyncio
+import os
 import aiohttp
-from aiohttp import web
-from aiogram import Bot, Dispatcher, Router, F, types
+from datetime import datetime, timedelta
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LabeledPrice, Message, WebAppInfo, PreCheckoutQuery
-from supabase import Client, create_client
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
+from aiohttp import web
+import aiohttp_cors
+import hashlib
+import string
+import random
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    def load_dotenv(*args: Any, **kwargs: Any) -> bool:
-        return False
+import base64
+from pytoniq import Builder
 
+import hmac
+import urllib.parse
+import json
+from aiohttp import web
+from functools import wraps
+
+# --- НАСТРОЙКИ ---
 load_dotenv()
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger("screamcase")
-
-# ============================================================================
-# 1. ADMIN CONFIGURATION
-# ============================================================================
-ADMIN_IDS = [7782281997, 5396975347]
-ADMIN_ID_SET = set(ADMIN_IDS)
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
-SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL")
-SUPABASE_KEY = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    or os.getenv("SUPABASE_KEY")
-    or os.getenv("VITE_SUPABASE_ANON_KEY")
-)
-
-if not BOT_TOKEN:
-    logger.critical("TELEGRAM_BOT_TOKEN or BOT_TOKEN is missing")
-if not SUPABASE_URL:
-    logger.critical("SUPABASE_URL is missing")
-if not SUPABASE_KEY:
-    logger.critical("SUPABASE_KEY is missing")
-
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://screamcase.online")
-CHANNEL_USERNAME = os.getenv("CHANNEL_USERNAME", "@screamcase")
-
-bot = Bot(token=BOT_TOKEN) if BOT_TOKEN else None
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if (SUPABASE_URL and SUPABASE_KEY) else None
-
-# ============================================================================
-# 2. STATIC DATA (GIFTS, CASES, RANGES)
-# ============================================================================
-
-GIFTS = [
-    {"price": 10, "name": "Мини-крик", "image": "/asset/Gifts/mini_scream.png"},
-    {"price": 25, "name": "Крик боли", "image": "/asset/Gifts/pain_scream.png"},
-    {"price": 50, "name": "Ужасный крик", "image": "/asset/Gifts/horror_scream.png"},
-    {"price": 100, "name": "Крик победы", "image": "/asset/Gifts/victory_scream.png"},
-    {"price": 200, "name": "Крик экстаза", "image": "/asset/Gifts/ecstasy_scream.png"},
-    {"price": 500, "name": "Апокалиптический крик", "image": "/asset/Gifts/apocalyptic_scream.png"},
-    {"price": 1000, "name": "Крик мира", "image": "/asset/Gifts/world_scream.png"},
-    {"price": 5000, "name": "Инфернальный крик", "image": "/asset/Gifts/infernal_scream.png"},
-    {"price": 10, "name": "Привет", "image": "/asset/Gifts/hello.png"},
-    {"price": 25, "name": "Улыбка", "image": "/asset/Gifts/smile.png"},
-    {"price": 50, "name": "Смех", "image": "/asset/Gifts/laugh.png"},
-    {"price": 100, "name": "Веселье", "image": "/asset/Gifts/fun.png"},
-    {"price": 200, "name": "Радость", "image": "/asset/Gifts/joy.png"},
-    {"price": 500, "name": "Счастье", "image": "/asset/Gifts/happiness.png"},
-    {"price": 1000, "name": "Блаженство", "image": "/asset/Gifts/bliss.png"},
-    {"price": 5000, "name": "Эйфория", "image": "/asset/Gifts/euphoria.png"},
-    {"price": 10, "name": "Шепот", "image": "/asset/Gifts/whisper.png"},
-    {"price": 25, "name": "Голос", "image": "/asset/Gifts/voice.png"},
-    {"price": 50, "name": "Песня", "image": "/asset/Gifts/song.png"},
-    {"price": 100, "name": "Симфония", "image": "/asset/Gifts/symphony.png"},
-    {"price": 200, "name": "Оркестр", "image": "/asset/Gifts/orchestra.png"},
-    {"price": 500, "name": "Концерт", "image": "/asset/Gifts/concert.png"},
-    {"price": 1000, "name": "Опера", "image": "/asset/Gifts/opera.png"},
-    {"price": 5000, "name": "Филармония", "image": "/asset/Gifts/philharmonic.png"},
-    {"price": 10, "name": "Пинок", "image": "/asset/Gifts/kick.png"},
-    {"price": 25, "name": "Удар", "image": "/asset/Gifts/hit.png"},
-    {"price": 50, "name": "Шок", "image": "/asset/Gifts/shock.png"},
-    {"price": 100, "name": "Взрыв", "image": "/asset/Gifts/explosion.png"},
-    {"price": 200, "name": "Катастрофа", "image": "/asset/Gifts/catastrophe.png"},
-    {"price": 500, "name": "Апокалипсис", "image": "/asset/Gifts/apocalypse.png"},
-    {"price": 1000, "name": "Чёрная дыра", "image": "/asset/Gifts/black_hole.png"},
-    {"price": 5000, "name": "Взрыв сверхновой", "image": "/asset/Gifts/supernova.png"},
-    {"price": 10, "name": "Золотой дождь", "image": "/asset/Gifts/gold_rain.png"},
-    {"price": 25, "name": "Серебряный ветер", "image": "/asset/Gifts/silver_wind.png"},
-    {"price": 50, "name": "Платиновый свет", "image": "/asset/Gifts/platinum_light.png"},
-    {"price": 100, "name": "Алмазный блеск", "image": "/asset/Gifts/diamond_shine.png"},
-    {"price": 200, "name": "Радуга", "image": "/asset/Gifts/rainbow.png"},
-    {"price": 500, "name": "Северное сияние", "image": "/asset/Gifts/northern_lights.png"},
-    {"price": 1000, "name": "Млечный путь", "image": "/asset/Gifts/milky_way.png"},
-    {"price": 5000, "name": "Космос", "image": "/asset/Gifts/cosmos.png"},
-    {"price": 10, "name": "Щипок", "image": "/asset/Gifts/pinch.png"},
-    {"price": 25, "name": "Пощёчина", "image": "/asset/Gifts/slap.png"},
-    {"price": 50, "name": "Кулак", "image": "/asset/Gifts/fist.png"},
-    {"price": 100, "name": "Суперудар", "image": "/asset/Gifts/super_hit.png"},
-    {"price": 200, "name": "Мегаудар", "image": "/asset/Gifts/mega_hit.png"},
-    {"price": 500, "name": "Гигаудар", "image": "/asset/Gifts/giga_hit.png"},
-    {"price": 1000, "name": "Терауар", "image": "/asset/Gifts/tera_hit.png"},
-    {"price": 5000, "name": "Петауар", "image": "/asset/Gifts/peta_hit.png"},
-]
-
-STATIC_CASES = [
-    {"id": "bronze", "name": "Бронзовый кейс", "price": 100, "image": "/asset/Case/bronze_case.png"},
-    {"id": "silver", "name": "Серебряный кейс", "price": 250, "image": "/asset/Case/silver_case.png"},
-    {"id": "gold", "name": "Золотой кейс", "price": 500, "image": "/asset/Case/gold_case.png"},
-    {"id": "platinum", "name": "Платиновый кейс", "price": 1000, "image": "/asset/Case/platinum_case.png"},
-    {"id": "diamond", "name": "Алмазный кейс", "price": 2500, "image": "/asset/Case/diamond_case.png"},
-    {"id": "legendary", "name": "Легендарный кейс", "price": 5000, "image": "/asset/Case/legendary_case.png"},
-    {"id": "mythic", "name": "Мифический кейс", "price": 10000, "image": "/asset/Case/mythic_case.png"},
-    {"id": "eternal", "name": "Вечный кейс", "price": 25000, "image": "/asset/Case/eternal_case.png"},
-    {"id": "cosmic", "name": "Космический кейс", "price": 50000, "image": "/asset/Case/cosmic_case.png"},
-    {"id": "void", "name": "Кейс Пустоты", "price": 100000, "image": "/asset/Case/void_case.png"},
-]
-
-CASE_RANGES = {
-    "bronze": (0, 100),
-    "silver": (0, 250),
-    "gold": (0, 500),
-    "platinum": (0, 1000),
-    "diamond": (0, 2500),
-    "legendary": (500, 5000),
-    "mythic": (1000, 10000),
-    "eternal": (5000, 25000),
-    "cosmic": (10000, 50000),
-    "void": (25000, 100000),
-}
-
-AVAILABLE_TASKS = [
-    {"id": "referral_1", "name": "Пригласить 1 друга", "description": "Пригласи одного друга", "condition": 1, "reward_stars": 100},
-    {"id": "referral_3", "name": "Пригласить 3 друзей", "description": "Пригласи трёх друзей", "condition": 3, "reward_stars": 300},
-    {"id": "referral_5", "name": "Пригласить 5 друзей", "description": "Пригласи пятерых друзей", "condition": 5, "reward_stars": 500},
-    {"id": "referral_10", "name": "Пригласить 10 друзей", "description": "Пригласи десятерых друзей", "condition": 10, "reward_stars": 1000},
-]
-
-INVENTORY_TABLE = "user_inventory"
-
-# ============================================================================
-# 3. DATABASE HELPERS
-# ============================================================================
-
-async def ensure_user(user_id: int, username: str = "", referred_by: int = None):
-    """Ensure user exists in database (upsert)."""
-    try:
-        data = {
-            "id": user_id,
-            "username": username,
-            "stars": 0,
-            "referred_by": referred_by,
-            "join_date": datetime.now(timezone.utc).isoformat(),
-        }
-        result = supabase.table("users").upsert(data, on_conflict="id").execute()
-        logger.info(f"User {user_id} ensured in DB")
-        return result.data
-    except Exception as e:
-        logger.error(f"Error ensuring user {user_id}: {e}")
-        return None
-
-
-async def get_user(user_id: int):
-    """Get user from database."""
-    try:
-        result = supabase.table("users").select("*").eq("id", user_id).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        logger.error(f"Error getting user {user_id}: {e}")
-        return None
-
-
-async def update_balance(user_id: int, amount: int, mode: str = "add"):
-    """Update user's star balance. mode='add' or 'set'."""
-    try:
-        if mode == "add":
-            result = supabase.rpc("increment_stars", {"user_id": user_id, "amount": amount}).execute()
-        elif mode == "set":
-            result = supabase.table("users").update({"stars": amount}).eq("id", user_id).execute()
-        logger.info(f"User {user_id} balance updated: {mode} {amount}")
-        return result.data
-    except Exception as e:
-        logger.error(f"Error updating balance for {user_id}: {e}")
-        return None
-
-
-async def deposits_sum_last_24h(user_id: int) -> int:
-    """Get total deposits from last 24 hours."""
-    try:
-        cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-        result = supabase.table("user_deposits").select("amount").eq("user_id", user_id).gte("created_at", cutoff_time).execute()
-        total = sum(item["amount"] for item in result.data) if result.data else 0
-        return total
-    except Exception as e:
-        logger.error(f"Error getting deposits for {user_id}: {e}")
-        return 0
-
-
-async def add_inventory_item(user_id: int, case_id: str, item_name: str, item_image: str, item_price: int, promo_code: str = None):
-    """Add item to user inventory."""
-    try:
-        data = {
-            "user_id": user_id,
-            "case_id": case_id,
-            "item_name": item_name,
-            "item_image": item_image,
-            "item_price": item_price,
-            "promo_code": promo_code,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = supabase.table(INVENTORY_TABLE).insert([data]).execute()
-        logger.info(f"Item added to inventory for user {user_id}: {item_name}")
-        return result.data
-    except Exception as e:
-        logger.error(f"Error adding inventory item for {user_id}: {e}")
-        return None
-
-
-async def get_user_inventory(user_id: int):
-    """Get user's inventory."""
-    try:
-        result = supabase.table(INVENTORY_TABLE).select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-        return result.data if result.data else []
-    except Exception as e:
-        logger.error(f"Error getting inventory for {user_id}: {e}")
-        return []
-
-
-# ============================================================================
-# 4. PROMO CODE HELPERS
-# ============================================================================
-
-async def create_promo_record(code: str, reward_stars: int, duration_hours: int, max_uses: int):
-    """Create a new promo code record."""
-    try:
-        expires_at = (datetime.now(timezone.utc) + timedelta(hours=duration_hours)).isoformat()
-        data = {
-            "code": code,
-            "stars_reward": reward_stars,
-            "max_uses": max_uses,
-            "uses_count": 0,
-            "expires_at": expires_at,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        result = supabase.table("promo_codes").insert([data]).execute()
-        logger.info(f"Promo code created: {code}")
-        return result.data
-    except Exception as e:
-        logger.error(f"Error creating promo code {code}: {e}")
-        return None
-
-
-async def get_promo_code(code: str):
-    """Get promo code details."""
-    try:
-        result = supabase.table("promo_codes").select("*").eq("code", code).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        logger.error(f"Error getting promo code {code}: {e}")
-        return None
-
-
-async def has_user_used_promo(user_id: int, code: str) -> bool:
-    """Check if user has already used this promo code."""
-    try:
-        result = supabase.table("promo_uses").select("*").eq("user_id", user_id).eq("code", code).execute()
-        return len(result.data) > 0
-    except Exception as e:
-        logger.error(f"Error checking promo usage for {user_id}, {code}: {e}")
-        return False
-
-
-async def record_promo_use(user_id: int, code: str):
-    """Record that user has used a promo code."""
-    try:
-        data = {
-            "user_id": user_id,
-            "code": code,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        supabase.table("promo_uses").insert([data]).execute()
-        
-        # Increment uses_count
-        supabase.rpc("increment_promo_uses", {"code": code, "amount": 1}).execute()
-        logger.info(f"Promo use recorded: user {user_id}, code {code}")
-        return True
-    except Exception as e:
-        logger.error(f"Error recording promo use: {e}")
-        return False
-
-
-# ============================================================================
-# 5. QUEST/TASK HELPERS
-# ============================================================================
-
-async def get_user_task_status(user_id: int, task_id: str):
-    """Get user's task completion status."""
-    try:
-        result = supabase.table("user_tasks").select("*").eq("user_id", user_id).eq("task_id", task_id).execute()
-        if result.data:
-            return result.data[0]
-        return None
-    except Exception as e:
-        logger.error(f"Error getting task status for {user_id}, {task_id}: {e}")
-        return None
-
-
-async def mark_task_completed(user_id: int, task_id: str, reward_stars: int):
-    """Mark task as completed and award stars."""
-    try:
-        # Insert task completion
-        data = {
-            "user_id": user_id,
-            "task_id": task_id,
-            "completed": True,
-            "completed_at": datetime.now(timezone.utc).isoformat(),
-        }
-        supabase.table("user_tasks").insert([data]).execute()
-        
-        # Award stars
-        await update_balance(user_id, reward_stars, "add")
-        logger.info(f"Task {task_id} completed for user {user_id}, awarded {reward_stars} stars")
-        return True
-    except Exception as e:
-        logger.error(f"Error marking task completed: {e}")
-        return False
-
-
-async def count_user_referrals(user_id: int) -> int:
-    """Count number of referrals for a user."""
-    try:
-        result = supabase.table("users").select("id").eq("referred_by", user_id).execute()
-        return len(result.data) if result.data else 0
-    except Exception as e:
-        logger.error(f"Error counting referrals for {user_id}: {e}")
-        return 0
-
-
-# ============================================================================
-# 6. CASE OPENING
-# ============================================================================
-
-def get_case_price(case_id: str) -> int:
-    """Get case price from static data."""
-    for case in STATIC_CASES:
-        if case["id"] == case_id:
-            return case["price"]
-    return 0
-
-
-def random_gift(case_id: str) -> dict:
-    """Select random gift from pool based on case price range."""
-    if case_id not in CASE_RANGES:
-        return GIFTS[0]
-    
-    min_price, max_price = CASE_RANGES[case_id]
-    available = [g for g in GIFTS if min_price <= g["price"] <= max_price]
-    
-    if not available:
-        available = GIFTS
-    
-    return random.choice(available)
-
-
-async def api_open_case(request: web.Request) -> web.Response:
-    """Open a case and get a random gift."""
-    try:
-        user_id = int(request["user_id"])
-        body = request.get("_body_dict", {})
-        
-        case_id = body.get("case_id")
-        promo_code = body.get("promo_code")
-        
-        if not case_id:
-            return web.json_response({"error": "Missing case_id"}, status=400)
-        
-        # Get case price
-        price = get_case_price(case_id)
-        if price == 0:
-            return web.json_response({"error": "Invalid case_id"}, status=400)
-        
-        # Get user data
-        user = await get_user(user_id)
-        if not user:
-            return web.json_response({"error": "User not found"}, status=404)
-        
-        current_stars = user.get("stars", 0)
-        
-        # Handle promo code or deduct stars
-        if promo_code:
-            promo = await get_promo_code(promo_code)
-            if not promo:
-                return web.json_response({"error": "Invalid promo code"}, status=400)
-            
-            # Check expiry
-            if datetime.fromisoformat(promo["expires_at"]) < datetime.now(timezone.utc):
-                return web.json_response({"error": "Promo code expired"}, status=400)
-            
-            # Check max uses
-            if promo["uses_count"] >= promo["max_uses"]:
-                return web.json_response({"error": "Promo code limit reached"}, status=400)
-            
-            # Check single-use per user
-            if await has_user_used_promo(user_id, promo_code):
-                return web.json_response({"error": "You already used this promo"}, status=400)
-            
-            # Award stars instead of deduction
-            await record_promo_use(user_id, promo_code)
-            await update_balance(user_id, promo["stars_reward"], "add")
-            price = promo["stars_reward"]
-        else:
-            # Check balance
-            if current_stars < price:
-                return web.json_response({"error": "Insufficient stars"}, status=400)
-            
-            # Deduct stars
-            await update_balance(user_id, -price, "add")
-        
-        # Get random gift
-        gift = random_gift(case_id)
-        
-        # Add to inventory
-        await add_inventory_item(user_id, case_id, gift["name"], gift["image"], gift["price"], promo_code)
-        
-        return web.json_response({
-            "success": True,
-            "gift": gift,
-            "case_id": case_id,
-        })
-    
-    except Exception as e:
-        logger.error(f"Error opening case: {e}")
-        return web.json_response({"error": str(e)}, status=500)
-
-
-# ============================================================================
-# 7. PROMO ACTIVATION
-# ============================================================================
-
-async def api_activate_promo(request: web.Request) -> web.Response:
-    """Activate a promo code."""
-    try:
-        user_id = int(request["user_id"])
-        body = request.get("_body_dict", {})
-        code = body.get("code")
-        
-        if not code:
-            return web.json_response({"error": "Missing code"}, status=400)
-        
-        promo = await get_promo_code(code)
-        if not promo:
-            return web.json_response({"error": "Invalid promo code"}, status=400)
-        
-        # Check expiry
-        if datetime.fromisoformat(promo["expires_at"]) < datetime.now(timezone.utc):
-            return web.json_response({"error": "Promo code expired"}, status=400)
-        
-        # Check max uses
-        if promo["uses_count"] >= promo["max_uses"]:
-            return web.json_response({"error": "Promo code limit reached"}, status=400)
-        
-        # Check single-use per user
-        if await has_user_used_promo(user_id, code):
-            return web.json_response({"error": "You already used this promo"}, status=400)
-        
-        # Record use and award stars
-        await record_promo_use(user_id, code)
-        await update_balance(user_id, promo["stars_reward"], "add")
-        
-        return web.json_response({
-            "success": True,
-            "stars_awarded": promo["stars_reward"],
-        })
-    
-    except Exception as e:
-        logger.error(f"Error activating promo: {e}")
-        return web.json_response({"error": str(e)}, status=500)
-
-
-# ============================================================================
-# 8. QUESTS/TASKS
-# ============================================================================
-
-async def api_get_tasks(request: web.Request) -> web.Response:
-    """Get all available tasks with user's completion status."""
-    try:
-        user_id = int(request["user_id"])
-        
-        tasks_response = []
-        for task in AVAILABLE_TASKS:
-            status = await get_user_task_status(user_id, task["id"])
-            completed = status is not None and status.get("completed", False)
-            
-            # Count referrals for referral tasks
-            referral_count = 0
-            if task["id"].startswith("referral_"):
-                referral_count = await count_user_referrals(user_id)
-            
-            tasks_response.append({
-                "id": task["id"],
-                "name": task["name"],
-                "description": task["description"],
-                "reward_stars": task["reward_stars"],
-                "completed": completed,
-                "referral_count": referral_count,
-                "condition": task["condition"],
-            })
-        
-        return web.json_response({"tasks": tasks_response})
-    
-    except Exception as e:
-        logger.error(f"Error getting tasks: {e}")
-        return web.json_response({"error": str(e)}, status=500)
-
-
-async def api_claim_task(request: web.Request) -> web.Response:
-    """Claim reward for completed task."""
-    try:
-        user_id = int(request["user_id"])
-        body = request.get("_body_dict", {})
-        task_id = body.get("task_id")
-        
-        if not task_id:
-            return web.json_response({"error": "Missing task_id"}, status=400)
-        
-        # Find task
-        task = None
-        for t in AVAILABLE_TASKS:
-            if t["id"] == task_id:
-                task = t
-                break
-        
-        if not task:
-            return web.json_response({"error": "Task not found"}, status=404)
-        
-        # Check if already completed
-        status = await get_user_task_status(user_id, task_id)
-        if status and status.get("completed"):
-            return web.json_response({"error": "Task already completed"}, status=400)
-        
-        # For referral tasks, verify condition
-        if task_id.startswith("referral_"):
-            referral_count = await count_user_referrals(user_id)
-            if referral_count < task["condition"]:
-                return web.json_response({
-                    "error": f"Not enough referrals. Need {task['condition']}, have {referral_count}"
-                }, status=400)
-        
-        # Mark task as completed and award stars
-        await mark_task_completed(user_id, task_id, task["reward_stars"])
-        
-        return web.json_response({
-            "success": True,
-            "task_id": task_id,
-            "reward_stars": task["reward_stars"],
-        })
-    
-    except Exception as e:
-        logger.error(f"Error claiming task: {e}")
-        return web.json_response({"error": str(e)}, status=500)
-
-
-# ============================================================================
-# 9. AUTHENTICATION & MIDDLEWARE
-# ============================================================================
+# ... (rest of settings)
 
 def validate_init_data(init_data: str, bot_token: str) -> dict:
-    """Validate Telegram init_data using HMAC signature."""
+    """Валидирует данные от Telegram Web App с защитой от таких лазеек."""
+    if not init_data or not isinstance(init_data, str):
+        logger.warning("❌ Пустые или невалидные initData")
+        return None
+        
     try:
-        parsed = urllib.parse.parse_qs(init_data)
-        signature = parsed.get("hash", [""])[0]
+        vals = {k: v for k, v in urllib.parse.parse_qsl(init_data)}
+        if 'hash' not in vals or 'user' not in vals:
+            logger.warning("❌ Missing 'hash' or 'user' in initData")
+            return None
         
-        # Remove hash from data
-        query_data = {k: v[0] for k, v in parsed.items() if k != "hash"}
-        sorted_pairs = "\n".join(f"{k}={v}" for k, v in sorted(query_data.items()))
-        
+        # Валидируем что hash корректный
+        data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(vals.items()) if k != 'hash')
         secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-        computed_hash = hmac.new(secret_key, sorted_pairs.encode(), hashlib.sha256).hexdigest()
+        h = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
         
-        return computed_hash == signature and query_data
+        if h != vals['hash']:
+            logger.warning(f"❌ InitData hash mismatch for user")
+            return None
+            
+        user_data = json.loads(vals.get('user', '{}'))
+        if not user_data.get('id'):
+            logger.warning("❌ InitData missing user.id")
+            return None
+            
+        return user_data
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON decode error in initData: {e}")
+        return None
     except Exception as e:
-        logger.error(f"Init data validation failed: {e}")
+        logger.error(f"❌ Error validating initData: {e}")
         return None
 
-
-@web.middleware
-async def cors_middleware(request: web.Request, handler) -> web.Response:
-    """Add CORS headers."""
-    response = await handler(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Telegram-Init-Data"
-    return response
-
-
-@web.middleware
-async def auth_middleware(request: web.Request, handler) -> web.Response:
-    """Authenticate user via Telegram init_data."""
-    
-    # Public endpoints don't need auth
-    if request.path in ["/health", "/metrics"]:
-        return await handler(request)
-    
-    # Parse request body safely
-    body = {}
-    if request.method in {"POST", "PUT", "PATCH"}:
+def require_auth(handler):
+    """Декоратор для проверки authorization на всех /api/ запросах."""
+    @wraps(handler)
+    async def wrapped(request):
+        # Получаем initData из запроса (может быть в body для POST или query для GET)
+        init_data = None
+        
         try:
-            body = await request.json()
-        except Exception:
-            body = {}
-    
-    # Multi-source initData extraction
-    init_data = (
-        body.get("initData")
-        or request.query.get("initData")
-        or (request.headers.get("Authorization") or "").replace("Bearer ", "")
-        or request.headers.get("X-Telegram-Init-Data")
-    )
-    
-    if not init_data:
-        return web.json_response({"error": "Missing auth"}, status=401)
-    
-    # Validate signature
-    user_data = validate_init_data(init_data, BOT_TOKEN)
-    if not user_data:
-        return web.json_response({"error": "Invalid auth"}, status=401)
-    
-    # Extract user info
-    try:
-        telegram_user = json.loads(user_data.get("user", "{}"))
-        user_id = telegram_user.get("id")
+            if request.method == 'POST':
+                data = await request.json()
+                init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            else:
+                init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        except Exception as e:
+            logger.error(f"Error extracting initData: {e}")
+            return web.json_response({"error": "invalid_request"}, status=400)
         
-        if not user_id or int(user_id) not in ADMIN_ID_SET:
-            # Non-admin: validate timestamp
-            auth_date = int(user_data.get("auth_date", 0))
-            if datetime.now().timestamp() - auth_date > 86400:
-                return web.json_response({"error": "Auth expired"}, status=401)
+        # Валидируем
+        user_data = validate_init_data(init_data, TOKEN)
+        if not user_data:
+            logger.warning(f"❌ Auth failed for request to {request.path}")
+            return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
         
-        # Ensure user in DB
-        username = telegram_user.get("username", "")
-        referred_by = request.query.get("ref")
-        if referred_by:
-            try:
-                referred_by = int(referred_by)
-            except ValueError:
-                referred_by = None
-        
-        await ensure_user(user_id, username, referred_by)
-        
-        # Store in request for handler
-        request["user_id"] = user_id
-        request["telegram_user"] = telegram_user
-        request["_body_dict"] = body
+        # Сохраняем user_id в request для дальнейшего использования
+        request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
+        request['user_data'] = user_data
         
         return await handler(request)
+    return wrapped
+
+def cors_middleware(app, handler):
+    """Специальная CORS middleware, которая обрабатывает OPTIONS preflight запросы ДО auth_middleware.
     
-    except Exception as e:
-        logger.error(f"Auth middleware error: {e}")
-        return web.json_response({"error": "Auth error"}, status=401)
-
-
-# ============================================================================
-# 10. TELEGRAM BOT HANDLERS
-# ============================================================================
-
-router = Router()
-
-
-@router.message(Command("start"))
-async def cmd_start(message: Message):
-    """Handle /start command."""
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="🎮 Play ScreamCase",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}?ref={message.from_user.id}")
-        )]
-    ])
-    await message.answer(
-        f"Welcome to ScreamCase! 🎉\n\n"
-        f"Open cases and collect gifts using your stars!\n\n"
-        f"Your ID: {message.from_user.id}",
-        reply_markup=keyboard
-    )
-
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    """Handle /help command."""
-    help_text = """
-ScreamCase Commands:
-/start - Open the app
-/help - This message
-/profile - Your profile
-/+ <amount> - Get stars (admin only)
-/create_promo <code> <stars> <hours> <max_uses> - Create promo
+    CRITICAL: OPTIONS requests должны вернуть 200 с CORS headers ДО auth проверки,
+    иначе браузер блокирует основной запрос.
     """
-    await message.answer(help_text)
+    @wraps(handler)
+    async def middleware(request):
+        # Обрабатываем preflight OPTIONS запросы НЕМЕДЛЕННО с 200 OK
+        if request.method == 'OPTIONS':
+            response = web.Response(status=200)
+            response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+            response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+                'Access-Control-Request-Headers', 
+                'Content-Type, Authorization, X-Requested-With'
+            )
+            response.headers['Access-Control-Allow-Credentials'] = 'true'
+            response.headers['Access-Control-Max-Age'] = '86400'
+            return response
+        
+        return await handler(request)
+    return middleware
 
+def auth_middleware(app, handler):
+    @wraps(handler)
+    async def middleware(request):
+        # Пропускаем проверку авторизации для публичных маршрутов
+        if request.path == '/' or request.path == '/health':
+            return await handler(request)
+        
+        # Применяем auth только к /api/ routes
+        if request.path.startswith('/api/'):
+            init_data = None
+            try:
+                if request.method == 'POST':
+                    data = await request.json()
+                    init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+                else:
+                    init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            except Exception as e:
+                logger.debug(f"Error extracting initData in middleware: {e}")
+                init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
+            
+            # Валидируем
+            user_data = validate_init_data(init_data, TOKEN)
+            if not user_data:
+                logger.warning(f"❌ Unauthorized access attempt to {request.path}")
+                return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+            
+            request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
+            request['user_data'] = user_data
+        
+        return await handler(request)
+    return middleware
 
-@router.message(Command("profile"))
-async def cmd_profile(message: Message):
-    """Handle /profile command."""
-    if not supabase:
-        await message.answer("Database not configured")
-        return
-    
-    user = await get_user(message.from_user.id)
-    if user:
-        stars = user.get("stars", 0)
-        referrals = await count_user_referrals(message.from_user.id)
-        await message.answer(
-            f"👤 Profile\n"
-            f"⭐ Stars: {stars}\n"
-            f"👥 Referrals: {referrals}"
-        )
-    else:
-        await message.answer("User not found")
+# Цены кейсов
+CASES_PRICES = {
+    1: 0,    # Promo Case
+    2: 1,    # Daily Case (1 ticket)
+    3: 15,   # Snoop Case
+    4: 25,   # Lover's Case
+    5: 5,    # Hobo Case
+    6: 10,   # Risky Box
+    7: 50,   # Scam Box
+    8: 100,  # Ebati Case
+    9: 75,   # Pussy Case
+    10: 150  # Skolnik Case
+}
+ADMIN_IDS = [7782281997, 5396975347]
+APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
+CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 
+# TON Blockchain Settings
+TON_WALLET = os.getenv("VITE_TON_WALLET", "UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp")
+TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY", "") 
+TONCENTER_BASE_URL = "https://toncenter.com/api/v2"
 
-@router.message(F.text.startswith("/+"))
-async def cmd_add_stars(message: Message):
-    """Admin command: add stars to user."""
-    if message.from_user.id not in ADMIN_ID_SET:
-        await message.answer("Admin only")
-        return
-    
-    if not supabase:
-        await message.answer("Database not configured")
-        return
-    
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Проверьте переменные окружения VITE_SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def create_comment_boc(text: str) -> str:
+    """Создает BOC с текстовым комментарием (opcode 0) в формате Base64."""
     try:
+        cell = Builder().store_uint(0, 32).store_string(text).end_cell()
+        return base64.b64encode(cell.to_boc(False)).decode('utf-8')
+    except Exception as e:
+        logger.error(f"Error creating BOC: {e}")
+        return ""
+
+HYPE_TEMPLATES = [
+    "@{username}, 20 секунд назад пользователь id {fake_id} выиграл Astral Shard за 20К ⭐\n\n🔥 Испытай свою удачу, твои шансы на победу в платной рулетке увеличены на 34% (всего на час)!",
+    "🚨 СКИДКА ДО КРИТИЧЕСКОГО МИНИМУМА!\n\nТолько в ближайшие 30 минут стоимость открытия 'Scream Case' снижена! Успей забрать топовые подарки, пока админ спит. Шанс дропа окупаемого дропа повышен x2!",
+    "🎁 Бонус выходного дня!\n\nКаждый, кто зайдет в приложение прямо сейчас, получит +2 бесплатных тикета на баланс! Не упусти халяву, заходи в профиль!",
+    "🌙 Ночной режим активирован.\n\nПо статистике, именно ночью выпадает самый дорогой дроп. Прямо сейчас кто-то крутит рулетку и забирает сочные призы. А чего ждешь ты? Твой бонусный процент на удачу уже активирован!",
+]
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
+
+# --- БЛОКЧЕЙН МОНИТОРИНГ ---
+
+async def check_ton_transactions():
+    """Фоновая задача для автоматической проверки платежей TON.
+    
+    ВАЖНО ДЛЯ RENDER.COM: 
+    На бесплатном плане Render приложение "засыпает" через 15 минут без запросов.
+    Эта задача будет заморожена вместе с приложением.
+    Решение: нужен heartbeat запрос каждые 10-15 минут из фронтенда.
+    """
+    logger.info(f"📡 Запущен мониторинг TON кошелька: {TON_WALLET}")
+    
+    consecutive_errors = 0
+    max_consecutive_errors = 5
+    
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                params = {
+                    "address": TON_WALLET,
+                    "limit": 20,
+                    "api_key": TONCENTER_API_KEY
+                }
+                
+                async with session.get(f"{TONCENTER_BASE_URL}/getTransactions", params=params, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        logger.error(f"⚠️ Ошибка Toncenter API: {resp.status}")
+                        consecutive_errors += 1
+                        if consecutive_errors >= max_consecutive_errors:
+                            logger.error(f"⚠️ Слишком много ошибок. Ждём 5 минут...")
+                            await asyncio.sleep(300)
+                            consecutive_errors = 0
+                        else:
+                            await asyncio.sleep(60)
+                        continue
+                    
+                    consecutive_errors = 0
+                    result = await resp.json()
+                    transactions = result.get("result", [])
+                    
+                    for tx in transactions:
+                        in_msg = tx.get("in_msg", {})
+                        value = int(in_msg.get("value", 0))
+                        if value == 0: continue
+                        
+                        tx_hash = tx.get("transaction_id", {}).get("hash")
+                        comment = in_msg.get("message", "").strip()
+                        if not comment and in_msg.get("msg_data", {}).get("@type") == "msg.dataText":
+                             comment = in_msg.get("msg_data", {}).get("text", "").strip()
+                        
+                        try:
+                            if all(c in string.hexdigits for c in comment) and len(comment) % 2 == 0:
+                                decoded = bytes.fromhex(comment).decode('utf-8', errors='ignore')
+                                if "SC_" in decoded:
+                                    comment = decoded
+                        except:
+                            pass
+
+                        if not comment or not comment.startswith("SC_"): continue
+                        
+                        try:
+                            parts = comment.split("_")
+                            if len(parts) < 2: continue
+                            user_id = int(parts[1])
+                            
+                            existing = supabase.table("ton_transactions").select("tx_id").eq("tx_id", tx_hash).execute()
+                            if existing.data: continue
+                            
+                            amount_ton = value / 1_000_000_000
+                            stars_to_add = int(amount_ton * 100)
+                            
+                            if stars_to_add <= 0: continue
+                            
+                            logger.info(f"💰 Найдена оплата: {amount_ton} TON от {user_id} (TX: {tx_hash[:10]}...)")
+                            
+                            supabase.table("ton_transactions").insert({
+                                "tx_id": tx_hash,
+                                "user_id": user_id,
+                                "amount": amount_ton,
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }).execute()
+                            
+                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("user_id", user_id).execute()
+                            if user_res.data:
+                                u = user_res.data[0]
+                                new_stars = u['stars'] + stars_to_add
+                                new_donated_ton = (u.get('total_donated_ton') or 0.0) + amount_ton
+                                
+                                supabase.table("users").update({
+                                    "stars": new_stars, 
+                                    "total_donated_ton": new_donated_ton
+                                }).eq("user_id", user_id).execute()
+                                
+                                supabase.table("payments").insert({
+                                    "user_id": user_id, 
+                                    "amount": stars_to_add, 
+                                    "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }).execute()
+                                
+                                try:
+                                    await bot.send_message(user_id, f"✅ Оплата TON подтверждена!\n\nНа ваш баланс зачислено {stars_to_add} ⭐")
+                                    logger.info(f"📩 Пользователь {user_id} уведомлен о зачислении.")
+                                except Exception as e:
+                                    logger.error(f"❌ Не удалось отправить сообщение юзеру: {e}")
+                                    
+                        except Exception as e:
+                            logger.error(f"❌ Ошибка обработки транзакции {tx_hash}: {e}")
+                            
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Timeout при запросе к Toncenter")
+                consecutive_errors += 1
+                await asyncio.sleep(60)
+            except Exception as e:
+                logger.error(f"❌ Ошибка мониторинга TON: {e}")
+                consecutive_errors += 1
+                await asyncio.sleep(60)
+            
+            await asyncio.sleep(30)
+
+# --- БАЗА ДАННЫХ ---
+def init_db():
+    try:
+        supabase.table("users").select("count", count="exact").limit(1).execute()
+        logger.info("✅ Supabase connection verified")
+        
+        referral_tasks = [
+            {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
+            {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
+            {"id": 3, "title": "Пригласить 3 друзей", "reward": 3, "type": "referral_3", "url": "", "chat_id": ""},
+            {"id": 4, "title": "Пригласить 4 друзей", "reward": 4, "type": "referral_4", "url": "", "chat_id": ""},
+            {"id": 5, "title": "Пригласить 5 друзей", "reward": 5, "type": "referral_5", "url": "", "chat_id": ""},
+        ]
+        supabase.table("tasks").upsert(referral_tasks).execute()
+        logger.info("✅ Base tasks initialized in Supabase")
+    except Exception as e:
+        logger.error(f"❌ Supabase initialization error: {e}")
+
+def get_gifts_in_range(min_p, max_p):
+    return [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
+
+def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
+    try:
+        res = supabase.table("users").select("stars, join_date").eq("user_id", user_id).execute()
+        
+        if res.data:
+            update_user_profile(user_id, username, first_name, photo_url)
+            return (res.data[0]['stars'], res.data[0]['join_date']), False
+        
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        ref_id = None
+        if referred_by and str(referred_by).isdigit():
+            ref_id = int(referred_by)
+            if ref_id == user_id:
+                ref_id = None
+            else:
+                ref_check = supabase.table("users").select("user_id").eq("user_id", ref_id).execute()
+                if not ref_check.data:
+                    ref_id = None
+
+        user_data = {
+            "user_id": user_id,
+            "stars": 0,
+            "join_date": date,
+            "username": username,
+            "first_name": first_name,
+            "photo_url": photo_url,
+            "referred_by": ref_id,
+            "tickets": 0
+        }
+        supabase.table("users").insert(user_data).execute()
+        
+        if ref_id:
+            ref_user = supabase.table("users").select("tickets").eq("user_id", ref_id).execute()
+            if ref_user.data:
+                new_tickets = (ref_user.data[0].get('tickets') or 0) + 1
+                supabase.table("users").update({"tickets": new_tickets}).eq("user_id", ref_id).execute()
+            logger.info(f"User {user_id} joined via referral {ref_id}")
+            
+        return (0, date), True
+    except Exception as e:
+        logger.error(f"Error in register_or_get: {e}")
+        return (0, ""), False
+
+def update_user_profile(user_id, username=None, first_name=None, photo_url=None):
+    try:
+        updates = {}
+        if username: updates["username"] = username
+        if first_name: updates["first_name"] = first_name
+        if photo_url: updates["photo_url"] = photo_url
+        
+        if updates:
+            supabase.table("users").update(updates).eq("user_id", user_id).execute()
+    except Exception as e:
+        logger.error(f"Error in update_user_profile: {e}")
+
+def update_balance(user_id, amount, mode="add", is_donation=False):
+    try:
+        user_res = supabase.table("users").select("stars, total_donated_stars, referred_by").eq("user_id", user_id).execute()
+        if not user_res.data:
+            return
+        
+        current_stars = user_res.data[0]['stars']
+        current_donated = user_res.data[0].get('total_donated_stars') or 0
+        ref_id = user_res.data[0].get('referred_by')
+
+        if mode == "add":
+            new_stars = current_stars + amount
+            updates = {"stars": new_stars}
+            if is_donation:
+                updates["total_donated_stars"] = current_donated + amount
+                
+                if ref_id:
+                    reward = int(amount * 0.1)
+                    if reward > 0:
+                        ref_res = supabase.table("users").select("stars").eq("user_id", ref_id).execute()
+                        if ref_res.data:
+                            new_ref_stars = ref_res.data[0]['stars'] + reward
+                            supabase.table("users").update({"stars": new_ref_stars}).eq("user_id", ref_id).execute()
+                            supabase.table("payments").insert({
+                                "user_id": ref_id, 
+                                "amount": reward, 
+                                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                            }).execute()
+                            logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
+            supabase.table("users").update(updates).eq("user_id", user_id).execute()
+        else:
+            supabase.table("users").update({"stars": amount}).eq("user_id", user_id).execute()
+        
+        supabase.table("payments").insert({
+            "user_id": user_id, 
+            "amount": amount if mode == "add" else amount - current_stars, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+    except Exception as e:
+        logger.error(f"Error in update_balance: {e}")
+
+# --- CASE DATA (Server Side) ---
+CASES_DATA = {
+    1: {'min': 15, 'max': 500},   # Promo Case
+    2: {'min': 0, 'max': 100},    # Daily Case
+    3: {'min': 100, 'max': 667},  # Snoop Case
+    4: {'min': 200, 'max': 599},  # Lover's Case
+    5: {'min': 0, 'max': 199},    # Hobo Case
+    6: {'min': 0, 'max': 50},     # Risky Box
+    7: {'min': 0, 'max': 599},    # Scam Box
+    8: {'min': 100, 'max': 444},  # Ebati Case
+    9: {'min': 50, 'max': 222},   # Pussy Case
+    10: {'min': 100, 'max': 250}  # Skolnik Case
+}
+
+ALL_GIFTS = [
+  {"price": 15, "name": "Bear", "image": "/asset/Gifts/15S_Bear_Original_Bear.webp"},
+  {"price": 25, "name": "Rosae", "image": "/asset/Gifts/25S_Rosae_Original_Rosae.webp"},
+  {"price": 40, "name": "Lol Pops", "image": "/asset/Gifts/40S_Lol_Pops_Original_Lol_Pops.webp"},
+  {"price": 50, "name": "Cake", "image": "/asset/Gifts/50S_Cake_Original_Cake.webp"},
+  {"price": 50, "name": "GiftBox", "image": "/asset/Gifts/50S_GiftBox_Original_GiftBox.webp"},
+  {"price": 100, "name": "Flowers", "image": "/asset/Gifts/100S_Flowers_Original_Flowers.webp"},
+  {"price": 300, "name": "Instant Ramens", "image": "/asset/Gifts/300S_Instant_Ramens_Original_Instant_Ramens.webp"},
+  {"price": 300, "name": "Xmas Stockings", "image": "/asset/Gifts/300S_Xmas_Stockings_Original_Xmas_Stockings.webp"},
+  {"price": 320, "name": "Spring Baskets", "image": "/asset/Gifts/320S_Spring_Baskets_Original_Spring_Baskets.webp"},
+  {"price": 330, "name": "Swag Bags", "image": "/asset/Gifts/330S_Swag_Bags_Original_Swag_Bags.webp"},
+  {"price": 340, "name": "Winter Wreaths", "image": "/asset/Gifts/340S_Winter_Wreaths_Original_Winter_Wreaths.webp"},
+  {"price": 350, "name": "Jester Hats", "image": "/asset/Gifts/350S_Jester_Hats_Original_Jester_Hats.webp"},
+  {"price": 380, "name": "Hex Pots", "image": "/asset/Gifts/380S_Hex_Pots_Original_Hex_Pots.webp"},
+  {"price": 400, "name": "Easter Eggs", "image": "/asset/Gifts/400S_Easter_Eggs_Original_Easter_Eggs.webp"},
+  {"price": 400, "name": "Pool Floats", "image": "/asset/Gifts/400S_Pool_Floats_Original_Pool_Floats.webp"},
+  {"price": 400, "name": "Restless Jars", "image": "/asset/Gifts/400S_Restless_Jars_Original_Restless_Jars.webp"},
+  {"price": 400, "name": "Witch Hats", "image": "/asset/Gifts/400S_Witch_Hats_Original_Witch_Hats.webp"},
+  {"price": 420, "name": "Magic Potions", "image": "/asset/Gifts/420S_Magic_Potions_Original_Magic_Potions.webp"},
+  {"price": 420, "name": "Snoop Cigars", "image": "/asset/Gifts/420S_Snoop_Cigars_Original_Snoop_Cigars.webp"},
+  {"price": 430, "name": "Desk Calendars", "image": "/asset/Gifts/430S_Desk_Calendars_Original_Desk_Calendars.webp"},
+  {"price": 430, "name": "Love Potions", "image": "/asset/Gifts/430S_Love_Potions_Original_Love_Potions.webp"},
+  {"price": 440, "name": "Fresh Socks", "image": "/asset/Gifts/440S_Fresh_Socks_Original_Fresh_Socks.webp"},
+  {"price": 440, "name": "Westside Signs", "image": "/asset/Gifts/440S_Westside_Signs_Original_Westside_Signs.webp"},
+  {"price": 450, "name": "Top Hats", "image": "/asset/Gifts/450S_Top_Hats_Original_Top_Hats.webp"},
+  {"price": 480, "name": "Vice Creams", "image": "/asset/Gifts/480S_Vice_Creams_Original_Vice_Creams.webp"},
+  {"price": 500, "name": "Ice Creams", "image": "/asset/Gifts/500S_Ice_Creams_Original_Ice_Creams.webp"},
+  {"price": 500, "name": "Jolly Chimps", "image": "/asset/Gifts/500S_Jolly_Chimps_Original_Jolly_Chimps.webp"},
+  {"price": 500, "name": "Sakura Flowers", "image": "/asset/Gifts/500S_Sakura_Flowers_Original_Sakura_Flowers.webp"},
+  {"price": 500, "name": "Swiss Watches", "image": "/asset/Gifts/500S_Swiss_Watches_Original_Swiss_Watches.webp"},
+  {"price": 510, "name": "Input Keys", "image": "/asset/Gifts/510S_Input_Keys_Original_Input_Keys.webp"},
+  {"price": 550, "name": "Scared Cats", "image": "/asset/Gifts/550S_Scared_Cats_Original_Scared_Cats.webp"},
+  {"price": 555, "name": "Clover Pins", "image": "/asset/Gifts/555S_Clover_Pins_Original_Clover_Pins.webp"},
+  {"price": 600, "name": "Lush Bouquets", "image": "/asset/Gifts/600S_Lush_Bouquets_Original_Lush_Bouquets.webp"},
+  {"price": 600, "name": "Victory Medals", "image": "/asset/Gifts/600S_Victory_Medals_Original_Victory_Medals.webp"},
+  {"price": 605, "name": "Hypno Lollipops", "image": "/asset/Gifts/605S_Hypno_Lollipops_Original_Hypno_Lollipops.webp"},
+  {"price": 650, "name": "Valentine Boxes", "image": "/asset/Gifts/650S_Valentine_Boxes_Original_Valentine_Boxes.webp"},
+  {"price": 666, "name": "Voodoo Dolls", "image": "/asset/Gifts/666S_Voodoo_Dolls_Original_Voodoo_Dolls.webp"},
+  {"price": 700, "name": "Heroic Helmets", "image": "/asset/Gifts/700S_Heroic_Helmets_Original_Heroic_Helmets.webp"},
+  {"price": 705, "name": "Cookie Hearts", "image": "/asset/Gifts/705S_Cookie_Hearts_Original_Cookie_Hearts.webp"},
+  {"price": 750, "name": "Moon Pendants", "image": "/asset/Gifts/750S_Moon_Pendants_Original_Moon_Pendants.webp"},
+  {"price": 777, "name": "Trapped Hearts", "image": "/asset/Gifts/777S_Trapped_Hearts_Original_Trapped_Hearts.webp"},
+  {"price": 800, "name": "Snake Boxes", "image": "/asset/Gifts/800S_Snake_Boxes_Original_Snake_Boxes.webp"},
+  {"price": 800, "name": "Tama Gadgets", "image": "/asset/Gifts/800S_Tama_Gadgets_Original_Tama_Gadgets.webp"},
+  {"price": 850, "name": "Bunny Muffins", "image": "/asset/Gifts/850S_Bunny_Muffins_Original_Bunny_Muffins.webp"},
+  {"price": 880, "name": "Faith Amulets", "image": "/asset/Gifts/880S_Faith_Amulets_Original_Faith_Amulets.webp"},
+  {"price": 900, "name": "Bonded Rings", "image": "/asset/Gifts/900S_Bonded_Rings_Original_Bonded_Rings.webp"},
+  {"price": 900, "name": "Timeless Books", "image": "/asset/Gifts/900S_Timeless_Books_Original_Timeless_Books.webp"},
+  {"price": 950, "name": "Crystal Balls", "image": "/asset/Gifts/950S_Crystal_Balls_Original_Crystal_Balls.webp"},
+  {"price": 950, "name": "Hearth", "image": "/asset/Gifts/950S_Hearth_Original_Hearth.webp"},
+  {"price": 950, "name": "Holiday Drinks", "image": "/asset/Gifts/950S_Holiday_Drinks_Original_Holiday_Drinks.webp"},
+  {"price": 990, "name": "Vintage Cigars", "image": "/asset/Gifts/990S_Vintage_Cigars_Original_Vintage_Cigars.webp"},
+  {"price": 1000, "name": "Artisan Bricks", "image": "/asset/Gifts/1000S_Artisan_Bricks_Original_Artisan_Bricks.webp"},
+  {"price": 1100, "name": "Electric Skulls", "image": "/asset/Gifts/1100S_Electric_Skulls_Original_Electric_Skulls.webp"},
+  {"price": 1100, "name": "Gem Signets", "image": "/asset/Gifts/1100S_Gem_Signets_Original_Gem_Signets.webp"},
+  {"price": 1100, "name": "Neko Helmets", "image": "/asset/Gifts/1100S_Neko_Helmets_Original_Neko_Helmets.webp"},
+  {"price": 1200, "name": "Diamond Rings", "image": "/asset/Gifts/1200S_Diamond_Rings_Original_Diamond_Rings.webp"},
+  {"price": 1200, "name": "Heart Lockets", "image": "/asset/Gifts/1200S_Heart_Lockets_Original_Heart_Lockets.webp"},
+  {"price": 1200, "name": "Star Notepads", "image": "/asset/Gifts/1200S_Star_Notepads_Original_Star_Notepads.webp"},
+  {"price": 1300, "name": "Astral Shards", "image": "/asset/Gifts/1300S_Astral_Shards_Original_Astral_Shards.webp"},
+  {"price": 1300, "name": "Signet Rings", "image": "/asset/Gifts/1300S_Signet_Rings_Original_Signet_Rings.webp"},
+  {"price": 1300, "name": "Skull Flowers", "image": "/asset/Gifts/1300S_Skull_Flowers_Original_Skull_Flowers.webp"},
+  {"price": 1400, "name": "Ion Gems", "image": "/asset/Gifts/1400S_Ion_Gems_Original_Ion_Gems.webp"},
+  {"price": 1400, "name": "Party Sparklers", "image": "/asset/Gifts/1400S_Party_Sparklers_Original_Party_Sparklers.webp"},
+  {"price": 1500, "name": "Berry Boxes", "image": "/asset/Gifts/1500S_Berry_Boxes_Original_Berry_Boxes.webp"},
+  {"price": 1500, "name": "Cupid Charms", "image": "/asset/Gifts/1500S_Cupid_Charms_Original_Cupid_Charms.webp"},
+  {"price": 1500, "name": "Mighty Arms", "image": "/asset/Gifts/1500S_Mighty_Arms_Original_Mighty_Arms.webp"},
+  {"price": 1500, "name": "Santa Hats", "image": "/asset/Gifts/1500S_Santa_Hats_Original_Santa_Hats.webp"},
+  {"price": 1600, "name": "Sky Stilettos", "image": "/asset/Gifts/1600S_Sky_Stilettos_Original_Sky_Stilettos.webp"},
+  {"price": 1800, "name": "Rare Birds", "image": "/asset/Gifts/1800S_Rare_Birds_Original_Rare_Birds.webp"},
+  {"price": 1800, "name": "Snow Mittens", "image": "/asset/Gifts/1800S_Snow_Mittens_Original_Snow_Mittens.webp"},
+  {"price": 1900, "name": "Mood Packs", "image": "/asset/Gifts/1900S_Mood_Packs_Original_Mood_Packs.webp"},
+  {"price": 2000, "name": "Light Swords", "image": "/asset/Gifts/2000S_Light_Swords_Original_Light_Swords.webp"},
+  {"price": 2026, "name": "Big Years", "image": "/asset/Gifts/2026S_Big_Years_Original_Big_Years.webp"},
+  {"price": 2100, "name": "Hanging Stars", "image": "/asset/Gifts/2100S_Hanging_Stars_Original_Hanging_Stars.webp"},
+  {"price": 2100, "name": "Record Players", "image": "/asset/Gifts/2100S_Record_Players_Original_Record_Players.webp"},
+  {"price": 2200, "name": "Jingle Bells", "image": "/asset/Gifts/2200S_Jingle_Bells_Original_Jingle_Bells.webp"},
+  {"price": 2200, "name": "Mini Oscars", "image": "/asset/Gifts/2200S_Mini_Oscars_Original_Mini_Oscars.webp"},
+  {"price": 2300, "name": "Spy Agarics", "image": "/asset/Gifts/2300S_Spy_Agarics_Original_Spy_Agarics.webp"},
+  {"price": 2400, "name": "Sleigh Bells", "image": "/asset/Gifts/2400S_Sleigh_Bells_Original_Sleigh_Bells.webp"},
+  {"price": 2500, "name": "Loot Bags", "image": "/asset/Gifts/2500S_Loot_Bags_Original_Loot_Bags.webp"},
+  {"price": 2600, "name": "Precious Peaches", "image": "/asset/Gifts/2600S_Precious_Peaches_Original_Precious_Peaches.webp"},
+  {"price": 2800, "name": "Kissed Frogs", "image": "/asset/Gifts/2800S_Kissed_Frogs_Original_Kissed_Frogs.webp"},
+  {"price": 3100, "name": "Mad Pumpkins", "image": "/asset/Gifts/3100S_Mad_Pumpkins_Original_Mad_Pumpkins.webp"},
+  {"price": 3300, "name": "Ionic Dryers", "image": "/asset/Gifts/3300S_Ionic_Dryers_Original_Ionic_Dryers.webp"},
+  {"price": 3500, "name": "Money Pots", "image": "/asset/Gifts/3500S_Money_Pots_Original_Money_Pots.webp"},
+  {"price": 4500, "name": "Flying Brooms", "image": "/asset/Gifts/4500S_Flying_Brooms_Original_Flying_Brooms.webp"},
+  {"price": 4799, "name": "Toy Bears", "image": "/asset/Gifts/4799S_Toy_Bears_Original_Toy_Bears.webp"},
+  {"price": 5000, "name": "Genie Lamps", "image": "/asset/Gifts/5000S_Genie_Lamps_Original_Genie_Lamps.webp"},
+  {"price": 7500, "name": "Low Riders", "image": "/asset/Gifts/7500S_Low_Riders_Original_Low_Riders.webp"},
+  {"price": 12595, "name": "Nail Bracelets", "image": "/asset/Gifts/12595S_Nail_Bracelets_Original_Nail_Bracelets.webp"},
+  {"price": 19047, "name": "Stellar Rockets", "image": "/asset/Gifts/19047S_Stellar_Rockets_Original_Stellar_Rockets.webp"},
+]
+
+# --- ОБРАБОТКА КОМАНД ---
+
+@dp.message(Command("start"))
+async def start_cmd(message: types.Message, command: CommandObject):
+    try:
+        referred_by = command.args if command.args else None
+        
+        data, is_new = register_or_get(
+            message.from_user.id,
+            username=message.from_user.username,
+            first_name=message.from_user.first_name,
+            photo_url=message.from_user.photo_url if hasattr(message.from_user, 'photo_url') else None,
+            referred_by=referred_by
+        )
+        
+        logger.info(f"User {message.from_user.id} balance: {data[0]} Stars")
+
+        if is_new:
+            logger.info(f"New user registered: {message.from_user.id} - {message.from_user.full_name}")
+            for admin_id in ADMIN_IDS:
+                try:
+                    await bot.send_message(admin_id, 
+                        f"🚀 **Новый пользователь!**\n\n👤 Имя: {message.from_user.full_name}\n🆔 ID: `{message.from_user.id}`\n🏷 Юзернейм: @{message.from_user.username}", 
+                        parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"Failed to notify admin: {e}")
+            
+            if referred_by and str(referred_by).isdigit():
+                ref_id = int(referred_by)
+                if ref_id != message.from_user.id:
+                    try:
+                        await bot.send_message(ref_id, f"🎉 По вашей ссылке перешел новый пользователь! Вы получили +1 билет 🎫")
+                    except Exception as e:
+                        logger.error(f"Failed to notify referrer: {e}")
+
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))],
+            [InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)]
+        ])
+        await message.answer(f"Привет! Твой баланс: {data[0]} ⭐", reply_markup=kb)
+    except Exception as e:
+        logger.error(f"Error in start_cmd: {e}")
+        await message.answer("❌ Ошибка при запуске. Попробуйте позже.")
+
+@dp.message(Command("help"))
+async def help_cmd(message: types.Message):
+    try:
+        text = "📖 **Команды бота**\n\n"
+        text += "• `/start` — Запуск приложения\n"
+        text += "• `/help` — Справка по командам\n"
+        
+        if message.from_user.id in ADMIN_IDS:
+            text += "\n🛠 **Админ-панель:**\n"
+            text += "• `/+ <число>` — Добавить себе звезд\n"
+            text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
+            text += "• `/user <ID>` — Информация об игроке\n"
+            text += "• `/stats` — Общая статистика\n"
+            text += "• `/admin_send <текст>` — Рассылка всем пользователям\n"
+            text += "• `/hype <номер_шаблона>` — Маркетинговая рассылка\n"
+        
+        await message.answer(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in help_cmd: {e}")
+        await message.answer("❌ Ошибка при получении справки.")
+
+@dp.message(Command("+"))
+async def admin_add(message: types.Message):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
         parts = message.text.split()
         if len(parts) < 2:
-            await message.answer("Usage: /+ <amount> or /+ <user_id> <amount>")
+            await message.answer("❌ Пример: `/+ 100`", parse_mode="Markdown")
             return
         
-        if len(parts) == 2:
-            amount = int(parts[1])
-            user_id = message.from_user.id
-        else:
-            user_id = int(parts[1])
-            amount = int(parts[2])
+        amount = int(parts[1])
+        if amount <= 0:
+            await message.answer("❌ Количество должно быть > 0.")
+            return
         
-        await update_balance(user_id, amount, "add")
-        await message.answer(f"✅ Added {amount} stars to user {user_id}")
+        update_balance(message.from_user.id, amount, "add")
+        logger.info(f"Admin {message.from_user.id} added {amount} stars to themselves")
+        await message.answer(f"✅ Добавлено {amount} ⭐")
+    except ValueError:
+        await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Error adding stars: {e}")
-        await message.answer(f"Error: {e}")
+        logger.error(f"Error in admin_add: {e}")
+        await message.answer("❌ Ошибка при добавлении звезд.")
 
-
-@router.message(F.text.startswith("/create_promo"))
-async def cmd_create_promo(message: Message):
-    """Admin command: create promo code."""
-    if message.from_user.id not in ADMIN_ID_SET:
-        await message.answer("Admin only")
-        return
-    
-    if not supabase:
-        await message.answer("Database not configured")
-        return
-    
+@dp.message(Command("setbalance"))
+async def admin_set(message: types.Message):
     try:
-        parts = message.text.split()
-        if len(parts) < 5:
-            await message.answer("Usage: /create_promo <code> <stars> <hours> <max_uses>")
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
             return
         
-        code = parts[1].upper()
-        stars = int(parts[2])
-        hours = int(parts[3])
-        max_uses = int(parts[4])
+        parts = message.text.split()
+        if len(parts) < 3:
+            await message.answer("❌ Пример: `/setbalance 123456 500`", parse_mode="Markdown")
+            return
         
-        await create_promo_record(code, stars, hours, max_uses)
-        await message.answer(f"✅ Promo created: {code}")
+        target_id = int(parts[1])
+        amount = int(parts[2])
+        
+        if amount < 0:
+            await message.answer("❌ Количество не может быть отрицательным.")
+            return
+        
+        update_balance(target_id, amount, "set")
+        logger.info(f"Admin {message.from_user.id} set balance for {target_id} to {amount}")
+        await message.answer(f"✅ Баланс ID `{target_id}` установлен на `{amount}` ⭐", parse_mode="Markdown")
+    except ValueError:
+        await message.answer("❌ Некорректные параметры.", parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Error creating promo: {e}")
-        await message.answer(f"Error: {e}")
+        logger.error(f"Error in admin_set: {e}")
+        await message.answer("❌ Ошибка при установке баланса.")
+
+@dp.message(Command("user"))
+async def admin_user_info(message: types.Message):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Пример: `/user 123456`", parse_mode="Markdown")
+            return
+        
+        user_id = int(parts[1])
+        res = supabase.table("users").select("user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("user_id", user_id).execute()
+        
+        if not res.data:
+            await message.answer(f"❌ Пользователь `{user_id}` не найден.", parse_mode="Markdown")
+            return
+        
+        user = res.data[0]
+        text = f"""👤 **Информация о пользователе**
+🆔 ID: `{user['user_id']}`
+⭐ Баланс: `{user['stars']}`
+🎫 Билеты: `{user['tickets']}`
+📅 Дата присоединения: `{user['join_date']}`
+💎 Всего пожертвовано звёзд: `{user.get('total_donated_stars', 0)}`
+💰 Всего пожертвовано TON: `{user.get('total_donated_ton', 0.0):.4f}`"""
+        await message.answer(text, parse_mode="Markdown")
+    except ValueError:
+        await message.answer("❌ Некорректный ID пользователя.", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_user_info: {e}")
+        await message.answer("❌ Ошибка при получении информации.")
+
+@dp.message(Command("stats"))
+async def admin_stats(message: types.Message):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        
+        # 1. Получаем точное количество пользователей
+        count_res = supabase.table("users").select("*", count="exact").limit(1).execute()
+        total_users = count_res.count if count_res.count is not None else 0
+
+        # 2. Считаем суммы через пагинацию (Supabase возвращает максимум 1000 строк за раз)
+        total_stars = 0
+        total_donated_stars = 0
+        total_ton = 0.0
+        
+        limit = 1000
+        offset = 0
+        while True:
+            batch = supabase.table("users").select("stars, total_donated_stars, total_donated_ton").range(offset, offset + limit - 1).execute()
+            if not batch.data:
+                break
+            
+            for u in batch.data:
+                total_stars += u.get('stars', 0)
+                total_donated_stars += u.get('total_donated_stars', 0)
+                total_ton += u.get('total_donated_ton', 0.0)
+            
+            if len(batch.data) < limit:
+                break
+            offset += limit
+
+        # 3. Считаем выданные звезды из таблицы платежей
+        total_issued = 0
+        p_offset = 0
+        while True:
+            p_batch = supabase.table("payments").select("amount").gt("amount", 0).range(p_offset, p_offset + limit - 1).execute()
+            if not p_batch.data:
+                break
+            total_issued += sum(p['amount'] for p in p_batch.data)
+            if len(p_batch.data) < limit:
+                break
+            p_offset += limit
+        
+        text = f"""📊 **Глобальная статистика (Live)**
+👥 Всего пользователей: `{total_users}`
+⭐ Звёзд на балансах: `{total_stars}`
+🎁 Звёзд выдано: `{total_issued}`
+💎 Всего пополнено (Stars): `{total_donated_stars}`
+💰 Всего пополнено (TON): `{total_ton:.4f}`"""
+        
+        await message.answer(text, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_stats: {e}")
+        await message.answer(f"❌ Ошибка при получении статистики: {e}")
+
+@dp.message(Command("admin_send"))
+async def admin_send(message: types.Message, command: CommandObject):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        text_to_send = (command.args or "").strip()
+        if not text_to_send:
+            await message.answer("❌ Пример: `/admin_send Текст рассылки`", parse_mode="Markdown")
+            return
+
+        await message.answer("⏳ Рассылка запущена...")
+        
+        res = supabase.table("users").select("user_id").execute()
+        users = res.data
+        
+        sent = 0
+        failed = 0
+        for u in users:
+            uid = u['user_id']
+            try:
+                await bot.send_message(uid, text_to_send)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception:
+                failed += 1
+        
+        await message.answer(f"✅ Рассылка завершена.\nДоставлено: `{sent}`\nОшибок: `{failed}`", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_send: {e}")
+        await message.answer("❌ Ошибка при рассылке.")
+
+@dp.message(Command("hype"))
+async def admin_hype(message: types.Message, command: CommandObject):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        try:
+            template_number = int((command.args or "").strip())
+        except ValueError:
+            await message.answer("❌ Пример: `/hype 1`\nДоступные шаблоны: 1-4", parse_mode="Markdown")
+            return
+
+        if template_number < 1 or template_number > len(HYPE_TEMPLATES):
+            await message.answer("❌ Доступные шаблоны: 1-4")
+            return
+
+        template_index = template_number - 1
+        await message.answer(f"⏳ Hype-рассылка #{template_number} запущена...")
+
+        template = HYPE_TEMPLATES[template_index]
+        
+        res = supabase.table("users").select("user_id, username, first_name").execute()
+        users = res.data
+        
+        sent = 0
+        failed = 0
+        for u in users:
+            uid, username, first_name = u['user_id'], u.get('username'), u.get('first_name')
+            try:
+                clean_username = (username or first_name or "игрок").strip() or "игрок"
+                text = template.format(
+                    username=clean_username.lstrip("@"),
+                    fake_id=random.randint(100000000, 9999999999),
+                )
+                await bot.send_message(uid, text)
+                sent += 1
+                await asyncio.sleep(0.05)
+            except Exception:
+                failed += 1
+        
+        await message.answer(f"✅ Hype-рассылка завершена.\nДоставлено: `{sent}`\nОшибок: `{failed}`", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_hype: {e}")
+        await message.answer("❌ Ошибка при запуске hype-рассылки.")
+
+async def check_membership(user_id: int):
+    try:
+        member = await bot.get_chat_member(chat_id="@ScreamCase", user_id=user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except Exception as e:
+        logger.error(f"Error checking membership for {user_id}: {e}")
+        return False
+
+# --- API ДЛЯ САЙТА ---
+
+async def api_heartbeat(request):
+    """Хеартбит endpoint для пробуждения Render сервера.
+    
+    На Render.com Free плане сервер засыпает через 15 минут неактивности.
+    Фронтенд должен вызывать этот endpoint каждые 10-12 минут чтобы:
+    1. Пробудить сервер
+    2. Гарантировать что фоновый мониторинг TON продолжает работать
+    """
+    try:
+        uid = request.get('user_id')
+        if uid:
+            logger.debug(f"💓 Heartbeat от юзера {uid}")
+        return web.json_response({"status": "alive", "timestamp": datetime.now().isoformat()})
+    except Exception as e:
+        logger.error(f"Error in heartbeat: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_check_sub(request):
+    try:
+        uid = request.query.get("user_id")
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        is_member = await check_membership(int(uid))
+        return web.json_response({"is_subscribed": is_member})
+    except Exception as e:
+        logger.error(f"Error in api_check_sub: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_balance(request):
+    try:
+        # Используем авторизованный user_id из middleware, не из query параметра!
+        uid = request.get('user_id') or request.query.get("user_id")
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        # Проверяем что user_id из auth совпадает с запрашиваемым (если оба есть)
+        request_uid = request.query.get("user_id")
+        if request_uid and int(request_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to access balance of user {request_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        
+        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", int(uid)).execute()
+        
+        if not res.data:
+            return web.json_response({"stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
+            
+        u = res.data[0]
+        return web.json_response({
+            "stars": u['stars'], 
+            "tickets": u['tickets'],
+            "donor": u.get('total_donated_stars', 0),
+            "spent": u.get('total_spent', 0),
+            "promo_opened": u.get('promo_opened', 0)
+        })
+    except ValueError:
+        return web.json_response({"error": "invalid_user_id"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_balance: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_referrals(request):
+    try:
+        uid = request.query.get("user_id")
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        res = supabase.table("users").select("user_id, username, first_name, photo_url, total_donated_stars").eq("referred_by", uid).execute()
+        
+        referrals = [
+            {
+                "user_id": r['user_id'],
+                "username": r.get('username'),
+                "first_name": r.get('first_name'),
+                "photo_url": r.get('photo_url'),
+                "donated": r.get('total_donated_stars', 0)
+            } for r in res.data
+        ]
+        
+        return web.json_response({
+            "count": len(referrals),
+            "referrals": referrals
+        })
+    except ValueError:
+        return web.json_response({"error": "invalid_user_id"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_referrals: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_open_case(request):
+    try:
+        data = await request.json()
+        # ВАЖНО: Используем user_id из авторизации, не из body!
+        uid = request.get('user_id')
+        case_id = data.get("case_id")
+        
+        if not uid or case_id is None:
+            return web.json_response({"error": "invalid_data"}, status=400)
+        
+        case_id = int(case_id)
+        uid = int(uid)
+        
+        # Дополнительная проверка: if user отправил другой user_id в body, отклоняем
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to open case for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        
+        # Daily Case
+        if case_id == 2: 
+            res = await api_claim_daily_internal(uid)
+            if res.status == 200:
+                case_info = CASES_DATA.get(2)
+                won_item = _get_random_gift(case_info['min'], case_info['max'])
+                _increment_achievement_progress(uid, 'cases_opened')
+                try:
+                    supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+                except Exception as e:
+                    logger.error(f"Failed to increment case quests: {e}")
+                return web.json_response({"success": True, "item": won_item, "deducted": 1})
+            return res
+
+        price = CASES_PRICES.get(case_id)
+        if price is None:
+            return web.json_response({"error": "invalid_case"}, status=400)
+        
+        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
+        if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        promo_opened = u.get('promo_opened', 0)
+        
+        # Promo Case
+        if case_id == 1:
+            if promo_opened:
+                return web.json_response({"error": "already_opened"}, status=403)
+            supabase.table("users").update({"promo_opened": 1}).eq("user_id", uid).execute()
+            price = 0
+
+        if balance < price:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        case_info = CASES_DATA.get(case_id)
+        if not case_info:
+            return web.json_response({"error": "case_data_missing"}, status=500)
+        
+        won_item = _get_random_gift(case_info['min'], case_info['max'])
+
+        new_spent = (u.get('total_spent') or 0) + price
+        new_count = (u.get('cases_opened_count') or 0) + 1
+        supabase.table("users").update({
+            "stars": balance - price, 
+            "total_spent": new_spent, 
+            "cases_opened_count": new_count
+        }).eq("user_id", uid).execute()
+
+        # ВАЖНО: Сохраняем результат открытия в user_inventory
+        try:
+            supabase.table("user_inventory").insert({
+                "user_id": uid,
+                "case_id": case_id,
+                "item_name": won_item['name'],
+                "item_image": won_item['image'],
+                "item_price": won_item['price'],
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to save to user_inventory: {e}")
+
+        supabase.table("payments").insert({
+            "user_id": uid, 
+            "amount": -price, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        _increment_achievement_progress(uid, 'cases_opened')
+        try:
+            supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+        except Exception as e:
+            logger.error(f"Failed to increment case quests: {e}")
+        
+        logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
+        
+        return web.json_response({
+            "success": True, 
+            "item": won_item,
+            "deducted": price
+        })
+    except Exception as e:
+        logger.error(f"Error in api_open_case: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+def _get_random_gift(min_p, max_p):
+    drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
+    if not drop_items:
+        drop_items = ALL_GIFTS[:10]
+    
+    cheap = [i for i in drop_items if i['price'] <= 50]
+    mid = [i for i in drop_items if 50 < i['price'] <= 150]
+    jackpot = [i for i in drop_items if i['price'] > 150]
+    
+    rand = random.random() * 100
+    if rand < 85 and cheap:
+        return random.choice(cheap)
+    elif rand < 97 and mid:
+        return random.choice(mid)
+    elif jackpot:
+        return random.choice(jackpot)
+    else:
+        return random.choice(drop_items)
+
+def _increment_achievement_progress(user_id, achievement_type):
+    mapping = {
+        'cases_opened': ['first_step', 'ludoman'],
+        'upgrades_successful': ['upgrade_master']
+    }
+    
+    a_ids = mapping.get(achievement_type, [])
+    for aid in a_ids:
+        try:
+            res = supabase.table("user_achievements").select("progress").eq("user_id", user_id).eq("achievement_id", aid).execute()
+            if res.data:
+                new_prog = (res.data[0]['progress'] or 0) + 1
+                supabase.table("user_achievements").update({"progress": new_prog}).eq("user_id", user_id).eq("achievement_id", aid).execute()
+            else:
+                supabase.table("user_achievements").insert({"user_id": user_id, "achievement_id": aid, "progress": 1}).execute()
+        except Exception as e:
+            logger.error(f"Error incrementing achievement {aid} for {user_id}: {e}")
+
+async def api_upgrade(request):
+    try:
+        data = await request.json()
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
+        cost = int(data.get("cost", 0))
+        chance = float(data.get("chance", 0))
+        item_price = int(data.get("item_price", 0))
+        
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to upgrade for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        
+        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
+        if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        if balance < cost:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        success = random.random() * 100 < chance
+        
+        consolation = None
+        if not success and item_price > 100:
+            consolation_item = _get_random_gift(0, 100)
+            consolation = {
+                "type": "poor_case",
+                "item": consolation_item
+            }
+
+        new_spent = (u.get('total_spent') or 0) + cost
+        updates = {"stars": balance - cost, "total_spent": new_spent}
+        
+        if success:
+            updates["successful_upgrades_count"] = (u.get('successful_upgrades_count') or 0) + 1
+            _increment_achievement_progress(int(uid), 'upgrades_successful')
+
+        supabase.table("users").update(updates).eq("user_id", int(uid)).execute()
+        supabase.table("payments").insert({
+            "user_id": int(uid), 
+            "amount": -cost, 
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+            
+        return web.json_response({"success": success, "consolation": consolation})
+    except Exception as e:
+        logger.error(f"Error in api_upgrade: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_wheel_spin(request):
+    try:
+        data = await request.json()
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to spin for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        cost = 50
+        
+        SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
+        
+        user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
+        if not user_res.data:
+            return web.json_response({"error": "user_not_found"}, status=404)
+        
+        u = user_res.data[0]
+        balance = u['stars']
+        if balance < cost:
+            return web.json_response({"error": "insufficient_funds"}, status=403)
+        
+        rand = random.random() * 100
+        if rand < 0.8:
+            prize_index = 9
+        elif rand < 15:
+            prize_index = random.choice([3, 5, 7, 11])
+        else:
+            prize_index = random.choice([0, 1, 2, 4, 6, 8, 10])
+        
+        prize = SEGMENTS[prize_index]
+        
+        new_balance = balance - cost + prize
+        new_spent = (u.get('total_spent') or 0) + cost
+        
+        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
+        
+        supabase.table("payments").insert([
+            {"user_id": uid, "amount": -cost, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+            {"user_id": uid, "amount": prize, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+        ]).execute()
+        
+        logger.info(f"User {uid} spun wheel: won {prize}")
+            
+        return web.json_response({
+            "success": True,
+            "win_amount": prize,
+            "prize_index": prize_index,
+            "new_balance": new_balance
+        })
+    except Exception as e:
+        logger.error(f"Error in api_wheel_spin: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_daily_internal(uid):
+    try:
+        uid = int(uid)
+        now = datetime.now()
+        
+        user_res = supabase.table("users").select("last_daily").eq("user_id", uid).execute()
+        if not user_res.data:
+            return web.json_response({"error": "user_not_found"}, status=404)
+        
+        last_daily_str = user_res.data[0].get('last_daily')
+        
+        if last_daily_str and last_daily_str != "1970-01-01 00:00:00":
+            try:
+                last_daily = datetime.strptime(last_daily_str, "%Y-%m-%d %H:%M:%S")
+                time_diff = (now - last_daily).total_seconds()
+                
+                if time_diff < 86400:
+                    wait_seconds = int(86400 - time_diff)
+                    logger.info(f"User {uid} attempted daily claim too soon. Wait: {wait_seconds}s")
+                    return web.json_response({
+                        "error": "daily_cooldown_active",
+                        "wait_seconds": wait_seconds
+                    }, status=403)
+            except ValueError:
+                pass
+        
+        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("user_id", uid).execute()
+        logger.info(f"User {uid} claimed daily case")
+        
+        return web.json_response({"success": True})
+    
+    except Exception as e:
+        logger.error(f"Error in api_claim_daily_internal: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_daily(request):
+    try:
+        data = await request.json()
+        # ВАЖНО: Используем авторизованный user_id, не из body!
+        uid = request.get('user_id')
+        
+        if not uid:
+            return web.json_response({"error": "unauthorized"}, status=401)
+        
+        # Проверка: if user отправил другой user_id в body, отклоняем
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to claim daily for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        
+        return await api_claim_daily_internal(uid)
+    except Exception as e:
+        logger.error(f"Error in api_claim_daily: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_ton_success(request):
+    """Устаревший эндпоинт. Теперь проверка идет автоматически в фоне."""
+    try:
+        data = await request.json()
+        uid = data.get("user_id")
+        logger.info(f"🔄 Получено ручное уведомление об оплате от {uid}. Ожидаем подтверждения блокчейна...")
+        return web.json_response({"success": True, "message": "Verification is now automatic. Please wait."})
+    except:
+        return web.json_response({"success": True})
+
+async def api_invoice(request):
+    """Генерирует данные для оплаты через TON: кошелек и уникальный комментарий."""
+    try:
+        data = await request.json()
+        # Используем авторизованный user_id
+        user_id = request.get('user_id')
+        
+        if not user_id:
+            return web.json_response({"error": "no_user_id"}, status=400)
+        
+        # Проверяем что user существует в БД
+        user_check = supabase.table("users").select("user_id").eq("user_id", int(user_id)).limit(1).execute()
+        if not user_check.data:
+            logger.warning(f"❌ Invoice requested for non-existent user {user_id}")
+            return web.json_response({"error": "user_not_found"}, status=404)
+            
+        # Генерируем уникальный комментарий
+        # Формат: SC_UserID_RandomString
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        comment = f"SC_{user_id}_{random_str}"
+        
+        # Генерируем BOC для TON Connect
+        payload_boc = create_comment_boc(comment)
+        
+        logger.info(f"📝 Создан инвойс для {user_id}: {comment} (BOC: {payload_boc[:15]}...)")
+        
+        return web.json_response({
+            "wallet": TON_WALLET,
+            "comment": comment,
+            "payload_boc": payload_boc,
+            "rate": 100 # 1 TON = 100 Stars
+        })
+    except Exception as e:
+        logger.error(f"Error in api_invoice: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+@dp.pre_checkout_query()
+async def checkout(q: types.PreCheckoutQuery):
+    try:
+        await q.answer(ok=True)
+        logger.info(f"Pre-checkout query approved for user {q.from_user.id}")
+    except Exception as e:
+        logger.error(f"Error in checkout: {e}")
+        await q.answer(ok=False, error_message="Server error")
+
+@dp.message(F.successful_payment)
+async def success_pay(m: types.Message):
+    try:
+        payload = m.successful_payment.invoice_payload
+        parts = payload.split("_")
+        
+        if len(parts) < 3 or parts[0] != "stars":
+            logger.error(f"Invalid payload format: {payload}")
+            await m.answer("❌ Ошибка при обработке платежа.")
+            return
+        
+        user_id = int(parts[1])
+        amount = int(parts[2])
+        
+        if user_id != m.from_user.id:
+            logger.warning(f"Payment mismatch: payload={user_id}, sender={m.from_user.id}")
+            await m.answer("❌ Ошибка при обработке платежа.")
+            return
+        
+        update_balance(user_id, amount, "add", is_donation=True)
+        logger.info(f"Payment successful for user {user_id}: +{amount} stars")
+        await m.answer(f"✅ Спасибо за покупку! +{amount} ⭐")
+        
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(admin_id, f"💰 **Новое пополнение!**\n👤 Юзер: {m.from_user.full_name} (`{user_id}`)\n⭐ Количество: `{amount}` звёзд", parse_mode="Markdown")
+            except: pass
+            
+    except Exception as e:
+        logger.error(f"Error in success_pay: {e}")
+        await m.answer("❌ Ошибка при обработке платежа.")
+
+async def api_get_achievements(request):
+    try:
+        # Используем авторизованный user_id
+        uid = request.get('user_id') or request.query.get("user_id")
+        if not uid: return web.json_response({"error": "no_id"}, status=400)
+        
+        uid = int(uid)
+        
+        # Проверка: if user отправил другой user_id в query
+        query_uid = request.query.get("user_id")
+        if query_uid and int(query_uid) != uid:
+            logger.warning(f"❌ User {uid} tried to get achievements for user {query_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        ACHIEVEMENTS = [
+            {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
+            {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
+            {'id': 'ludoman', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+        ]
+        
+        # Ensure achievements exist in user_achievements
+        for a in ACHIEVEMENTS:
+            try:
+                supabase.table("user_achievements").upsert({"user_id": uid, "achievement_id": a['id']}, on_conflict="user_id,achievement_id").execute()
+            except: pass
+        
+        res = supabase.table("user_achievements").select("achievement_id, progress, is_claimed").eq("user_id", uid).execute()
+            
+        data = []
+        for r in res.data:
+            aid, prog, claimed = r['achievement_id'], r['progress'], r['is_claimed']
+            info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
+            if info:
+                data.append({
+                    **info,
+                    "progress": prog or 0,
+                    "is_claimed": bool(claimed)
+                })
+        
+        return web.json_response(data)
+    except Exception as e:
+        logger.error(f"Error in api_get_achievements: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_achievement(request):
+    try:
+        data = await request.json()
+        # Используем авторизованный user_id
+        uid = request.get('user_id')
+        aid = data.get("achievement_id")
+        
+        if not uid or not aid: return web.json_response({"error": "invalid_data"}, status=400)
+        
+        # Проверка: if user отправил другой user_id в body
+        body_uid = data.get("user_id")
+        if body_uid and int(body_uid) != int(uid):
+            logger.warning(f"❌ User {uid} tried to claim achievement for user {body_uid}")
+            return web.json_response({"error": "forbidden"}, status=403)
+        
+        ACHIEVEMENTS = [
+            {'id': 'first_step', 'title': 'Первый шаг', 'goal': 1, 'reward': 1},
+            {'id': 'upgrade_master', 'title': 'Мастер Апгрейдов', 'goal': 3, 'reward': 15},
+            {'id': 'ludoman', 'title': 'Истинный Лудоман', 'goal': 10, 'reward': 10}
+        ]
+        
+        info = next((a for a in ACHIEVEMENTS if a['id'] == aid), None)
+        if not info: return web.json_response({"error": "achievement_not_found"}, status=404)
+
+        uid = int(uid)
+        res = supabase.table("user_achievements").select("progress, is_claimed").eq("user_id", uid).eq("achievement_id", aid).execute()
+        if not res.data: return web.json_response({"error": "not_found"}, status=404)
+        
+        a_status = res.data[0]
+        prog, claimed = a_status['progress'], a_status['is_claimed']
+        if claimed: return web.json_response({"error": "already_claimed"}, status=400)
+        if prog < info['goal']: return web.json_response({"error": "not_reached"}, status=400)
+        
+        supabase.table("user_achievements").update({"is_claimed": 1}).eq("user_id", uid).eq("achievement_id", aid).execute()
+        
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
+        if user_res.data:
+            new_stars = user_res.data[0]['stars'] + info['reward']
+            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("payments").insert({
+                "user_id": uid, 
+                "amount": info['reward'], 
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+            
+        return web.json_response({"success": True, "reward": info['reward']})
+    except Exception as e:
+        logger.error(f"Error in api_claim_achievement: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_get_quests(request):
+    try:
+        uid = request.get('user_id')
+        if not uid: return web.json_response({"error": "unauthorized"}, status=401)
+        uid = int(uid)
+        
+        # Запрашиваем квесты из базы
+        res = supabase.table("user_quests").select("quest_id, progress, is_completed, reward_claimed").eq("user_id", uid).execute()
+        quests_data = {row['quest_id']: row for row in res.data} if res.data else {}
+        
+        QUESTS = [
+            {'id': 'open_1', 'title': 'Открыть 1 кейс', 'goal': 1, 'reward': 10},
+            {'id': 'open_5', 'title': 'Открыть 5 кейсов', 'goal': 5, 'reward': 50},
+            {'id': 'open_10', 'title': 'Открыть 10 кейсов', 'goal': 10, 'reward': 150}
+        ]
+        
+        response_data = []
+        for q in QUESTS:
+            user_q = quests_data.get(q['id'], {})
+            response_data.append({
+                "id": q['id'],
+                "title": q['title'],
+                "goal": q['goal'],
+                "reward": q['reward'],
+                "progress": user_q.get('progress', 0),
+                "is_completed": user_q.get('is_completed', False),
+                "is_claimed": user_q.get('reward_claimed', False)
+            })
+            
+        return web.json_response(response_data)
+    except Exception as e:
+        logger.error(f"Error in api_get_quests: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_cases(request):
+    """Возвращает список всех доступных кейсов с ценами и информацией."""
+    try:
+        CASES_LIST = [
+            {"id": 1, "name": "Promo Case", "price": 0, "color": "#FFD700", "icon": "🎁", "description": "Бесплатный кейс (один раз)"},
+            {"id": 2, "name": "Daily Case", "price": 1, "color": "#87CEEB", "icon": "📅", "description": "Ежедневный кейс"},
+            {"id": 3, "name": "Snoop Case", "price": 15, "color": "#00AA00", "icon": "😎", "description": "Кейс Snoop Dogg"},
+            {"id": 4, "name": "Lover's Case", "price": 25, "color": "#FF1493", "icon": "💕", "description": "Любовный кейс"},
+            {"id": 5, "name": "Hobo Case", "price": 5, "color": "#8B8B8B", "icon": "🧤", "description": "Бродяжный кейс"},
+            {"id": 6, "name": "Risky Box", "price": 10, "color": "#FF8C00", "icon": "⚡", "description": "Рискованный ящик"},
+            {"id": 7, "name": "Scam Box", "price": 50, "color": "#DC143C", "icon": "⚠️", "description": "Подозрительный ящик"},
+            {"id": 8, "name": "Ebati Case", "price": 100, "color": "#4B0082", "icon": "👑", "description": "Королевский кейс"},
+            {"id": 9, "name": "Pussy Case", "price": 75, "color": "#FF69B4", "icon": "🐱", "description": "Кошачий кейс"},
+            {"id": 10, "name": "Skolnik Case", "price": 150, "color": "#FFD700", "icon": "🎓", "description": "Элитный кейс"}
+        ]
+        
+        # Возвращаем список кейсов с диапазонами цен предметов
+        response = []
+        for case_id, case_data in CASES_DATA.items():
+            case_info = next((c for c in CASES_LIST if c["id"] == case_id), None)
+            if case_info:
+                response.append({
+                    **case_info,
+                    "min_drop": case_data['min'],
+                    "max_drop": case_data['max']
+                })
+        
+        return web.json_response(sorted(response, key=lambda x: x['id']))
+    except Exception as e:
+        logger.error(f"Error in api_cases: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_inventory(request):
+    """Возвращает инвентарь пользователя - все открытые из кейсов предметы."""
+    try:
+        uid = request.get('user_id')
+        if not uid:
+            return web.json_response({"error": "unauthorized"}, status=401)
+        
+        uid = int(uid)
+        
+        # Получаем все предметы пользователя из user_inventory
+        res = supabase.table("user_inventory").select("*").eq("user_id", uid).execute()
+        
+        if not res.data:
+            return web.json_response({
+                "user_id": uid,
+                "total_items": 0,
+                "items": []
+            })
+        
+        # Группируем предметы по типу для статистики
+        items_by_name = {}
+        for item in res.data:
+            name = item.get('item_name')
+            if name not in items_by_name:
+                items_by_name[name] = {
+                    "name": name,
+                    "image": item.get('item_image'),
+                    "price": item.get('item_price', 0),
+                    "count": 0,
+                    "items": []
+                }
+            items_by_name[name]["count"] += 1
+            items_by_name[name]["items"].append({
+                "id": item.get('id'),
+                "case_id": item.get('case_id'),
+                "opened_at": item.get('opened_at')
+            })
+        
+        # Преобразуем в список
+        inventory = list(items_by_name.values())
+        
+        return web.json_response({
+            "user_id": uid,
+            "total_items": sum(item['count'] for item in inventory),
+            "total_value": sum(item['count'] * item['price'] for item in inventory),
+            "items": inventory
+        })
+    except ValueError:
+        return web.json_response({"error": "invalid_user_id"}, status=400)
+    except Exception as e:
+        logger.error(f"Error in api_inventory: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+async def api_claim_quest(request):
+    try:
+        data = await request.json()
+        uid = request.get('user_id')
+        quest_id = data.get("quest_id")
+        
+        if not uid or not quest_id: return web.json_response({"error": "invalid_data"}, status=400)
+        uid = int(uid)
+        
+        QUESTS = {
+            'open_1': {'goal': 1, 'reward': 10},
+            'open_5': {'goal': 5, 'reward': 50},
+            'open_10': {'goal': 10, 'reward': 150}
+        }
+        
+        info = QUESTS.get(quest_id)
+        if not info: return web.json_response({"error": "quest_not_found"}, status=404)
+        
+        res = supabase.table("user_quests").select("is_completed, reward_claimed").eq("user_id", uid).eq("quest_id", quest_id).execute()
+        if not res.data: return web.json_response({"error": "not_found"}, status=404)
+        
+        q_status = res.data[0]
+        if q_status['reward_claimed']: return web.json_response({"error": "already_claimed"}, status=400)
+        if not q_status['is_completed']: return web.json_response({"error": "not_reached"}, status=400)
+        
+        # Обновляем флаг
+        supabase.table("user_quests").update({"reward_claimed": True}).eq("user_id", uid).eq("quest_id", quest_id).execute()
+        
+        # Начисляем звёзды
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
+        if user_res.data:
+            new_stars = user_res.data[0]['stars'] + info['reward']
+            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
+            supabase.table("payments").insert({
+                "user_id": uid, 
+                "amount": info['reward'], 
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+            
+        return web.json_response({"success": True, "reward": info['reward']})
+    except Exception as e:
+        logger.error(f"Error in api_claim_quest: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
 
 
-# ============================================================================
-# 11. HTTP SERVER SETUP
-# ============================================================================
+async def background_tasks(app):
+    """Управляет фоновыми задачами приложения."""
+    app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
+    yield
+    app['ton_monitor'].cancel()
+    await app['ton_monitor']
 
-async def init_db():
-    """Initialize database schema (if needed)."""
-    logger.info("Database initialized")
+async def root_handler(request):
+    return web.Response(text="OK", status=200)
 
+async def health_handler(request):
+    """Health check endpoint для мониторинга на Render.com"""
+    return web.json_response({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
 async def main():
-    """Main server entry point."""
-    if not BOT_TOKEN or not SUPABASE_URL or not SUPABASE_KEY:
-        logger.critical("Missing required environment variables")
-        return
+    init_db()
     
-    # Initialize DB
-    await init_db()
-    
-    # Create web app
+    # IMPORTANT: CORS middleware MUST come before auth_middleware
+    # to handle OPTIONS preflight requests with 200 OK
     app = web.Application(middlewares=[cors_middleware, auth_middleware])
+    app.cleanup_ctx.append(background_tasks)
     
-    # Add routes
-    app.router.add_post("/api/open_case", api_open_case)
-    app.router.add_post("/api/activate_promo", api_activate_promo)
-    app.router.add_get("/api/tasks", api_get_tasks)
-    app.router.add_post("/api/claim_task", api_claim_task)
-    app.router.add_get("/api/inventory", lambda r: web.json_response({"inventory": asyncio.run(get_user_inventory(int(r["user_id"])))}))
-    app.router.add_get("/health", lambda r: web.json_response({"status": "ok"}))
+    app.router.add_post('/api/heartbeat', api_heartbeat)
+    app.router.add_get('/', root_handler)
+    app.router.add_get('/health', health_handler)
+    app.router.add_get('/api/check_sub', api_check_sub)
+    app.router.add_get('/api/balance', api_balance)
+    app.router.add_get('/api/referrals', api_referrals)
+    app.router.add_get('/api/cases', api_cases)
+    app.router.add_get('/api/inventory', api_inventory)
+    app.router.add_post('/api/open_case', api_open_case)
+    app.router.add_post('/api/claim_daily', api_claim_daily)
+    app.router.add_post('/api/create_invoice', api_invoice)
+    app.router.add_post('/api/ton_success', api_ton_success)
+    app.router.add_post('/api/wheel/spin', api_wheel_spin)
+    app.router.add_post('/api/upgrade', api_upgrade)
+    app.router.add_get('/api/achievements', api_get_achievements)
+    app.router.add_post('/api/achievements/claim', api_claim_achievement)
+    app.router.add_get('/api/quests', api_get_quests)
+    app.router.add_post('/api/quests/claim', api_claim_quest)
     
-    # Start HTTP server
+    port = int(os.getenv("PORT", 8080))
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "0.0.0.0", 8000)
+    site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    logger.info("HTTP server started on 0.0.0.0:8000")
+    logger.info(f"✅ API server started on port {port} with CORS & Auth Middleware")
     
-    # Start Telegram bot
-    if bot:
-        dp = Dispatcher()
-        dp.include_router(router)
-        
-        try:
-            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-        except Exception as e:
-            logger.error(f"Bot polling error: {e}")
-    
-    # Keep alive
-    try:
-        await asyncio.sleep(float("inf"))
-    except KeyboardInterrupt:
-        await runner.cleanup()
-
+    logger.info("✅ Bot polling started")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        sys.exit(0)
+    asyncio.run(main())
