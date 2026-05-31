@@ -221,7 +221,7 @@ def create_comment_boc(text: str) -> str:
 def get_user_stars(user_id):
     """Получает баланс пользователя по user_id."""
     try:
-        res = supabase.table("users").select("stars, balance").eq("id", user_id).execute()
+        res = supabase.table("users").select("stars, balance").eq("user_id", user_id).execute()
         if res.data:
             u = res.data[0]
             stars = u.get('stars')
@@ -235,7 +235,7 @@ def get_user_stars(user_id):
 
 def register_or_get(user_id, username=None, first_name=None, photo_url=None, referred_by=None):
     try:
-        res = supabase.table("users").select("stars, join_date").eq("id", user_id).execute()
+        res = supabase.table("users").select("stars, join_date").eq("user_id", user_id).execute()
         if res.data:
             update_user_profile(user_id, username, first_name, photo_url)
             return (res.data[0]['stars'], res.data[0]['join_date']), False
@@ -248,7 +248,7 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
             if ref_id == user_id:
                 ref_id = None
             else:
-                ref_check = supabase.table("users").select("user_id").eq("id", ref_id).execute()
+                ref_check = supabase.table("users").select("user_id").eq("user_id", ref_id).execute()
                 if not ref_check.data:
                     ref_id = None
 
@@ -265,10 +265,10 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
         supabase.table("users").insert(user_data).execute()
 
         if ref_id:
-            ref_user = supabase.table("users").select("tickets").eq("id", ref_id).execute()
+            ref_user = supabase.table("users").select("tickets").eq("user_id", ref_id).execute()
             if ref_user.data:
                 new_tickets = (ref_user.data[0].get('tickets') or 0) + 1
-                supabase.table("users").update({"tickets": new_tickets}).eq("id", ref_id).execute()
+                supabase.table("users").update({"tickets": new_tickets}).eq("user_id", ref_id).execute()
             logger.info(f"User {user_id} joined via referral {ref_id}")
 
         return (0, date), True
@@ -283,13 +283,13 @@ def update_user_profile(user_id, username=None, first_name=None, photo_url=None)
         if first_name: updates["first_name"] = first_name
         if photo_url: updates["photo_url"] = photo_url
         if updates:
-            supabase.table("users").update(updates).eq("id", user_id).execute()
+            supabase.table("users").update(updates).eq("user_id", user_id).execute()
     except Exception as e:
         logger.error(f"Error in update_user_profile: {e}")
 
 def update_balance(user_id, amount, mode="add", is_donation=False):
     try:
-        user_res = supabase.table("users").select("stars, total_donated_stars, referred_by").eq("id", user_id).execute()
+        user_res = supabase.table("users").select("stars, total_donated_stars, referred_by").eq("user_id", user_id).execute()
         if not user_res.data:
             return
 
@@ -305,19 +305,19 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
                 if ref_id:
                     reward = int(amount * 0.1)
                     if reward > 0:
-                        ref_res = supabase.table("users").select("stars").eq("id", ref_id).execute()
+                        ref_res = supabase.table("users").select("stars").eq("user_id", ref_id).execute()
                         if ref_res.data:
                             new_ref_stars = ref_res.data[0]['stars'] + reward
-                            supabase.table("users").update({"stars": new_ref_stars}).eq("id", ref_id).execute()
+                            supabase.table("users").update({"stars": new_ref_stars}).eq("user_id", ref_id).execute()
                             supabase.table("payments").insert({
                                 "user_id": ref_id,
                                 "amount": reward,
                                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }).execute()
                             logger.info(f"Referrer {ref_id} got {reward} stars from {user_id}'s donation")
-            supabase.table("users").update(updates).eq("id", user_id).execute()
+            supabase.table("users").update(updates).eq("user_id", user_id).execute()
         else:
-            supabase.table("users").update({"stars": amount}).eq("id", user_id).execute()
+            supabase.table("users").update({"stars": amount}).eq("user_id", user_id).execute()
 
         supabase.table("payments").insert({
             "user_id": user_id,
@@ -354,10 +354,10 @@ def _increment_achievement_progress(user_id, achievement_type):
     a_ids = mapping.get(achievement_type, [])
     for aid in a_ids:
         try:
-            res = supabase.table("user_achievements").select("progress").eq("id", user_id).eq("achievement_id", aid).execute()
+            res = supabase.table("user_achievements").select("progress").eq("user_id", user_id).eq("achievement_id", aid).execute()
             if res.data:
                 new_prog = (res.data[0]['progress'] or 0) + 1
-                supabase.table("user_achievements").update({"progress": new_prog}).eq("id", user_id).eq("achievement_id", aid).execute()
+                supabase.table("user_achievements").update({"progress": new_prog}).eq("user_id", user_id).eq("achievement_id", aid).execute()
             else:
                 supabase.table("user_achievements").insert({"user_id": user_id, "achievement_id": aid, "progress": 1}).execute()
         except Exception as e:
@@ -462,7 +462,7 @@ async def check_ton_transactions():
                                 "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             }).execute()
 
-                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("id", user_id).execute()
+                            user_res = supabase.table("users").select("stars, total_donated_ton").eq("user_id", user_id).execute()
                             if user_res.data:
                                 u = user_res.data[0]
                                 new_stars = u['stars'] + stars_to_add
@@ -470,7 +470,7 @@ async def check_ton_transactions():
                                 supabase.table("users").update({
                                     "stars": new_stars,
                                     "total_donated_ton": new_donated_ton
-                                }).eq("id", user_id).execute()
+                                }).eq("user_id", user_id).execute()
 
                                 supabase.table("payments").insert({
                                     "user_id": user_id,
@@ -656,7 +656,7 @@ async def admin_add(message: types.Message):
             return
 
         user_id = message.from_user.id
-        res = supabase.table("users").select("stars").eq("id", user_id).execute()
+        res = supabase.table("users").select("stars").eq("user_id", user_id).execute()
 
         if not res.data:
             await message.answer("❌ Пользователь не найден в БД.")
@@ -665,7 +665,7 @@ async def admin_add(message: types.Message):
         current_stars = res.data[0].get('stars', 0)
         new_stars = current_stars + amount
 
-        supabase.table("users").update({"stars": new_stars}).eq("id", user_id).execute()
+        supabase.table("users").update({"stars": new_stars}).eq("user_id", user_id).execute()
         supabase.table("payments").insert({
             "user_id": user_id,
             "amount": amount,
@@ -721,7 +721,7 @@ async def admin_user_info(message: types.Message):
             return
 
         user_id = int(parts[1])
-        res = supabase.table("users").select("user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("id", user_id).execute()
+        res = supabase.table("users").select("user_id, stars, join_date, total_donated_stars, total_donated_ton, tickets").eq("user_id", user_id).execute()
 
         if not res.data:
             await message.answer(f"❌ Пользователь `{user_id}` не найден.", parse_mode="Markdown")
@@ -955,7 +955,7 @@ async def api_balance(request):
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
         uid = int(uid)
-        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("id", uid).execute()
+        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
 
         if not res.data:
             return web.json_response({"ok": True, "stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
@@ -1025,7 +1025,7 @@ async def api_open_case(request):
         if price is None:
             return web.json_response({"error": "invalid_case", "ok": False}, status=400)
 
-        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("id", uid).execute()
+        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found", "ok": False}, status=404)
 
@@ -1036,7 +1036,7 @@ async def api_open_case(request):
         if case_id == 1:
             if promo_opened:
                 return web.json_response({"error": "already_opened", "ok": False, "message": "Промо-кейс уже открыт"}, status=403)
-            supabase.table("users").update({"promo_opened": 1}).eq("id", uid).execute()
+            supabase.table("users").update({"promo_opened": 1}).eq("user_id", uid).execute()
             price = 0
 
         if balance < price:
@@ -1058,7 +1058,7 @@ async def api_open_case(request):
             "stars": balance - price,
             "total_spent": new_spent,
             "cases_opened_count": new_count
-        }).eq("id", uid).execute()
+        }).eq("user_id", uid).execute()
 
         try:
             supabase.table("user_inventory").insert({
@@ -1106,7 +1106,7 @@ async def api_upgrade(request):
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
 
-        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("id", int(uid)).execute()
+        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1129,7 +1129,7 @@ async def api_upgrade(request):
             updates["successful_upgrades_count"] = (u.get('successful_upgrades_count') or 0) + 1
             _increment_achievement_progress(int(uid), 'upgrades_successful')
 
-        supabase.table("users").update(updates).eq("id", int(uid)).execute()
+        supabase.table("users").update(updates).eq("user_id", int(uid)).execute()
         supabase.table("payments").insert({
             "user_id": int(uid),
             "amount": -cost,
@@ -1152,7 +1152,7 @@ async def api_wheel_spin(request):
         cost = 50
         SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
 
-        user_res = supabase.table("users").select("stars, total_spent").eq("id", uid).execute()
+        user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1173,7 +1173,7 @@ async def api_wheel_spin(request):
         new_balance = balance - cost + prize
         new_spent = (u.get('total_spent') or 0) + cost
 
-        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("id", uid).execute()
+        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
         supabase.table("payments").insert([
             {"user_id": uid, "amount": -cost, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
             {"user_id": uid, "amount": prize, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
@@ -1193,7 +1193,7 @@ async def api_claim_daily_internal(uid):
         uid = int(uid)
         now = datetime.now()
 
-        user_res = supabase.table("users").select("last_daily").eq("id", uid).execute()
+        user_res = supabase.table("users").select("last_daily").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1209,7 +1209,7 @@ async def api_claim_daily_internal(uid):
             except ValueError:
                 pass
 
-        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("id", uid).execute()
+        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("user_id", uid).execute()
         logger.info(f"User {uid} claimed daily case")
         return web.json_response({"success": True})
     except Exception as e:
@@ -1246,7 +1246,7 @@ async def api_invoice(request):
             return web.json_response({"error": "no_user_id"}, status=400)
 
         user_id = int(user_id)
-        user_check = supabase.table("users").select("user_id").eq("id", user_id).limit(1).execute()
+        user_check = supabase.table("users").select("user_id").eq("user_id", user_id).limit(1).execute()
         if not user_check.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1309,7 +1309,7 @@ async def api_get_achievements(request):
             except:
                 pass
 
-        res = supabase.table("user_achievements").select("achievement_id, progress, is_claimed").eq("id", uid).execute()
+        res = supabase.table("user_achievements").select("achievement_id, progress, is_claimed").eq("user_id", uid).execute()
 
         data = []
         for r in res.data:
@@ -1343,7 +1343,7 @@ async def api_claim_achievement(request):
             return web.json_response({"error": "achievement_not_found"}, status=404)
 
         uid = int(uid)
-        res = supabase.table("user_achievements").select("progress, is_claimed").eq("id", uid).eq("achievement_id", aid).execute()
+        res = supabase.table("user_achievements").select("progress, is_claimed").eq("user_id", uid).eq("achievement_id", aid).execute()
         if not res.data:
             return web.json_response({"error": "not_found"}, status=404)
 
@@ -1353,12 +1353,12 @@ async def api_claim_achievement(request):
         if a_status['progress'] < info['goal']:
             return web.json_response({"error": "not_reached"}, status=400)
 
-        supabase.table("user_achievements").update({"is_claimed": 1}).eq("id", uid).eq("achievement_id", aid).execute()
+        supabase.table("user_achievements").update({"is_claimed": 1}).eq("user_id", uid).eq("achievement_id", aid).execute()
 
-        user_res = supabase.table("users").select("stars").eq("id", uid).execute()
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
         if user_res.data:
             new_stars = user_res.data[0]['stars'] + info['reward']
-            supabase.table("users").update({"stars": new_stars}).eq("id", uid).execute()
+            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
             supabase.table("payments").insert({
                 "user_id": uid,
                 "amount": info['reward'],
@@ -1377,7 +1377,7 @@ async def api_get_quests(request):
             return web.json_response({"error": "unauthorized"}, status=401)
         uid = int(uid)
 
-        res = supabase.table("user_quests").select("quest_id, progress, is_completed, reward_claimed").eq("id", uid).execute()
+        res = supabase.table("user_quests").select("quest_id, progress, is_completed, reward_claimed").eq("user_id", uid).execute()
         quests_data = {row['quest_id']: row for row in res.data} if res.data else {}
 
         QUESTS = [
@@ -1421,7 +1421,7 @@ async def api_claim_quest(request):
         if not info:
             return web.json_response({"error": "quest_not_found"}, status=404)
 
-        res = supabase.table("user_quests").select("is_completed, reward_claimed").eq("id", uid).eq("quest_id", quest_id).execute()
+        res = supabase.table("user_quests").select("is_completed, reward_claimed").eq("user_id", uid).eq("quest_id", quest_id).execute()
         if not res.data:
             return web.json_response({"error": "not_found"}, status=404)
 
@@ -1431,12 +1431,12 @@ async def api_claim_quest(request):
         if not q_status['is_completed']:
             return web.json_response({"error": "not_reached"}, status=400)
 
-        supabase.table("user_quests").update({"reward_claimed": True}).eq("id", uid).eq("quest_id", quest_id).execute()
+        supabase.table("user_quests").update({"reward_claimed": True}).eq("user_id", uid).eq("quest_id", quest_id).execute()
 
-        user_res = supabase.table("users").select("stars").eq("id", uid).execute()
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
         if user_res.data:
             new_stars = user_res.data[0]['stars'] + info['reward']
-            supabase.table("users").update({"stars": new_stars}).eq("id", uid).execute()
+            supabase.table("users").update({"stars": new_stars}).eq("user_id", uid).execute()
             supabase.table("payments").insert({
                 "user_id": uid,
                 "amount": info['reward'],
@@ -1481,7 +1481,7 @@ async def api_inventory(request):
             return web.json_response({"error": "unauthorized"}, status=401)
 
         uid = int(uid)
-        res = supabase.table("user_inventory").select("*").eq("id", uid).execute()
+        res = supabase.table("user_inventory").select("*").eq("user_id", uid).execute()
 
         if not res.data:
             return web.json_response({"user_id": uid, "total_items": 0, "items": []})
