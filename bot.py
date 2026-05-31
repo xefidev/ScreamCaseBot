@@ -99,7 +99,6 @@ def cors_middleware(app, handler):
     CRITICAL: OPTIONS requests должны вернуть 200 с CORS headers ДО auth проверки,
     иначе браузер блокирует основной запрос.
     """
-    @wraps(handler)
     async def middleware(request):
         # Обрабатываем preflight OPTIONS запросы НЕМЕДЛЕННО с 200 OK
         if request.method == 'OPTIONS':
@@ -118,10 +117,9 @@ def cors_middleware(app, handler):
     return middleware
 
 def auth_middleware(app, handler):
-    @wraps(handler)
     async def middleware(request):
         # Пропускаем проверку авторизации для публичных маршрутов
-        if request.path == '/' or request.path == '/health':
+        if request.path == '/' or request.path == '/health' or request.path == '/api/ping':
             return await handler(request)
         
         # Применяем auth только к /api/ routes
@@ -357,7 +355,11 @@ def init_db():
     try:
         supabase.table("users").select("count", count="exact").limit(1).execute()
         logger.info("✅ Supabase connection verified")
-        
+    except Exception as e:
+        logger.error(f"❌ Supabase users table error: {e}")
+        return
+    
+    try:
         referral_tasks = [
             {"id": 1, "title": "Пригласить 1 друга", "reward": 1, "type": "referral_1", "url": "", "chat_id": ""},
             {"id": 2, "title": "Пригласить 2 друзей", "reward": 2, "type": "referral_2", "url": "", "chat_id": ""},
@@ -368,7 +370,7 @@ def init_db():
         supabase.table("tasks").upsert(referral_tasks).execute()
         logger.info("✅ Base tasks initialized in Supabase")
     except Exception as e:
-        logger.error(f"❌ Supabase initialization error: {e}")
+        logger.warning(f"⚠️ Supabase tasks table not available (non-critical): {e}")
 
 def get_gifts_in_range(min_p, max_p):
     return [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
