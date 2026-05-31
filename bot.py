@@ -188,7 +188,17 @@ CASES_PRICES = {
     9: 75,   # Pussy Case
     10: 150  # Skolnik Case
 }
-ADMIN_IDS = [7782281997, 5396975347]
+ADMIN_IDS_ENV = os.getenv("ADMIN_IDS", "7782281997,5396975347")
+try:
+    ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_ENV.split(",") if x.strip() and x.strip().isdigit()]
+    if not ADMIN_IDS:
+        ADMIN_IDS = [7782281997, 5396975347]
+        logger.warning(f"⚠️ Invalid ADMIN_IDS in env, using defaults: {ADMIN_IDS}")
+    else:
+        logger.info(f"✅ Loaded ADMIN_IDS from env: {ADMIN_IDS}")
+except Exception as e:
+    ADMIN_IDS = [7782281997, 5396975347]
+    logger.warning(f"⚠️ Error parsing ADMIN_IDS: {e}, using defaults: {ADMIN_IDS}")
 APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 
@@ -648,7 +658,11 @@ async def help_cmd(message: types.Message):
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
     try:
-        if message.from_user.id not in ADMIN_IDS:
+        admin_id = message.from_user.id
+        logger.info(f"🔍 /+ command from user {admin_id}, ADMIN_IDS: {ADMIN_IDS}")
+        
+        if admin_id not in ADMIN_IDS:
+            logger.warning(f"⛔ User {admin_id} not in admin list")
             await message.answer("❌ Вы не администратор.")
             return
         
@@ -657,37 +671,74 @@ async def admin_add(message: types.Message):
             await message.answer("❌ Пример: `/+ 100`", parse_mode="Markdown")
             return
         
-        amount = int(parts[1])
+        try:
+            amount = int(parts[1])
+        except (ValueError, IndexError):
+            await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
+            return
+        
         if amount <= 0:
             await message.answer("❌ Количество должно быть > 0.")
             return
         
         user_id = message.from_user.id
-        res = supabase.table("users").select("stars").eq("user_id", user_id).execute()
+        logger.info(f"📝 Getting balance for admin user {user_id}")
         
-        if not res.data:
-            await message.answer(f"❌ Пользователь не найден в БД.")
+        # SELECT баланс
+        try:
+            res = supabase.table("users").select("stars").eq("user_id", user_id).execute()
+            logger.info(f"📊 Supabase response: {res.data}")
+        except Exception as e:
+            logger.error(f"❌ Supabase SELECT error: {e}")
+            await message.answer("❌ Ошибка при получении баланса из БД.")
             return
         
-        current_stars = res.data[0].get('stars', 0)
-        new_stars = current_stars + amount
+        if not res.data:
+            logger.warning(f"⚠️ User {user_id} not in users table, creating entry")
+            # Создаём запись пользователя, если её нет
+            try:
+                supabase.table("users").insert({
+                    "user_id": user_id,
+                    "stars": amount,
+                    "join_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "username": message.from_user.username or "Admin",
+                    "first_name": message.from_user.first_name or "Admin"
+                }).execute()
+                new_stars = amount
+            except Exception as e:
+                logger.error(f"❌ Supabase INSERT error: {e}")
+                await message.answer("❌ Ошибка при создании записи пользователя.")
+                return
+        else:
+            current_stars = res.data[0].get('stars', 0)
+            new_stars = current_stars + amount
+            logger.info(f"💫 Current stars: {current_stars}, adding {amount}, new total: {new_stars}")
+            
+            # UPDATE баланс
+            try:
+                supabase.table("users").update({
+                    "stars": new_stars
+                }).eq("user_id", user_id).execute()
+                logger.info(f"✅ Updated stars: {new_stars}")
+            except Exception as e:
+                logger.error(f"❌ Supabase UPDATE error: {e}")
+                await message.answer("❌ Ошибка при обновлении баланса.")
+                return
         
-        supabase.table("users").update({
-            "stars": new_stars
-        }).eq("user_id", user_id).execute()
-        
-        supabase.table("payments").insert({
-            "user_id": user_id,
-            "amount": amount,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
+        # Записываем в payments
+        try:
+            supabase.table("payments").insert({
+                "user_id": user_id,
+                "amount": amount,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.warning(f"⚠️ Could not save to payments table: {e}")
         
         logger.info(f"✅ Admin {user_id} added {amount} stars. New balance: {new_stars}")
         await message.answer(f"✅ Добавлено {amount} ⭐\n💫 Новый баланс: {new_stars} ⭐")
-    except ValueError:
-        await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
-        logger.error(f"Error in admin_add: {e}")
+        logger.error(f"❌ Critical error in admin_add: {e}", exc_info=True)
         await message.answer("❌ Ошибка при добавлении звезд.")
 
 @dp.message(Command("setbalance"))
@@ -935,9 +986,17 @@ async def api_balance(request):
             logger.warning("❌ Balance request without user_id")
             return web.json_response({"error": "no_id", "ok": False}, status=400)
         
-        uid = int(uid)
+        try:
+            uid = int(uid)
+        except (ValueError, TypeError) as e:
+            logger.error(f"❌ Invalid user_id type: {uid} -> {e}")
+            return web.json_response({"error": "invalid_user_id", "ok": False}, status=400)
+        
+        logger.info(f"📊 Fetching balance for user {uid}")
         
         res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        
+        logger.info(f"📋 Supabase response for {uid}: {res.data}")
         
         if not res.data:
             logger.warning(f"⚠️ User {uid} not found in database")
@@ -967,7 +1026,7 @@ async def api_balance(request):
         logger.error(f"❌ Invalid user_id: {e}")
         return web.json_response({"error": "invalid_user_id", "ok": False}, status=400)
     except Exception as e:
-        logger.error(f"Error in api_balance: {e}")
+        logger.error(f"❌ Error in api_balance: {e}", exc_info=True)
         return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_referrals(request):
