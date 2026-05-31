@@ -5,7 +5,7 @@ import aiohttp
 from datetime import datetime
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
-from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
 from aiohttp import web
 import hashlib
 import string
@@ -32,7 +32,7 @@ SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
 
 if not all([TOKEN, SUPABASE_URL, SUPABASE_KEY]):
-    logger.error("❌ CRITICAL ERROR: Missing environment variables (TELEGRAM_BOT_TOKEN, VITE_SUPABASE_URL, or SUPABASE_SERVICE_ROLE_KEY)")
+    logger.error("❌ CRITICAL ERROR: Missing environment variables")
     import sys
     sys.exit(1)
 
@@ -47,8 +47,6 @@ ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_IDS", "7782281997,53969753
 APP_URL = os.getenv("APP_URL", "https://scream-case-bot.vercel.app")
 CHANNEL_URL = os.getenv("CHANNEL_URL", "https://t.me/ScreamCase")
 TON_WALLET = os.getenv("VITE_TON_WALLET", "UQA312HDuwVR-RtbUD6u05RAXF-ExIHxExeCZP32RciryUrp")
-TONCENTER_API_KEY = os.getenv("TONCENTER_API_KEY", "")
-TONCENTER_BASE_URL = "https://toncenter.com/api/v2"
 
 # Prices and Data
 CASES_PRICES = {1: 0, 2: 1, 3: 667, 4: 599, 5: 199, 6: 50, 7: 599, 8: 444, 9: 222, 10: 250}
@@ -112,12 +110,27 @@ def _update_quest_progress(user_id, quest_type):
 
 def register_or_get(user_id, username=None, first_name=None, referred_by=None):
     try:
-        res = supabase.table("users").select("stars, join_date").eq("user_id", user_id).execute()
-        if res.data: return (res.data[0]['stars'], res.data[0]['join_date']), False
+        # Check both stars and balance columns as requested
+        res = supabase.table("users").select("stars, balance, join_date").eq("user_id", user_id).execute()
+        if res.data:
+            u = res.data[0]
+            stars = u.get('stars') if u.get('stars') is not None else u.get('balance', 0)
+            return (stars, u.get('join_date')), False
+        
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        supabase.table("users").insert({"user_id": user_id, "stars": 0, "join_date": date, "username": username, "first_name": first_name, "referred_by": referred_by}).execute()
+        supabase.table("users").insert({
+            "user_id": user_id, 
+            "stars": 0, 
+            "balance": 0,
+            "join_date": date, 
+            "username": username, 
+            "first_name": first_name, 
+            "referred_by": referred_by
+        }).execute()
         return (0, date), True
-    except Exception: return (0, ""), False
+    except Exception as e:
+        logger.error(f"Error in register_or_get: {e}")
+        return (0, ""), False
 
 # Middleware
 async def cors_middleware(app, handler):
@@ -144,7 +157,6 @@ async def auth_middleware(app, handler):
             
             user_data = validate_init_data(init_data, TOKEN)
             if not user_data:
-                # Dev Fallback
                 uid = request.query.get('user_id') or (request.get('body_json', {}).get('user_id') if request.method == 'POST' else None)
                 if uid:
                     request['user_id'] = int(uid)
@@ -163,8 +175,24 @@ dp = Dispatcher()
 async def start_cmd(message: types.Message, command: CommandObject):
     ref = command.args if command.args and command.args.isdigit() else None
     data, is_new = register_or_get(message.from_user.id, message.from_user.username, message.from_user.first_name, ref)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))]])
-    await message.answer(f"Привет! Твой баланс: {data[0]} ⭐", reply_markup=kb)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎁 Открыть ScreamCase", web_app=WebAppInfo(url=APP_URL))],
+        [InlineKeyboardButton(text="📢 Канал", url=CHANNEL_URL)]
+    ])
+    await message.answer(f"Привет, {message.from_user.first_name}! 👋\n\nТвой реальный баланс: {data[0]} ⭐\n\nИспытай свою удачу в лучшем симуляторе кейсов!", reply_markup=kb)
+
+@dp.message(Command("help"))
+async def help_cmd(message: types.Message):
+    text = "📖 **Справка по командам**\n\n"
+    text += "• `/start` — Запустить приложение и проверить баланс\n"
+    text += "• `/help` — Получить это сообщение\n"
+    
+    if message.from_user.id in ADMIN_IDS:
+        text += "\n🛠 **Админ-команды:**\n"
+        text += "• `/stats` — Показать статистику\n"
+        text += "• `/user <ID>` — Показать данные игрока\n"
+    
+    await message.answer(text, parse_mode="Markdown")
 
 # API Handlers
 async def api_balance(request):
@@ -172,9 +200,13 @@ async def api_balance(request):
     res = supabase.table("users").select("*").eq("user_id", uid).execute()
     if not res.data: return web.json_response({"ok": False}, status=404)
     u = res.data[0]
+    stars = u.get('stars') if u.get('stars') is not None else u.get('balance', 0)
     return web.json_response({
-        "ok": True, "stars": u['stars'], "tickets": u.get('tickets', 0), 
-        "donor": u.get('total_donated_stars', 0), "spent": u.get('total_spent', 0), 
+        "ok": True, 
+        "stars": stars, 
+        "tickets": u.get('tickets', 0), 
+        "donor": u.get('total_donated_stars', 0), 
+        "spent": u.get('total_spent', 0), 
         "promo_opened": u.get('promo_opened', 0)
     })
 
@@ -182,14 +214,14 @@ async def api_cases(request):
     cases = [
         {"id": 1, "name": "Promo Case", "price": 0, "color": "#FFD700", "icon": "🎁"},
         {"id": 2, "name": "Daily Case", "price": 1, "color": "#87CEEB", "icon": "📅"},
-        {"id": 3, "name": "Snoop Case", "price": 15, "color": "#00AA00", "icon": "😎"},
-        {"id": 4, "name": "Lover's Case", "price": 25, "color": "#FF1493", "icon": "💕"},
-        {"id": 5, "name": "Hobo Case", "price": 5, "color": "#8B8B8B", "icon": "🧤"},
-        {"id": 6, "name": "Risky Box", "price": 10, "color": "#FF8C00", "icon": "⚡"},
-        {"id": 7, "name": "Scam Box", "price": 50, "color": "#DC143C", "icon": "⚠️"},
-        {"id": 8, "name": "Ebati Case", "price": 100, "color": "#4B0082", "icon": "👑"},
-        {"id": 9, "name": "Pussy Case", "price": 75, "color": "#FF69B4", "icon": "🐱"},
-        {"id": 10, "name": "Skolnik Case", "price": 150, "color": "#FFD700", "icon": "🎓"}
+        {"id": 3, "name": "Snoop Case", "price": 667, "color": "#00AA00", "icon": "😎"},
+        {"id": 4, "name": "Lover's Case", "price": 599, "color": "#FF1493", "icon": "💕"},
+        {"id": 5, "name": "Hobo Case", "price": 199, "color": "#8B8B8B", "icon": "🧤"},
+        {"id": 6, "name": "Risky Box", "price": 50, "color": "#FF8C00", "icon": "⚡"},
+        {"id": 7, "name": "Scam Box", "price": 599, "color": "#DC143C", "icon": "⚠️"},
+        {"id": 8, "name": "Ebati Case", "price": 444, "color": "#4B0082", "icon": "👑"},
+        {"id": 9, "name": "Pussy Case", "price": 222, "color": "#FF69B4", "icon": "🐱"},
+        {"id": 10, "name": "Skolnik Case", "price": 250, "color": "#FFD700", "icon": "🎓"}
     ]
     return web.json_response(cases)
 
@@ -199,47 +231,72 @@ async def api_open_case(request):
     case_id = int(data.get("case_id", 0))
     price = CASES_PRICES.get(case_id, 9999)
     
-    user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
-    if not user_res.data or user_res.data[0]['stars'] < price:
+    user_res = supabase.table("users").select("stars, balance").eq("user_id", uid).execute()
+    if not user_res.data:
+        return web.json_response({"error": "user_not_found"}, status=404)
+    
+    current_stars = user_res.data[0].get('stars') if user_res.data[0].get('stars') is not None else user_res.data[0].get('balance', 0)
+    
+    if current_stars < price:
         return web.json_response({"error": "insufficient_funds"}, status=403)
     
     case_info = CASES_DATA.get(case_id, {'min': 0, 'max': 100})
     won_item = random.choice([g for g in ALL_GIFTS if case_info['min'] <= g['price'] <= case_info['max']] or ALL_GIFTS[:1])
     
-    new_balance = user_res.data[0]['stars'] - price
-    supabase.table("users").update({"stars": new_balance}).eq("user_id", uid).execute()
+    new_balance = current_stars - price
+    supabase.table("users").update({"stars": new_balance, "balance": new_balance}).eq("user_id", uid).execute()
     _update_quest_progress(uid, 'open_cases')
     
     return web.json_response({"ok": True, "item": won_item, "new_balance": new_balance})
 
-async def api_quests(request):
-    uid = request.get('user_id')
-    res = supabase.table("user_quests").select("*").eq("user_id", uid).execute()
-    quests_data = {r['quest_id']: r for r in res.data}
-    QUESTS = [
-        {'id': 'open_1', 'title': 'Открыть 1 кейс', 'goal': 1, 'reward': 10},
-        {'id': 'open_5', 'title': 'Открыть 5 кейсов', 'goal': 5, 'reward': 50},
-        {'id': 'open_10', 'title': 'Открыть 10 кейсов', 'goal': 10, 'reward': 150}
-    ]
-    results = [{**q, "progress": quests_data.get(q['id'], {}).get('progress', 0), "is_completed": quests_data.get(q['id'], {}).get('is_completed', False), "is_claimed": quests_data.get(q['id'], {}).get('reward_claimed', False)} for q in QUESTS]
-    return web.json_response(results)
-
-async def api_claim_quest(request):
-    data = request.get('body_json') or await request.json()
-    uid = request.get('user_id')
-    qid = data.get("quest_id")
-    # Simplified claim
-    return web.json_response({"success": True})
-
-async def api_inventory(request):
-    uid = request.get('user_id')
-    return web.json_response({"user_id": uid, "items": []})
-
 async def api_create_invoice(request):
-    data = request.get('body_json') or await request.json()
-    uid = request.get('user_id')
-    comment = f"SC_{uid}_{random.randint(1000, 9999)}"
-    return web.json_response({"wallet": TON_WALLET, "comment": comment, "payload_boc": create_comment_boc(comment)})
+    """Creates a Telegram Stars invoice link or TON invoice."""
+    try:
+        data = request.get('body_json') or await request.json()
+        uid = request.get('user_id')
+        amount = int(data.get("amount", 100))
+        currency = data.get("currency", "XTR") # Default to Telegram Stars
+        
+        if currency == "TON":
+            comment = f"SC_{uid}_{random.randint(1000, 9999)}"
+            return web.json_response({"wallet": TON_WALLET, "comment": comment, "payload_boc": create_comment_boc(comment)})
+        
+        # Telegram Stars Invoice
+        invoice_link = await bot.create_invoice_link(
+            title="Пополнение ⭐",
+            description=f"Покупка {amount} звезд для ScreamCase",
+            payload=f"stars_{uid}_{amount}",
+            provider_token="", # Empty for Telegram Stars
+            currency="XTR",
+            prices=[LabeledPrice(label="⭐", amount=amount)]
+        )
+        
+        return web.json_response({"ok": True, "invoice_link": invoice_link})
+    except Exception as e:
+        logger.error(f"Error creating invoice: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+@dp.pre_checkout_query()
+async def checkout(q: types.PreCheckoutQuery):
+    await q.answer(ok=True)
+
+@dp.message(F.successful_payment)
+async def success_pay(m: types.Message):
+    try:
+        payload = m.successful_payment.invoice_payload
+        parts = payload.split("_")
+        if len(parts) >= 3 and parts[0] == "stars":
+            user_id = int(parts[1])
+            amount = int(parts[2])
+            
+            res = supabase.table("users").select("stars, balance").eq("user_id", user_id).execute()
+            if res.data:
+                current = res.data[0].get('stars') if res.data[0].get('stars') is not None else res.data[0].get('balance', 0)
+                new_total = current + amount
+                supabase.table("users").update({"stars": new_total, "balance": new_total}).eq("user_id", user_id).execute()
+                await m.answer(f"✅ Оплата прошла успешно! На твой баланс зачислено {amount} ⭐")
+    except Exception as e:
+        logger.error(f"Error in success_pay: {e}")
 
 # Main
 async def main():
@@ -249,10 +306,7 @@ async def main():
     app.router.add_get('/api/ping', lambda r: web.json_response({"ok": True}))
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/cases', api_cases)
-    app.router.add_get('/api/quests', api_quests)
-    app.router.add_get('/api/inventory', api_inventory)
     app.router.add_post('/api/open_case', api_open_case)
-    app.router.add_post('/api/quests/claim', api_claim_quest)
     app.router.add_post('/api/create_invoice', api_create_invoice)
     
     port = int(os.getenv("PORT", 8080))
