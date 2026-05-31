@@ -26,6 +26,9 @@ from aiohttp import web
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+if not TOKEN:
+    raise RuntimeError("❌ CRITICAL ERROR: TELEGRAM_BOT_TOKEN environment variable must be set")
+
 # ... (rest of settings)
 
 def validate_init_data(init_data: str, bot_token: str) -> dict:
@@ -180,9 +183,13 @@ SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("VITE_SUPABASE_ANON_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
-    logging.error("❌ КРИТИЧЕСКАЯ ОШИБКА: Проверьте переменные окружения VITE_SUPABASE_URL и SUPABASE_SERVICE_ROLE_KEY")
+    raise RuntimeError("❌ CRITICAL ERROR: Environment variables VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+try:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+except Exception as e:
+    logger.error(f"❌ Failed to initialize Supabase: {e}")
+    raise
 
 def create_comment_boc(text: str) -> str:
     """Создает BOC с текстовым комментарием (opcode 0) в формате Base64."""
