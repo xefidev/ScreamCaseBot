@@ -1,4 +1,6 @@
-const BACKEND_URL = 'https://screamcasebot.onrender.com';
+const BACKEND_URL = window.location.origin.includes('localhost') 
+  ? 'http://localhost:8080' 
+  : 'https://screamcasebot.onrender.com';
 
 /**
  * Get initData from Telegram WebApp
