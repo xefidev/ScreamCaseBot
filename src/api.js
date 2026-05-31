@@ -61,11 +61,30 @@ const showAlert = (message) => {
 };
 
 /**
+ * Keep-alive ping to prevent Render hibernation
+ */
+export async function sendPing() {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/ping`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    if (!response.ok) throw new Error(`Ping failed: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.warn('Keep-alive ping failed:', error);
+    return null;
+  }
+}
+
+/**
  * Format error message for display
  */
 const formatErrorMessage = (errorData) => {
   const errorMessages = {
-    'insufficient_funds': '❌ Недостаточно средств',
+    'insufficient_funds': '❌ Недостаточно звёзд',
     'user_not_found': '❌ Пользователь не найден',
     'invalid_case': '❌ Неверный ID кейса',
     'minimum_donation_required': `❌ Требуется пожертвование минимум ${errorData.required || 0} звёзд`,

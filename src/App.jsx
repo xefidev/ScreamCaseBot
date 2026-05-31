@@ -8,7 +8,7 @@ import WheelGame from './components/games/WheelGame';
 import UpgradeGame from './components/games/UpgradeGame';
 import ProfilePage from './components/ProfilePage';
 import QuestsTab from './components/QuestsTab';
-import { createInvoice, fetchBalance, notifyTonSuccess, sendHeartbeat } from './api';
+import { createInvoice, fetchBalance, notifyTonSuccess, sendHeartbeat, sendPing } from './api';
 import { getDynamicGiftImage } from './giftUtils';
 
 const PAGE_BG = '#1a1b1e';
@@ -98,6 +98,20 @@ export default function App() {
       return null;
     }
   };
+
+  useEffect(() => {
+    const keepAliveInterval = setInterval(async () => {
+      try {
+        await sendPing();
+        console.log('✅ Keep-alive ping sent to prevent Render hibernation');
+      } catch (error) {
+        console.warn('⚠️ Keep-alive ping failed:', error);
+      }
+    }, 600000);
+    return () => {
+      clearInterval(keepAliveInterval);
+    };
+  }, []);
 
   useEffect(() => {
     const init = async () => {

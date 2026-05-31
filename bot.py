@@ -660,9 +660,28 @@ async def admin_add(message: types.Message):
             await message.answer("❌ Количество должно быть > 0.")
             return
         
-        update_balance(message.from_user.id, amount, "add")
-        logger.info(f"Admin {message.from_user.id} added {amount} stars to themselves")
-        await message.answer(f"✅ Добавлено {amount} ⭐")
+        user_id = message.from_user.id
+        res = supabase.table("users").select("stars").eq("user_id", user_id).execute()
+        
+        if not res.data:
+            await message.answer(f"❌ Пользователь не найден в БД.")
+            return
+        
+        current_stars = res.data[0].get('stars', 0)
+        new_stars = current_stars + amount
+        
+        supabase.table("users").update({
+            "stars": new_stars
+        }).eq("user_id", user_id).execute()
+        
+        supabase.table("payments").insert({
+            "user_id": user_id,
+            "amount": amount,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        
+        logger.info(f"✅ Admin {user_id} added {amount} stars. New balance: {new_stars}")
+        await message.answer(f"✅ Добавлено {amount} ⭐\n💫 Новый баланс: {new_stars} ⭐")
     except ValueError:
         await message.answer("❌ Некорректное число. Пример: `/+ 100`", parse_mode="Markdown")
     except Exception as e:
@@ -906,29 +925,22 @@ async def api_check_sub(request):
 
 async def api_balance(request):
     try:
-        # Используем авторизованный user_id из middleware или fallback на query параметр
         uid = request.get('user_id')
         if not uid:
             uid = request.query.get("user_id")
         
         if not uid:
             logger.warning("❌ Balance request without user_id")
-            return web.json_response({"error": "no_id"}, status=400)
+            return web.json_response({"error": "no_id", "ok": False}, status=400)
         
         uid = int(uid)
         
-        # Проверяем что user_id из auth совпадает с запрашиваемым (если оба есть)
-        request_uid = request.query.get("user_id")
-        if request_uid and int(request_uid) != uid:
-            logger.warning(f"❌ User {uid} tried to access balance of user {request_uid}")
-            return web.json_response({"error": "forbidden"}, status=403)
-        
-        # ВАЖНО: Получаем данные из таблицы users с колонкой stars
         res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
         
         if not res.data:
-            logger.warning(f"⚠️  User {uid} not found in database")
+            logger.warning(f"⚠️ User {uid} not found in database")
             return web.json_response({
+                "ok": True,
                 "stars": 0,
                 "tickets": 0,
                 "donor": 0,
@@ -939,9 +951,10 @@ async def api_balance(request):
         u = res.data[0]
         stars_balance = u.get('stars', 0)
         
-        logger.info(f"✅ Balance for user {uid}: {stars_balance} stars")
+        logger.info(f"✅ Balance for user {uid}: {stars_balance} ⭐")
         
         return web.json_response({
+            "ok": True,
             "stars": stars_balance,
             "tickets": u.get('tickets', 0),
             "donor": u.get('total_donated_stars', 0),
@@ -950,10 +963,10 @@ async def api_balance(request):
         })
     except ValueError as e:
         logger.error(f"❌ Invalid user_id: {e}")
-        return web.json_response({"error": "invalid_user_id"}, status=400)
+        return web.json_response({"error": "invalid_user_id", "ok": False}, status=400)
     except Exception as e:
         logger.error(f"Error in api_balance: {e}")
-        return web.json_response({"error": "server_error"}, status=500)
+        return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_referrals(request):
     try:
@@ -987,24 +1000,17 @@ async def api_referrals(request):
 async def api_open_case(request):
     try:
         data = await request.json()
-        # ВАЖНО: Используем user_id из авторизации, не из body!
         uid = request.get('user_id')
         case_id = data.get("case_id")
         
         if not uid or case_id is None:
-            return web.json_response({"error": "invalid_data"}, status=400)
+            return web.json_response({"error": "invalid_data", "ok": False}, status=400)
         
         case_id = int(case_id)
         uid = int(uid)
         
-        # Дополнительная проверка: if user отправил другой user_id в body, отклоняем
-        body_uid = data.get("user_id")
-        if body_uid and int(body_uid) != uid:
-            logger.warning(f"❌ User {uid} tried to open case for user {body_uid}")
-            return web.json_response({"error": "forbidden"}, status=403)
-        
         # Daily Case
-        if case_id == 2: 
+        if case_id == 2:
             res = await api_claim_daily_internal(uid)
             if res.status == 200:
                 case_info = CASES_DATA.get(2)
@@ -1014,45 +1020,59 @@ async def api_open_case(request):
                     supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
                 except Exception as e:
                     logger.error(f"Failed to increment case quests: {e}")
-                return web.json_response({"success": True, "item": won_item, "deducted": 1})
+                logger.info(f"✅ User {uid} opened Daily Case, won: {won_item['name']}")
+                return web.json_response({
+                    "ok": True,
+                    "success": True,
+                    "item": won_item,
+                    "deducted": 1
+                })
             return res
 
         price = CASES_PRICES.get(case_id)
         if price is None:
-            return web.json_response({"error": "invalid_case"}, status=400)
+            return web.json_response({"error": "invalid_case", "ok": False}, status=400)
         
         user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
-        if not user_res.data: return web.json_response({"error": "user_not_found"}, status=404)
+        if not user_res.data:
+            return web.json_response({"error": "user_not_found", "ok": False}, status=404)
         
         u = user_res.data[0]
-        balance = u['stars']
+        balance = u.get('stars', 0)
         promo_opened = u.get('promo_opened', 0)
         
         # Promo Case
         if case_id == 1:
             if promo_opened:
-                return web.json_response({"error": "already_opened"}, status=403)
+                return web.json_response({"error": "already_opened", "ok": False, "message": "Промо-кейс уже открыт"}, status=403)
             supabase.table("users").update({"promo_opened": 1}).eq("user_id", uid).execute()
             price = 0
 
         if balance < price:
-            return web.json_response({"error": "insufficient_funds"}, status=403)
+            logger.warning(f"❌ User {uid} insufficient funds for case {case_id}. Has {balance}, needs {price}")
+            return web.json_response({
+                "error": "insufficient_funds",
+                "ok": False,
+                "message": "Недостаточно звёзд для открытия кейса",
+                "required": price,
+                "balance": balance
+            }, status=403)
         
         case_info = CASES_DATA.get(case_id)
         if not case_info:
-            return web.json_response({"error": "case_data_missing"}, status=500)
+            return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
         
         won_item = _get_random_gift(case_info['min'], case_info['max'])
 
         new_spent = (u.get('total_spent') or 0) + price
         new_count = (u.get('cases_opened_count') or 0) + 1
+        
         supabase.table("users").update({
-            "stars": balance - price, 
-            "total_spent": new_spent, 
+            "stars": balance - price,
+            "total_spent": new_spent,
             "cases_opened_count": new_count
         }).eq("user_id", uid).execute()
 
-        # ВАЖНО: Сохраняем результат открытия в user_inventory
         try:
             supabase.table("user_inventory").insert({
                 "user_id": uid,
@@ -1066,8 +1086,8 @@ async def api_open_case(request):
             logger.error(f"Failed to save to user_inventory: {e}")
 
         supabase.table("payments").insert({
-            "user_id": uid, 
-            "amount": -price, 
+            "user_id": uid,
+            "amount": -price,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
         
@@ -1077,16 +1097,18 @@ async def api_open_case(request):
         except Exception as e:
             logger.error(f"Failed to increment case quests: {e}")
         
-        logger.info(f"User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}).")
+        logger.info(f"✅ User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}). New balance: {balance - price}")
         
         return web.json_response({
-            "success": True, 
+            "ok": True,
+            "success": True,
             "item": won_item,
-            "deducted": price
+            "deducted": price,
+            "new_balance": balance - price
         })
     except Exception as e:
         logger.error(f"Error in api_open_case: {e}")
-        return web.json_response({"error": "server_error"}, status=500)
+        return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 def _get_random_gift(min_p, max_p):
     drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
@@ -1661,6 +1683,21 @@ async def health_handler(request):
     """Health check endpoint для мониторинга на Render.com"""
     return web.json_response({"status": "healthy", "timestamp": datetime.now().isoformat()})
 
+async def api_ping(request):
+    """Публичный эндпоинт для keep-alive.
+    Используется фронтенд каждые 10 минут для предотвращения hibernation на Render.
+    Не требует авторизации."""
+    try:
+        return web.json_response({
+            "ok": True,
+            "status": "pong",
+            "timestamp": datetime.now().isoformat(),
+            "message": "Сервер активен"
+        })
+    except Exception as e:
+        logger.error(f"Error in api_ping: {e}")
+        return web.json_response({"ok": False, "error": "server_error"}, status=500)
+
 async def main():
     init_db()
     
@@ -1672,6 +1709,7 @@ async def main():
     app.router.add_post('/api/heartbeat', api_heartbeat)
     app.router.add_get('/', root_handler)
     app.router.add_get('/health', health_handler)
+    app.router.add_get('/api/ping', api_ping)
     app.router.add_get('/api/check_sub', api_check_sub)
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/referrals', api_referrals)
