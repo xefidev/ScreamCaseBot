@@ -21,7 +21,6 @@ import hmac
 import urllib.parse
 import json
 from aiohttp import web
-from functools import wraps
 
 # --- НАСТРОЙКИ ---
 load_dotenv()
@@ -62,36 +61,6 @@ def validate_init_data(init_data: str, bot_token: str) -> dict:
     except Exception as e:
         logger.error(f"❌ Error validating initData: {e}")
         return None
-
-def require_auth(handler):
-    """Декоратор для проверки authorization на всех /api/ запросах."""
-    @wraps(handler)
-    async def wrapped(request):
-        # Получаем initData из запроса (может быть в body для POST или query для GET)
-        init_data = None
-        
-        try:
-            if request.method == 'POST':
-                data = await request.json()
-                init_data = data.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
-            else:
-                init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
-        except Exception as e:
-            logger.error(f"Error extracting initData: {e}")
-            return web.json_response({"error": "invalid_request"}, status=400)
-        
-        # Валидируем
-        user_data = validate_init_data(init_data, TOKEN)
-        if not user_data:
-            logger.warning(f"❌ Auth failed for request to {request.path}")
-            return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
-        
-        # Сохраняем user_id в request для дальнейшего использования
-        request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
-        request['user_data'] = user_data
-        
-        return await handler(request)
-    return wrapped
 
 def cors_middleware(app, handler):
     """Специальная CORS middleware, которая обрабатывает OPTIONS preflight запросы ДО auth_middleware.
