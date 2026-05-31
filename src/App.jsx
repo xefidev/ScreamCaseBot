@@ -89,9 +89,12 @@ export default function App() {
   const syncBalance = async (userId) => {
     if (!userId) return null;
     try {
+      // fetchBalance возвращает { stars, tickets, donor, spent, promo_opened }
       const data = await fetchBalance(userId);
-      setBalance(data?.stars || 0);
+      const starsValue = typeof data?.stars === 'number' ? data.stars : 0;
+      setBalance(starsValue);
       setPromoOpened(!!data?.promo_opened);
+      console.log('✅ Баланс синхронизирован:', starsValue, '⭐');
       return data;
     } catch (error) {
       console.error('Sync balance error:', error);
@@ -100,14 +103,22 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Немедленный пинг при загрузке — чтобы разбудить Render если он спит
+    sendPing().then(() => {
+      console.log('✅ Начальный пинг отправлен — сервер активен');
+    }).catch(() => {
+      console.warn('⚠️ Начальный пинг не прошёл');
+    });
+
+    // Повторный пинг каждые 10 минут (Render засыпает через 15 мин)
     const keepAliveInterval = setInterval(async () => {
       try {
         await sendPing();
-        console.log('✅ Keep-alive ping sent to prevent Render hibernation');
+        console.log('✅ Keep-alive ping отправлен');
       } catch (error) {
-        console.warn('⚠️ Keep-alive ping failed:', error);
+        console.warn('⚠️ Keep-alive ping не прошёл:', error);
       }
-    }, 600000);
+    }, 10 * 60 * 1000);
     return () => {
       clearInterval(keepAliveInterval);
     };
@@ -187,8 +198,11 @@ export default function App() {
           if (status === 'paid') {
             triggerHaptic('success');
             window?.Telegram?.WebApp?.showAlert?.('✅ Баланс успешно пополнен!');
-            fetchBalance(user.id).then(newBal => {
-              if (newBal !== undefined) setBalance(newBal);
+            // ИСПРАВЛЕНО: fetchBalance возвращает объект, берём .stars
+            fetchBalance(user.id).then(balData => {
+              if (balData && typeof balData.stars === 'number') {
+                setBalance(balData.stars);
+              }
             }).catch(console.error);
           } else if (status === 'failed') {
             window?.Telegram?.WebApp?.showAlert?.('❌ Не удалось оплатить счёт');

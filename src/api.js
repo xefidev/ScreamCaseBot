@@ -62,6 +62,7 @@ const showAlert = (message) => {
 
 /**
  * Keep-alive ping to prevent Render hibernation
+ * Вызывается каждые 10 минут из App.jsx
  */
 export async function sendPing() {
   try {
@@ -157,6 +158,10 @@ export const verifyTask = async (userId, taskId) => {
   }
 };
 
+/**
+ * ИСПРАВЛЕНО: Возвращает объект { stars, tickets, donor, spent, promo_opened }
+ * Вызывающий код ДОЛЖЕН использовать data.stars, не сам data
+ */
 export const fetchBalance = async (userId) => {
   try {
     if (!userId) return { stars: 0, tickets: 0, donor: 0, spent: 0, promo_opened: 0 };
@@ -172,11 +177,12 @@ export const fetchBalance = async (userId) => {
     }
     
     const data = await response.json();
+    // Возвращаем нормализованный объект — сервер присылает { ok, stars, tickets, donor, spent, promo_opened }
     return {
-      stars: data.stars || 0,
-      tickets: data.tickets || 0,
-      donor: data.donor || 0,
-      spent: data.spent || 0,
+      stars: typeof data.stars === 'number' ? data.stars : 0,
+      tickets: typeof data.tickets === 'number' ? data.tickets : 0,
+      donor: typeof data.donor === 'number' ? data.donor : 0,
+      spent: typeof data.spent === 'number' ? data.spent : 0,
       promo_opened: data.promo_opened || 0
     };
   } catch (error) {
@@ -360,26 +366,25 @@ export const notifyTonSuccess = async (userId, amount, txId) => {
 
 /**
  * Heartbeat - Keep Render.com server awake
- * Must be called every 10-12 minutes to prevent server hibernation
- * and keep TON monitor background task running
+ * Вызывается каждые 10 минут из App.jsx для предотвращения Render hibernation
  */
 export const sendHeartbeat = async (userId) => {
   try {
-    if (!userId) return { status: 'skipped' };
-    
-    const response = await fetch(`${BACKEND_URL}/api/heartbeat`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(addAuthToBody({ user_id: userId })),
+    // Используем публичный /api/ping чтобы не упасть при отсутствии initData
+    const response = await fetch(`${BACKEND_URL}/api/ping`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
     
     if (!response.ok) {
-      console.warn('Heartbeat failed:', response.status);
+      console.warn('Heartbeat ping failed:', response.status);
       return { status: 'failed' };
     }
     
     const data = await response.json();
-    console.log('💓 Heartbeat sent, server alive:', data.timestamp);
+    console.log('💓 Heartbeat ping OK, сервер активен:', data.timestamp);
     return { status: 'success', ...data };
   } catch (error) {
     console.error('Error sending heartbeat:', error);
@@ -519,6 +524,9 @@ export const claimQuest = async (userId, questId) => {
   }
 };
 
+/**
+ * ИСПРАВЛЕНО: одна единственная функция fetchCases (дубликат удалён)
+ */
 export const fetchCases = async () => {
   try {
     const response = await fetch(`${BACKEND_URL}/api/cases`, {
@@ -554,16 +562,5 @@ export const fetchInventory = async (userId) => {
   } catch (error) {
     console.error('Error fetching inventory:', error);
     return { user_id: userId, total_items: 0, total_value: 0, items: [] };
-  }
-};
-
-export const fetchCases = async () => {
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/cases`);
-    if (!response.ok) return [];
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching cases:', error);
-    return [];
   }
 };

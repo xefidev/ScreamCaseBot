@@ -91,7 +91,7 @@ def cors_middleware(app, handler):
 def auth_middleware(app, handler):
     async def middleware(request):
         # Пропускаем проверку авторизации для публичных маршрутов
-        if request.path == '/' or request.path == '/health' or request.path == '/api/ping':
+        if request.path == '/' or request.path == '/health' or request.path == '/api/ping' or request.path == '/api/heartbeat':
             return await handler(request)
         
         # Применяем auth только к /api/ routes
@@ -1743,6 +1743,7 @@ async def main():
     app = web.Application(middlewares=[cors_middleware, auth_middleware])
     app.cleanup_ctx.append(background_tasks)
     
+    app.router.add_get('/api/heartbeat', api_heartbeat)
     app.router.add_post('/api/heartbeat', api_heartbeat)
     app.router.add_get('/', root_handler)
     app.router.add_get('/health', health_handler)
