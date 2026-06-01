@@ -1296,9 +1296,14 @@ async def api_wheel_spin(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_claim_daily_internal(uid):
+    """Daily case claim — 24h cooldown enforced via conditional update.
+    Race-safe: UPDATE WHERE last_daily = <captured_value>. If 0 rows updated,
+    another concurrent request already claimed.
+    """
     try:
         uid = int(uid)
         now = datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
         user_res = supabase.table("users").select("last_daily").eq("user_id", uid).execute()
         if not user_res.data:
@@ -1306,21 +1311,36 @@ async def api_claim_daily_internal(uid):
 
         last_daily_str = user_res.data[0].get('last_daily')
 
+        # Cooldown check (pre-flight)
         if last_daily_str and last_daily_str != "1970-01-01 00:00:00":
             try:
-                last_daily = datetime.strptime(last_daily_str, "%Y-%m-%d %H:%M:%S")
+                # Tolerate both "YYYY-MM-DD HH:MM:SS" and ISO formats
+                ld_clean = last_daily_str.replace('T', ' ').split('.')[0].split('+')[0]
+                last_daily = datetime.strptime(ld_clean, "%Y-%m-%d %H:%M:%S")
                 time_diff = (now - last_daily).total_seconds()
                 if time_diff < 86400:
                     wait_seconds = int(86400 - time_diff)
                     return web.json_response({"error": "daily_cooldown_active", "wait_seconds": wait_seconds}, status=403)
-            except ValueError:
+            except (ValueError, AttributeError):
                 pass
 
-        supabase.table("users").update({"last_daily": now.strftime("%Y-%m-%d %H:%M:%S")}).eq("user_id", uid).execute()
+        # Atomic conditional update: only succeeds if last_daily still equals what we read
+        old_val = last_daily_str if last_daily_str else "1970-01-01 00:00:00"
+        upd = supabase.table("users") \
+            .update({"last_daily": now_str}) \
+            .eq("user_id", uid) \
+            .eq("last_daily", old_val) \
+            .execute()
+
+        if not upd.data:
+            # Lost the race — another request updated last_daily between our read and write
+            logger.info(f"User {uid} daily race lost (concurrent claim)")
+            return web.json_response({"error": "daily_cooldown_active", "wait_seconds": 86400}, status=403)
+
         logger.info(f"User {uid} claimed daily case")
         return web.json_response({"success": True})
     except Exception as e:
-        logger.error(f"Error in api_claim_daily_internal: {e}")
+        logger.error(f"Error in api_claim_daily_internal: {e}", exc_info=True)
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_claim_daily(request):
