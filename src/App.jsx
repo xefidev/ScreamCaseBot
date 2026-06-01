@@ -192,7 +192,8 @@ export default function App() {
       if (!window.Telegram?.WebApp) {
           console.warn('Telegram WebApp is undefined');
       }
-      const { link } = await createInvoice(user.id, amount, 'stars');
+      const invoiceResp = await createInvoice(user.id, amount, 'stars');
+      const link = invoiceResp?.invoice_link || invoiceResp?.link;
       if (link) {
         window?.Telegram?.WebApp?.openInvoice?.(link, (status) => {
           if (status === 'paid') {
