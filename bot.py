@@ -1645,6 +1645,209 @@ async def api_ping(request):
         "message": "Сервер активен"
     })
 
+
+# ============================================
+# PROMO CODES
+# ============================================
+
+@dp.message(Command("promo"))
+async def admin_create_promo(message: types.Message):
+    """Admin: /promo CODE STARS USES [DAYS]
+    CODE  - alphanumeric code (will be uppercased)
+    STARS - reward stars amount
+    USES  - max redemptions (0 = unlimited)
+    DAYS  - optional, days until expiry (omit = never expires)
+    Example: /promo WELCOME 50 100 30
+    """
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        parts = message.text.split()
+        if len(parts) < 4:
+            await message.answer(
+                "❌ Использование: `/promo CODE STARS USES [DAYS]`\n"
+                "Пример: `/promo WELCOME 50 100 30`\n"
+                "USES=0 → безлимит. DAYS не указан → бессрочно.",
+                parse_mode="Markdown"
+            )
+            return
+
+        code = parts[1].strip().upper()
+        if not code.isalnum() or len(code) > 32:
+            await message.answer("❌ Код должен быть alphanumeric, до 32 символов.")
+            return
+
+        stars = int(parts[2])
+        uses = int(parts[3])
+        if stars <= 0 or stars > 1000000:
+            await message.answer("❌ STARS должно быть 1..1000000.")
+            return
+        if uses < 0:
+            await message.answer("❌ USES должно быть >= 0 (0 = безлимит).")
+            return
+
+        expires_at = None
+        if len(parts) >= 5:
+            days = int(parts[4])
+            if days > 0:
+                expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+        existing = supabase.table("promo_codes").select("id").eq("code", code).limit(1).execute()
+        if existing.data:
+            await message.answer(f"❌ Код `{code}` уже существует.", parse_mode="Markdown")
+            return
+
+        supabase.table("promo_codes").insert({
+            "code": code,
+            "reward_stars": stars,
+            "max_uses": uses,
+            "uses_count": 0,
+            "expires_at": expires_at,
+            "created_by": message.from_user.id,
+            "is_active": True
+        }).execute()
+
+        exp_txt = f"до {expires_at}" if expires_at else "бессрочно"
+        uses_txt = "безлимит" if uses == 0 else f"{uses} активаций"
+        await message.answer(
+            f"✅ Промокод создан\n"
+            f"🔑 `{code}`\n"
+            f"⭐ {stars}\n"
+            f"👥 {uses_txt}\n"
+            f"⏰ {exp_txt}",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {message.from_user.id} created promo {code}: {stars}⭐, {uses_txt}, {exp_txt}")
+    except ValueError:
+        await message.answer("❌ Некорректные числа.")
+    except Exception as e:
+        logger.error(f"Error in admin_create_promo: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("listpromo"))
+async def admin_list_promo(message: types.Message):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        res = supabase.table("promo_codes").select("code, reward_stars, max_uses, uses_count, expires_at, is_active").order("created_at", desc=True).limit(20).execute()
+        if not res.data:
+            await message.answer("📭 Промокодов нет.")
+            return
+
+        lines_out = ["🎟 *Промокоды (последние 20):*\n"]
+        for p in res.data:
+            status = "🟢" if p['is_active'] else "🔴"
+            used = f"{p['uses_count']}/{p['max_uses']}" if p['max_uses'] > 0 else f"{p['uses_count']}/∞"
+            exp = p.get('expires_at') or "∞"
+            lines_out.append(f"{status} `{p['code']}` — {p['reward_stars']}⭐ — {used} — {exp}")
+
+        await message.answer("\n".join(lines_out), parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_list_promo: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("delpromo"))
+async def admin_delete_promo(message: types.Message):
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Использование: `/delpromo CODE`", parse_mode="Markdown")
+            return
+        code = parts[1].strip().upper()
+        res = supabase.table("promo_codes").update({"is_active": False}).eq("code", code).execute()
+        if not res.data:
+            await message.answer(f"❌ Код `{code}` не найден.", parse_mode="Markdown")
+            return
+        await message.answer(f"✅ Промокод `{code}` деактивирован.", parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in admin_delete_promo: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
+
+async def api_redeem_promo(request):
+    """POST /api/redeem_promo  body: {code: str}
+    Activates promo code for the authenticated user.
+    """
+    try:
+        data = request.get('body_json') or await request.json()
+        uid = request.get('user_id') or data.get('user_id')
+        if not uid:
+            return web.json_response({"success": False, "error": "unauthorized"}, status=401)
+        uid = int(uid)
+
+        code = (data.get("code") or "").strip().upper()
+        if not code or not code.isalnum() or len(code) > 32:
+            return web.json_response({"success": False, "error": "invalid_code"}, status=400)
+
+        # Fetch promo
+        promo_res = supabase.table("promo_codes").select("*").eq("code", code).eq("is_active", True).limit(1).execute()
+        if not promo_res.data:
+            return web.json_response({"success": False, "error": "code_not_found"}, status=404)
+        promo = promo_res.data[0]
+
+        # Expiry check
+        if promo.get('expires_at'):
+            try:
+                exp = datetime.strptime(promo['expires_at'].replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
+                if datetime.now() > exp:
+                    return web.json_response({"success": False, "error": "code_expired"}, status=403)
+            except Exception:
+                pass
+
+        # Max uses check
+        if promo['max_uses'] > 0 and promo['uses_count'] >= promo['max_uses']:
+            return web.json_response({"success": False, "error": "code_exhausted"}, status=403)
+
+        # Already redeemed by this user?
+        existing = supabase.table("promo_redemptions").select("id").eq("promo_code_id", promo['id']).eq("user_id", uid).limit(1).execute()
+        if existing.data:
+            return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
+
+        # User must exist
+        user_res = supabase.table("users").select("stars").eq("user_id", uid).limit(1).execute()
+        if not user_res.data:
+            return web.json_response({"success": False, "error": "user_not_found"}, status=404)
+        current_stars = int(user_res.data[0].get('stars', 0))
+        reward = int(promo['reward_stars'])
+        new_balance = current_stars + reward
+
+        # Insert redemption FIRST (unique constraint blocks race condition)
+        try:
+            supabase.table("promo_redemptions").insert({
+                "promo_code_id": promo['id'],
+                "user_id": uid
+            }).execute()
+        except Exception as e:
+            # Likely unique violation = already redeemed in a race
+            logger.warning(f"promo_redemptions insert failed for uid={uid} code={code}: {e}")
+            return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
+
+        # Then bump uses_count and credit user
+        supabase.table("promo_codes").update({"uses_count": promo['uses_count'] + 1}).eq("id", promo['id']).execute()
+        supabase.table("users").update({"stars": new_balance}).eq("user_id", uid).execute()
+
+        logger.info(f"User {uid} redeemed promo {code} for {reward}⭐ (new balance: {new_balance})")
+        return web.json_response({
+            "success": True,
+            "code": code,
+            "reward_stars": reward,
+            "new_balance": new_balance
+        })
+    except Exception as e:
+        logger.error(f"Error in api_redeem_promo: {e}", exc_info=True)
+        return web.json_response({"success": False, "error": "server_error"}, status=500)
+
+
+
 async def main():
     init_db()
 
@@ -1664,6 +1867,7 @@ async def main():
     app.router.add_get('/api/inventory', api_inventory)
     app.router.add_post('/api/open_case', api_open_case)
     app.router.add_post('/api/claim_daily', api_claim_daily)
+    app.router.add_post('/api/redeem_promo', api_redeem_promo)
     app.router.add_post('/api/create_invoice', api_invoice)              # TON оплата
     app.router.add_post('/api/create_stars_invoice', api_create_stars_invoice)  # Telegram Stars
     app.router.add_post('/api/ton_success', api_ton_success)
