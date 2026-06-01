@@ -670,6 +670,12 @@ async def help_cmd(message: types.Message):
             text += "• `/stats` — Общая статистика\n"
             text += "• `/admin_send <текст>` — Рассылка всем пользователям\n"
             text += "• `/hype <номер_шаблона>` — Маркетинговая рассылка\n"
+            text += "\n🎟 **Промокоды:**\n"
+            text += "• `/promo CODE STARS USES [DAYS]` — Создать промокод\n"
+            text += "  `USES=0` → безлимит, `DAYS` опционально\n"
+            text += "  Пример: `/promo WELCOME 50 100 30`\n"
+            text += "• `/listpromo` — Список промокодов (топ 20)\n"
+            text += "• `/delpromo CODE` — Деактивировать промокод\n"
 
         await message.answer(text, parse_mode="Markdown")
     except Exception as e:
