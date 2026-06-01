@@ -17,7 +17,6 @@ from pytoniq import Builder
 import hmac
 import urllib.parse
 import json
-from functools import wraps
 
 # --- НАСТРОЙКИ ---
 load_dotenv()
@@ -176,7 +175,7 @@ HYPE_TEMPLATES = [
     "@{username}, 20 секунд назад пользователь id {fake_id} выиграл Astral Shard за 20К ⭐\n\n🔥 Испытай свою удачу, твои шансы на победу в платной рулетке увеличены на 34% (всего на час)!",
     "🚨 СКИДКА ДО КРИТИЧЕСКОГО МИНИМУМА!\n\nТолько в ближайшие 30 минут стоимость открытия 'Scream Case' снижена! Успей забрать топовые подарки, пока админ спит. Шанс дропа окупаемого дропа повышен x2!",
     "🎁 Бонус выходного дня!\n\nКаждый, кто зайдет в приложение прямо сейчас, получит +2 бесплатных тикета на баланс! Не упусти халяву, заходи в профиль!",
-    "🌙 Ночной режим активирован.\n\nПо статистике, именно ночью выпадает самый дорогой дроп. Прямо сейчас кто-то крутит рулетку и забирает сочные призы. А чего ждешь ты? Твой бонусный процент на удачу уже активирован!",
+    "🌙 Ночной режим активирован.\n\nПо статистике, именно ночью выпадает самый дорогой дроп. Прямо сейчас кто-то крутит рулетку и забирает сочные призы. А чего ждешь ты? Твой бонусный процент на удачу уже активирون!",
 ]
 
 # --- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ---
@@ -274,7 +273,7 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
         return (0, date), True
     except Exception as e:
         logger.error(f"Error in register_or_get: {e}")
-        return (0, ""), False
+        return (0, "")
 
 def update_user_profile(user_id, username=None, first_name=None, photo_url=None):
     try:
@@ -286,6 +285,7 @@ def update_user_profile(user_id, username=None, first_name=None, photo_url=None)
             supabase.table("users").update(updates).eq("user_id", user_id).execute()
     except Exception as e:
         logger.error(f"Error in update_user_profile: {e}")
+
 
 def update_balance(user_id, amount, mode="add", is_donation=False):
     try:
@@ -327,6 +327,7 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
     except Exception as e:
         logger.error(f"Error in update_balance: {e}")
 
+
 def _get_random_gift(min_p, max_p):
     drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
     if not drop_items:
@@ -346,6 +347,7 @@ def _get_random_gift(min_p, max_p):
     else:
         return random.choice(drop_items)
 
+
 def _increment_achievement_progress(user_id, achievement_type):
     mapping = {
         'cases_opened': ['first_step', 'ludoman'],
@@ -362,6 +364,7 @@ def _increment_achievement_progress(user_id, achievement_type):
                 supabase.table("user_achievements").insert({"user_id": user_id, "achievement_id": aid, "progress": 1}).execute()
         except Exception as e:
             logger.error(f"Error incrementing achievement {aid} for {user_id}: {e}")
+
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
@@ -380,6 +383,7 @@ def init_db():
         logger.info("✅ Base tasks initialized in Supabase")
     except Exception as e:
         logger.error(f"❌ Supabase initialization error: {e}")
+
 
 # --- БЛОКЧЕЙН МОНИТОРИНГ ---
 async def check_ton_transactions():
@@ -497,83 +501,116 @@ async def check_ton_transactions():
 
             await asyncio.sleep(30)
 
-# --- MIDDLEWARE ---
-def cors_middleware(app, handler):
-    @wraps(handler)
-    async def middleware(request):
-        if request.method == 'OPTIONS':
-            response = web.Response(status=200)
-            response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
-            response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
-            response.headers['Access-Control-Allow-Headers'] = request.headers.get(
-                'Access-Control-Request-Headers',
-                'Content-Type, Authorization, X-Requested-With'
-            )
-            response.headers['Access-Control-Allow-Credentials'] = 'true'
-            response.headers['Access-Control-Max-Age'] = '86400'
-            return response
-        return await handler(request)
-    return middleware
 
-def auth_middleware(app, handler):
-    @wraps(handler)
-    async def middleware(request):
-        if request.path in ['/', '/health', '/api/ping']:
-            return await handler(request)
+# --- ANTI-SLEEP SELF-PING ---
+async def self_ping_task():
+    """Пингует свой же /api/ping каждые 10 мин чтобы Render Free не засыпал."""
+    base_url = os.getenv("RENDER_EXTERNAL_URL", "https://screamcasebot.onrender.com")
+    ping_url = f"{base_url}/api/ping"
 
-        if request.path.startswith('/api/'):
-            init_data = None
-            user_id_from_query = request.query.get("user_id")
-            user_id_from_body = None
-            body_json = None
+    await asyncio.sleep(30)
+    logger.info(f"🔄 Self-ping запущен на {ping_url} (каждые 10 мин)")
 
+    async with aiohttp.ClientSession() as session:
+        while True:
             try:
-                if request.method == 'POST':
-                    body_json = await request.json()
-                    request['body_json'] = body_json
-                    user_id_from_body = body_json.get("user_id")
-                    init_data = body_json.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
-                else:
-                    init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+                async with session.get(ping_url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+                    if resp.status == 200:
+                        logger.debug(f"✅ Self-ping ok ({resp.status})")
+                    else:
+                        logger.warning(f"⚠️ Self-ping вернул {resp.status}")
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Self-ping timeout")
             except Exception as e:
-                logger.debug(f"Error extracting initData in middleware: {e}")
-                init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
+                logger.warning(f"⚠️ Self-ping error: {e}")
 
-            user_data = validate_init_data(init_data, TOKEN)
+            await asyncio.sleep(600)
 
-            if not user_data and request.method == 'GET' and user_id_from_query:
-                try:
-                    user_id_int = int(user_id_from_query)
-                    logger.warning(f"⚠️ GET {request.path}: InitData invalid, using query user_id fallback (user={user_id_int})")
-                    request['user_id'] = user_id_int
-                    request['user_data'] = {'id': user_id_int}
-                    return await handler(request)
-                except (ValueError, TypeError):
-                    pass
 
-            if not user_data and request.method == 'POST' and user_id_from_body:
-                try:
-                    user_id_int = int(user_id_from_body)
-                    logger.warning(f"⚠️ POST {request.path}: InitData invalid, using body user_id fallback (user={user_id_int})")
-                    request['user_id'] = user_id_int
-                    request['user_data'] = {'id': user_id_int}
-                    return await handler(request)
-                except (ValueError, TypeError):
-                    pass
+# --- MIDDLEWARE ---
+@web.middleware
+async def cors_middleware(request, handler):
+    if request.method == 'OPTIONS':
+        response = web.Response(status=200)
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', '*')
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+        response.headers['Access-Control-Allow-Headers'] = request.headers.get(
+            'Access-Control-Request-Headers',
+            'Content-Type, Authorization, X-Requested-With'
+        )
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        response.headers['Access-Control-Max-Age'] = '86400'
+        return response
 
-            if not user_data:
-                logger.warning(f"❌ Unauthorized access attempt to {request.path} ({request.method})")
-                return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+    try:
+        response = await handler(request)
+    except web.HTTPException as ex:
+        response = ex
 
-            request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
-            request['user_data'] = user_data
+    origin = request.headers.get('Origin', '*')
+    response.headers['Access-Control-Allow-Origin'] = origin
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
 
+
+@web.middleware
+async def auth_middleware(request, handler):
+    if request.path in ['/', '/health', '/api/ping']:
         return await handler(request)
-    return middleware
+
+    if request.path.startswith('/api/'):
+        init_data = None
+        user_id_from_query = request.query.get("user_id")
+        user_id_from_body = None
+        body_json = None
+
+        try:
+            if request.method == 'POST':
+                body_json = await request.json()
+                request['body_json'] = body_json
+                user_id_from_body = body_json.get("user_id")
+                init_data = body_json.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+            else:
+                init_data = request.query.get('initData') or request.headers.get('Authorization', '').replace('Bearer ', '')
+        except Exception as e:
+            logger.debug(f"Error extracting initData in middleware: {e}")
+            init_data = request.headers.get('Authorization', '').replace('Bearer ', '')
+
+        user_data = validate_init_data(init_data, TOKEN)
+
+        if not user_data and request.method == 'GET' and user_id_from_query:
+            try:
+                user_id_int = int(user_id_from_query)
+                logger.warning(f"⚠️ GET {request.path}: InitData invalid, using query user_id fallback (user={user_id_int})")
+                request['user_id'] = user_id_int
+                request['user_data'] = {'id': user_id_int}
+                return await handler(request)
+            except (ValueError, TypeError):
+                pass
+
+        if not user_data and request.method == 'POST' and user_id_from_body:
+            try:
+                user_id_int = int(user_id_from_body)
+                logger.warning(f"⚠️ POST {request.path}: InitData invalid, using body user_id fallback (user={user_id_int})")
+                request['user_id'] = user_id_int
+                request['user_data'] = {'id': user_id_int}
+                return await handler(request)
+            except (ValueError, TypeError):
+                pass
+
+        if not user_data:
+            logger.warning(f"❌ Unauthorized access attempt to {request.path} ({request.method})")
+            return web.json_response({"error": "unauthorized", "message": "Invalid or expired authorization"}, status=401)
+
+        request['user_id'] = int(user_data.get('id')) if user_data.get('id') else None
+        request['user_data'] = user_data
+
+    return await handler(request)
 
 # --- БОТ ---
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message, command: CommandObject):
@@ -617,6 +654,7 @@ async def start_cmd(message: types.Message, command: CommandObject):
         logger.error(f"Error in start_cmd: {e}")
         await message.answer("❌ Ошибка при запуске. Попробуйте позже.")
 
+
 @dp.message(Command("help"))
 async def help_cmd(message: types.Message):
     try:
@@ -637,6 +675,7 @@ async def help_cmd(message: types.Message):
     except Exception as e:
         logger.error(f"Error in help_cmd: {e}")
         await message.answer("❌ Ошибка при получении справки.")
+
 
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
@@ -680,6 +719,7 @@ async def admin_add(message: types.Message):
         logger.error(f"Error in admin_add: {e}")
         await message.answer("❌ Ошибка при добавлении звезд.")
 
+
 @dp.message(Command("setbalance"))
 async def admin_set(message: types.Message):
     try:
@@ -707,6 +747,7 @@ async def admin_set(message: types.Message):
     except Exception as e:
         logger.error(f"Error in admin_set: {e}")
         await message.answer("❌ Ошибка при установке баланса.")
+
 
 @dp.message(Command("user"))
 async def admin_user_info(message: types.Message):
@@ -741,6 +782,7 @@ async def admin_user_info(message: types.Message):
     except Exception as e:
         logger.error(f"Error in admin_user_info: {e}")
         await message.answer("❌ Ошибка при получении информации.")
+
 
 @dp.message(Command("stats"))
 async def admin_stats(message: types.Message):
@@ -793,6 +835,7 @@ async def admin_stats(message: types.Message):
         logger.error(f"Error in admin_stats: {e}")
         await message.answer(f"❌ Ошибка при получении статистики: {e}")
 
+
 @dp.message(Command("admin_send"))
 async def admin_send(message: types.Message, command: CommandObject):
     try:
@@ -825,6 +868,7 @@ async def admin_send(message: types.Message, command: CommandObject):
     except Exception as e:
         logger.error(f"Error in admin_send: {e}")
         await message.answer("❌ Ошибка при рассылке.")
+
 
 @dp.message(Command("hype"))
 async def admin_hype(message: types.Message, command: CommandObject):
@@ -871,7 +915,6 @@ async def admin_hype(message: types.Message, command: CommandObject):
     except Exception as e:
         logger.error(f"Error in admin_hype: {e}")
         await message.answer("❌ Ошибка при запуске hype-рассылки.")
-
 async def check_membership(user_id: int):
     try:
         member = await bot.get_chat_member(chat_id="@ScreamCase", user_id=user_id)
@@ -1226,7 +1269,6 @@ async def api_claim_daily(request):
     except Exception as e:
         logger.error(f"Error in api_claim_daily: {e}")
         return web.json_response({"error": "server_error"}, status=500)
-
 async def api_ton_success(request):
     try:
         data = request.get('body_json') or await request.json()
@@ -1514,12 +1556,15 @@ async def api_inventory(request):
 
 async def background_tasks(app):
     app['ton_monitor'] = asyncio.create_task(check_ton_transactions())
+    app['self_ping'] = asyncio.create_task(self_ping_task())
     yield
-    app['ton_monitor'].cancel()
-    try:
-        await app['ton_monitor']
-    except asyncio.CancelledError:
-        pass
+    for task_name in ('ton_monitor', 'self_ping'):
+        if task_name in app:
+            app[task_name].cancel()
+            try:
+                await app[task_name]
+            except asyncio.CancelledError:
+                pass
 
 async def root_handler(request):
     return web.Response(text="OK", status=200)
