@@ -566,3 +566,47 @@ export const fetchInventory = async (userId) => {
     return { user_id: userId, total_items: 0, total_value: 0, items: [] };
   }
 };
+
+export const redeemPromo = async (userId, code) => {
+  try {
+    if (!userId) throw new Error('Missing userId');
+    if (!code || typeof code !== 'string') throw new Error('Invalid code');
+
+    const cleanCode = code.trim().toUpperCase();
+
+    const response = await fetch(`${BACKEND_URL}/api/redeem_promo`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, code: cleanCode })),
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      const errCode = data.error || 'unknown';
+      const messages = {
+        invalid_code: '❌ Неверный формат кода',
+        code_not_found: '❌ Промокод не найден',
+        code_expired: '❌ Промокод истёк',
+        code_exhausted: '❌ Промокод больше недоступен',
+        already_redeemed: '❌ Вы уже активировали этот код',
+        user_not_found: '❌ Пользователь не найден',
+        unauthorized: '❌ Нет авторизации',
+      };
+      const msg = messages[errCode] || '❌ Ошибка активации промокода';
+      showAlert(msg);
+      const err = new Error(msg);
+      err.status = response.status;
+      err.errorCode = errCode;
+      throw err;
+    }
+
+    return data; // { success, code, reward_stars, new_balance }
+  } catch (error) {
+    console.error('Error redeeming promo:', error);
+    if (!error.status) {
+      showAlert('❌ Ошибка сети. Попробуйте позже.');
+    }
+    throw error;
+  }
+};
