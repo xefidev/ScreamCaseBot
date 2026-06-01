@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
+import { redeemPromo } from '../api';
 
 const PAGE_BG = '#1a1b1e';
 
@@ -20,6 +21,9 @@ export default function ProfilePage({
   const [user, setUser] = React.useState(null);
   const [sellingIds, setSellingIds] = useState(new Set());
   const [isSellingAll, setIsSellingAll] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoMessage, setPromoMessage] = useState(null); // { type: 'success'|'error', text }
 
   React.useEffect(() => {
     const userData = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -69,6 +73,36 @@ export default function ProfilePage({
     setTimeout(() => setIsSellingAll(false), 1000);
   };
 
+  const handleRedeemPromo = async () => {
+    const code = promoCode.trim().toUpperCase();
+    if (!code) {
+      setPromoMessage({ type: 'error', text: 'Введите промокод' });
+      return;
+    }
+    const uid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    if (!uid) {
+      setPromoMessage({ type: 'error', text: 'Не удалось определить пользователя' });
+      return;
+    }
+    setPromoLoading(true);
+    setPromoMessage(null);
+    triggerHaptic('medium');
+    try {
+      const res = await redeemPromo(uid, code);
+      if (res?.success) {
+        setBalance(prev => (Number(prev) || 0) + Number(res.reward_stars || 0));
+        setPromoMessage({ type: 'success', text: `+${res.reward_stars} ⭐ зачислено` });
+        setPromoCode('');
+        triggerHaptic('success');
+      }
+    } catch (err) {
+      setPromoMessage({ type: 'error', text: err?.message || 'Ошибка активации' });
+    } finally {
+      setPromoLoading(false);
+      setTimeout(() => setPromoMessage(null), 4000);
+    }
+  };
+
   return (
     <div className="h-full overflow-y-auto p-4 pb-24" style={{ backgroundColor: PAGE_BG }}>
       <div className="mb-6 flex justify-between items-center">
@@ -102,6 +136,43 @@ export default function ProfilePage({
             <p className="mt-2 text-[8px] text-white/20 font-black uppercase tracking-widest">ID: {user?.id || '0'}</p>
           </div>
         </div>
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }} className="glass-panel mb-6 p-5 bg-white/[0.02] border-white/10">
+        <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-white/40">🎟 Промокод</h4>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={promoCode}
+            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemPromo(); }}
+            placeholder="ВВЕДИТЕ КОД"
+            maxLength={32}
+            disabled={promoLoading}
+            className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-black uppercase tracking-widest text-white placeholder-white/20 focus:outline-none focus:border-yellow-500/40 disabled:opacity-50"
+          />
+          <motion.button
+            whileTap={{ scale: 0.95 }}
+            onClick={handleRedeemPromo}
+            disabled={promoLoading || !promoCode.trim()}
+            className="px-5 py-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
+          >
+            {promoLoading ? '...' : 'АКТИВИРОВАТЬ'}
+          </motion.button>
+        </div>
+        {promoMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mt-3 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest ${
+              promoMessage.type === 'success'
+                ? 'bg-green-500/10 border border-green-500/30 text-green-400'
+                : 'bg-red-500/10 border border-red-500/30 text-red-400'
+            }`}
+          >
+            {promoMessage.text}
+          </motion.div>
+        )}
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="glass-panel p-6 bg-white/[0.02] border-white/10">
