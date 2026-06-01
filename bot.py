@@ -1016,6 +1016,38 @@ async def api_balance(request):
         logger.error(f"Error in api_balance: {e}")
         return web.json_response({"error": "server_error", "ok": False}, status=500)
 
+_bot_username_cache = None
+
+async def _get_bot_username():
+    """Caches bot username to avoid hitting Telegram API on every request."""
+    global _bot_username_cache
+    if _bot_username_cache:
+        return _bot_username_cache
+    try:
+        me = await bot.get_me()
+        _bot_username_cache = me.username
+        return _bot_username_cache
+    except Exception as e:
+        logger.error(f"Failed to fetch bot username: {e}")
+        return None
+
+async def api_referral_link(request):
+    """Returns the user's personal referral deeplink: t.me/<bot>?start=<uid>."""
+    try:
+        uid = request.query.get("user_id") or request.get('user_id')
+        if not uid:
+            return web.json_response({"error": "no_id"}, status=400)
+        uid = int(uid)
+        username = await _get_bot_username()
+        if not username:
+            return web.json_response({"error": "bot_unavailable"}, status=503)
+        link = f"https://t.me/{username}?start={uid}"
+        return web.json_response({"link": link, "bot_username": username, "user_id": uid})
+    except Exception as e:
+        logger.error(f"Error in api_referral_link: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+
 async def api_referrals(request):
     try:
         uid = request.query.get("user_id")
@@ -1185,6 +1217,7 @@ async def api_upgrade(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_wheel_spin(request):
+    """Wheel spin - drops ITEMS (not stars) into inventory."""
     try:
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
@@ -1193,7 +1226,17 @@ async def api_wheel_spin(request):
 
         uid = int(uid)
         cost = 50
-        SEGMENTS = [15, 50, 20, 100, 25, 200, 30, 300, 40, 500, 50, 150]
+
+        WHEEL_SEGMENTS = [
+            {"min": 15,   "max": 30,   "weight": 35.0},
+            {"min": 30,   "max": 60,   "weight": 25.0},
+            {"min": 60,   "max": 120,  "weight": 18.0},
+            {"min": 120,  "max": 200,  "weight": 12.0},
+            {"min": 200,  "max": 400,  "weight": 6.5},
+            {"min": 400,  "max": 800,  "weight": 2.5},
+            {"min": 800,  "max": 1500, "weight": 0.8},
+            {"min": 1500, "max": 3000, "weight": 0.2},
+        ]
 
         user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
         if not user_res.data:
@@ -1204,31 +1247,52 @@ async def api_wheel_spin(request):
         if balance < cost:
             return web.json_response({"error": "insufficient_funds"}, status=403)
 
-        rand = random.random() * 100
-        if rand < 0.8:
-            prize_index = 9
-        elif rand < 15:
-            prize_index = random.choice([3, 5, 7, 11])
-        else:
-            prize_index = random.choice([0, 1, 2, 4, 6, 8, 10])
+        total_weight = sum(seg["weight"] for seg in WHEEL_SEGMENTS)
+        rand = random.random() * total_weight
+        acc = 0
+        prize_index = 0
+        for i, seg in enumerate(WHEEL_SEGMENTS):
+            acc += seg["weight"]
+            if rand <= acc:
+                prize_index = i
+                break
 
-        prize = SEGMENTS[prize_index]
-        new_balance = balance - cost + prize
+        seg = WHEEL_SEGMENTS[prize_index]
+        gift = _get_random_gift(seg["min"], seg["max"])
+        if not gift:
+            return web.json_response({"error": "no_items_available"}, status=500)
+
+        new_balance = balance - cost
         new_spent = (u.get('total_spent') or 0) + cost
 
         supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
-        supabase.table("payments").insert([
-            {"user_id": uid, "amount": -cost, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-            {"user_id": uid, "amount": prize, "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-        ]).execute()
+        supabase.table("payments").insert({
+            "user_id": uid,
+            "amount": -cost,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }).execute()
+        supabase.table("inventory").insert({
+            "user_id": uid,
+            "item_name": gift["name"],
+            "item_price": gift["price"],
+            "item_image": gift["image"],
+            "obtained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "source": "wheel"
+        }).execute()
 
-        logger.info(f"User {uid} spun wheel: won {prize}")
+        logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
-            "success": True, "win_amount": prize,
-            "prize_index": prize_index, "new_balance": new_balance
+            "success": True,
+            "prize_index": prize_index,
+            "item": {
+                "name": gift["name"],
+                "price": gift["price"],
+                "image": gift["image"]
+            },
+            "new_balance": new_balance
         })
     except Exception as e:
-        logger.error(f"Error in api_wheel_spin: {e}")
+        logger.error(f"Error in api_wheel_spin: {e}", exc_info=True)
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_claim_daily_internal(uid):
@@ -1309,28 +1373,30 @@ async def api_invoice(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 async def api_create_stars_invoice(request):
-    """Генерирует инвойс для оплаты через Telegram Stars (XTR)."""
+    """Generates a Telegram Stars (XTR) invoice with validation."""
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = request.get('user_id') or data.get("user_id")
         amount = int(data.get("amount", 100))
 
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
+        if amount < 1 or amount > 100000:
+            return web.json_response({"error": "invalid_amount"}, status=400)
 
         link = await bot.create_invoice_link(
             title="Пополнение ⭐",
-            description=f"Покупка {amount} звезд для ScreamCase",
+            description=f"Покупка {amount} звёзд для ScreamCase",
             payload=f"stars_{uid}_{amount}",
-            provider_token="",  # ОБЯЗАТЕЛЬНО ПУСТО ДЛЯ XTR
+            provider_token="",
             currency="XTR",
-            prices=[LabeledPrice(label="Звезды", amount=amount)]
+            prices=[LabeledPrice(label=f"{amount} ⭐", amount=amount)]
         )
         logger.info(f"✅ Stars invoice created for user {uid}: {amount} stars")
         return web.json_response({"ok": True, "invoice_link": link})
     except Exception as e:
-        logger.error(f"Stars invoice error: {e}")
-        return web.json_response({"error": str(e)}, status=500)
+        logger.error(f"Stars invoice error: {e}", exc_info=True)
+        return web.json_response({"error": "invoice_creation_failed", "details": str(e)}, status=500)
 
 async def api_get_achievements(request):
     try:
@@ -1593,6 +1659,7 @@ async def main():
     app.router.add_get('/api/check_sub', api_check_sub)
     app.router.add_get('/api/balance', api_balance)
     app.router.add_get('/api/referrals', api_referrals)
+    app.router.add_get('/api/referral_link', api_referral_link)
     app.router.add_get('/api/cases', api_cases)
     app.router.add_get('/api/inventory', api_inventory)
     app.router.add_post('/api/open_case', api_open_case)
