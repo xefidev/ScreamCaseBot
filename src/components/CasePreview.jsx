@@ -128,14 +128,26 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         setShowResult(false);
 
         const lastWonItem = results[results.length - 1];
-        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
-        if (winIndex === -1) winIndex = 0;
 
+        // Строим ленту из 10 повторов spinItems, НО подменяем целевую позицию на реальный выигрыш с сервера.
+        // Это гарантирует визуальное совпадение независимо от findIndex.
         const repetitions = 10;
         const extendedItems = [];
         for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
 
+        // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
+        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
+        if (winIndex === -1) {
+            winIndex = Math.floor(spinItems.length / 2);
+            console.warn('⚠️ Выигранный предмет не найден в spinItems:', lastWonItem?.name);
+        }
+
         const targetIndex = spinItems.length * 7 + winIndex;
+        // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
+        if (lastWonItem && targetIndex < extendedItems.length) {
+            extendedItems[targetIndex] = { ...lastWonItem };
+        }
+
         const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
         const containerCenter = viewportWidth / 2;
         const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
