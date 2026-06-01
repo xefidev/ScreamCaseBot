@@ -79,14 +79,33 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
             return;
         }
 
-        const winIndex = res.prize_index;
-        const wonSegment = wheelSegments[winIndex];
+        // Сервер возвращает реальный item ({name, price, image}). Маппим его на ближайший сектор.
+        const wonItem = res.item || {};
+        let winIndex = wheelSegments.findIndex(s => s.item?.name === wonItem.name);
+        if (winIndex === -1 && typeof wonItem.price === 'number') {
+            let bestIdx = 0, bestDiff = Infinity;
+            wheelSegments.forEach((s, i) => {
+                const d = Math.abs((s.price || 0) - wonItem.price);
+                if (d < bestDiff) { bestDiff = d; bestIdx = i; }
+            });
+            winIndex = bestIdx;
+        }
+        if (winIndex === -1) winIndex = 0;
+
+        // Подменяем отображаемый item на реальный выигрыш с сервера
+        const wonSegment = {
+            ...wheelSegments[winIndex],
+            item: wonItem.name ? wonItem : wheelSegments[winIndex].item,
+            price: wonItem.price ?? wheelSegments[winIndex].price,
+            label: (wonItem.price ?? wheelSegments[winIndex].price).toString()
+        };
         pendingWinSegment.current = wonSegment;
 
         if (window.Telegram?.WebApp?.HapticFeedback) window.Telegram.WebApp.HapticFeedback.impactOccurred('heavy');
 
         const fullRotations = 10;
-        const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE); 
+        // Смещение к ЦЕНТРУ сектора, иначе стрелка попадает на границу
+        const segmentOffset = 360 - (winIndex * SEGMENT_ANGLE) - (SEGMENT_ANGLE / 2);
         const newTargetRotation = spinRotation + (fullRotations * 360) + segmentOffset;
 
         setTargetRotation(newTargetRotation);
