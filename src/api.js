@@ -282,8 +282,7 @@ export const fetchAchievements = async (userId) => {
     return await response.json();
   } catch (error) {
     console.error('Error fetching achievements:', error);
-    return [];
-  }
+    return [];  }
 };
 
 export const claimAchievement = async (userId, achievementId) => {
@@ -315,7 +314,8 @@ export const createInvoice = async (userId, amount, paymentType = 'stars') => {
       throw new Error('Missing userId or amount');
     }
     
-    const response = await fetch(`${BACKEND_URL}/api/create_invoice`, {
+    const endpoint = paymentType === 'stars' ? '/api/create_stars_invoice' : '/api/create_invoice';
+    const response = await fetch(`${BACKEND_URL}${endpoint}`, {
       method: 'POST',
       headers: getAuthHeaders(),
       body: JSON.stringify(addAuthToBody({ user_id: userId, amount, payment_type: paymentType })),
