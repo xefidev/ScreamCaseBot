@@ -438,7 +438,7 @@ export const claimDaily = async (userId) => {
   }
 };
 
-export const openCase = async (userId, caseId) => {
+export const openCase = async (userId, caseId, promoCode = null) => {
   try {
     if (!userId || caseId === null) {
       throw new Error('Missing userId or caseId');
@@ -446,7 +446,8 @@ export const openCase = async (userId, caseId) => {
     
     const payload = {
       user_id: userId,
-      case_id: caseId
+      case_id: caseId,
+      ...(promoCode ? { promo_code: promoCode } : {})
     };
     
     const response = await fetch(`${BACKEND_URL}/api/open_case`, {
