@@ -224,13 +224,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {previewGifts?.map((gift, idx) => (
               <motion.div key={idx} animate={{ y: [0, -12, 0], rotate: [0, 4, -4, 0], scale: [1.3, 1.4, 1.3] }} transition={{ duration: 2.5 + idx * 0.4, repeat: Infinity, ease: "easeInOut", delay: idx * 0.6 }} className="absolute" style={{ left: previewGifts?.length === 1 ? '50%' : idx === 0 ? '35%' : '65%', top: '15%', transform: 'translateX(-50%)', zIndex: 10 }}>
                 <div className="rounded-3xl p-4" style={{ backgroundColor: `${caseItem?.glowColor || '#ffffff'}15` }}>
-                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
                 </div>
               </motion.div>
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img src={caseItem?.image || '/asset/Case/CaseBlack.png'} alt="Case" className="w-48 h-48 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+            <img src={caseItem?.image || '/asset/Case/CaseBlack.png'} alt="Case" className="w-48 h-48 object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
           </div>
         </div>
 
@@ -246,9 +246,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                       <motion.div key={spinData?.animKey} className="flex gap-3" initial={{ x: 0 }} animate={{ x: spinData?.targetX }} transition={{ duration: 4, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete}>
                         {spinData?.items?.map((item, idx) => (
                           <div key={idx} className="flex-shrink-0 w-36 h-36 rounded-2xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}40`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
-                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
+                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
                             </div>
                           </div>
                         ))}
@@ -267,7 +267,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                         <motion.div key={idx} initial={{ opacity: 0, y: 20, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: idx * 0.15, duration: 0.4 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
                           <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
                           <p className={`${wonItems?.length > 2 ? 'text-[10px]' : wonItems?.length > 1 ? 'text-xs' : 'text-xl'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
-                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
+                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                         </motion.div>
                       ))}
                     </div>
@@ -304,12 +304,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 {dropItems?.map((item, idx) => (
                   <motion.div key={idx} whileHover={{ scale: 1.05 }} className="glass-panel w-full max-w-[140px] p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg">
                     <div className="w-16 h-16 flex items-center justify-center mb-2">
-                        <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                        <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
                     <p className="text-white font-bold text-[10px] text-center truncate w-full uppercase tracking-tight mb-1">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/5">
                         <span className="text-white/60 text-[9px] font-black">{item?.price ?? item?.cost ?? 0}</span>
-                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
                   </motion.div>
                 ))}
@@ -335,7 +335,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {isLowBalance ? (
               <div className="flex items-center gap-2">
                 <span>ПОПОЛНИТЬ НА {missingAmount}</span>
-                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars"  loading="lazy" decoding="async" />
               </div>
             ) : isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
               <div className="flex items-center justify-center gap-2">
@@ -343,7 +343,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 <div className="w-px h-4 bg-white/20 mx-1" />
                 <span className="flex items-center gap-1">
                   {isDaily ? 1 : getCost} 
-                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                 </span>
               </div>
             )}
