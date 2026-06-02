@@ -2,7 +2,7 @@ import logging
 import asyncio
 import os
 import aiohttp
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton, LabeledPrice
@@ -1127,18 +1127,46 @@ async def api_open_case(request):
         if price is None:
             return web.json_response({"error": "invalid_case", "ok": False}, status=400)
 
-        user_res = supabase.table("users").select("stars, promo_opened, total_spent, cases_opened_count").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars, total_spent, cases_opened_count").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found", "ok": False}, status=404)
 
         u = user_res.data[0]
         balance = u.get('stars', 0)
-        promo_opened = u.get('promo_opened', 0)
 
+        # PROMO CASE — server-side promo_code validation
         if case_id == 1:
-            if promo_opened:
-                return web.json_response({"error": "already_opened", "ok": False, "message": "Промо-кейс уже открыт"}, status=403)
-            supabase.table("users").update({"promo_opened": 1}).eq("user_id", uid).execute()
+            promo_code = (data.get("promo_code") or "").strip().upper()
+            if not promo_code:
+                return web.json_response({"error": "promo_code_required", "ok": False, "message": "Введите промокод"}, status=400)
+
+            promo_res = supabase.table("promo_codes").select("code, min_deposit_24h, duration_h, created_at, is_active").eq("code", promo_code).eq("is_active", True).execute()
+            if not promo_res.data:
+                return web.json_response({"error": "promo_invalid", "ok": False, "message": "Неверный промокод"}, status=403)
+
+            promo = promo_res.data[0]
+            # Duration window check (active for duration_h hours since created_at)
+            try:
+                created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
+                expires_at = created_at + timedelta(hours=int(promo.get('duration_h') or 0))
+                now_utc = datetime.now(timezone.utc)
+                if now_utc > expires_at:
+                    return web.json_response({"error": "promo_expired", "ok": False, "message": "Промокод истёк"}, status=403)
+            except Exception as e:
+                logger.warning(f"Promo duration check failed: {e}")
+
+            # Deposit gate: user must have deposited >= min_deposit_24h within duration window (or last 24h)
+            min_dep = int(promo.get('min_deposit_24h') or 0)
+            if min_dep > 0:
+                window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
+                dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", window_start).execute()
+                total_dep = sum(int(d.get('amount') or 0) for d in (dep_res.data or []))
+                if total_dep < min_dep:
+                    return web.json_response({
+                        "error": "deposit_required", "ok": False,
+                        "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
+                    }, status=403)
+
             price = 0
 
         if balance < price:
