@@ -1399,13 +1399,13 @@ async def api_wheel_spin(request):
             "amount": -cost,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
-        supabase.table("inventory").insert({
+        supabase.table("user_inventory").insert({
             "user_id": uid,
+            "case_id": None,
             "item_name": gift["name"],
             "item_price": gift["price"],
             "item_image": gift["image"],
-            "obtained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "source": "wheel"
+            "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
@@ -1995,13 +1995,13 @@ async def api_redeem_promo(request):
         }
 
         try:
-            supabase.table("inventory").insert({
+            supabase.table("user_inventory").insert({
                 "user_id": uid,
+                "case_id": 1,
                 "item_name": gift["name"],
                 "item_price": gift["price"],
                 "item_image": gift["image"],
-                "obtained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "source": "promo"
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }).execute()
         except Exception as e:
             logger.error(f"Failed to grant PROMO CASE gift to {uid}: {e}")
