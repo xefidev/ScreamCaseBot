@@ -114,11 +114,18 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
   );
 };
 
-export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent, promoOpened, setPromoOpened, onTopUpRequest }) {
+export default function CasesGrid({ user, onBuy, onWin, balance, setBalance, setSpent, promoOpened, setPromoOpened, onTopUpRequest, resetSignal }) {
   const [selectedCase, setSelectedCase] = useState(null);
   const [view, setView] = useState('grid');
   const [flashDiscountCaseId, setFlashDiscountCaseId] = useState(() => getRandomFlashDiscount());
   const [dbCases, setDbCases] = useState([]);
+
+  // Сброс при клике на активный таб "Кейсы" в нав-баре
+  useEffect(() => {
+    if (resetSignal === undefined || resetSignal === null) return;
+    setSelectedCase(null);
+    setView('grid');
+  }, [resetSignal]);
 
   useEffect(() => {
     const loadDbCases = async () => {
