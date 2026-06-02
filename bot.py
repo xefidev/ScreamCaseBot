@@ -1107,6 +1107,12 @@ async def api_open_case(request):
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
         case_id = data.get("case_id")
+        # quantity: 1..10 (multi-open). For daily/promo cases forced to 1.
+        try:
+            quantity = int(data.get("quantity", 1) or 1)
+        except Exception:
+            quantity = 1
+        quantity = max(1, min(10, quantity))
 
         if not uid or case_id is None:
             return web.json_response({"error": "invalid_data", "ok": False}, status=400)
@@ -1114,6 +1120,7 @@ async def api_open_case(request):
         case_id = int(case_id)
         uid = int(uid)
 
+        # Daily case — always quantity=1
         if case_id == 2:
             res = await api_claim_daily_internal(uid)
             if res.status == 200:
@@ -1125,7 +1132,7 @@ async def api_open_case(request):
                 except Exception as e:
                     logger.error(f"Failed to increment case quests: {e}")
                 logger.info(f"✅ User {uid} opened Daily Case, won: {won_item['name']}")
-                return web.json_response({"ok": True, "success": True, "item": won_item, "deducted": 1})
+                return web.json_response({"ok": True, "success": True, "item": won_item, "items": [won_item], "deducted": 1, "quantity": 1})
             return res
 
         price = CASES_PRICES.get(case_id)
@@ -1139,8 +1146,9 @@ async def api_open_case(request):
         u = user_res.data[0]
         balance = u.get('stars', 0)
 
-        # PROMO CASE — server-side promo_code validation
+        # PROMO CASE — server-side promo_code validation. Promo cases forced to quantity=1.
         if case_id == 1:
+            quantity = 1
             promo_code = (data.get("promo_code") or "").strip().upper()
             if not promo_code:
                 return web.json_response({"error": "promo_code_required", "ok": False, "message": "Введите промокод"}, status=400)
@@ -1150,7 +1158,6 @@ async def api_open_case(request):
                 return web.json_response({"error": "promo_invalid", "ok": False, "message": "Неверный промокод"}, status=403)
 
             promo = promo_res.data[0]
-            # Duration window check (active for duration_h hours since created_at)
             try:
                 created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
                 expires_at = created_at + timedelta(hours=int(promo.get('duration_h') or 0))
@@ -1160,7 +1167,6 @@ async def api_open_case(request):
             except Exception as e:
                 logger.warning(f"Promo duration check failed: {e}")
 
-            # Deposit gate: user must have deposited >= min_deposit_24h within duration window (or last 24h)
             min_dep = int(promo.get('min_deposit_24h') or 0)
             if min_dep > 0:
                 window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
@@ -1171,69 +1177,83 @@ async def api_open_case(request):
                         "error": "deposit_required", "ok": False,
                         "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
                     }, status=403)
-
             price = 0
 
-        if balance < price:
+        total_cost = price * quantity
+
+        if balance < total_cost:
             return web.json_response({
                 "error": "insufficient_funds", "ok": False,
                 "message": "Недостаточно звёзд для открытия кейса",
-                "required": price, "balance": balance
+                "required": total_cost, "balance": balance
             }, status=403)
 
         case_info = CASES_DATA.get(case_id)
         if not case_info:
             return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
 
-        won_item = _get_random_gift(case_info['min'], case_info['max'])
-        new_spent = (u.get('total_spent') or 0) + price
-        new_count = (u.get('cases_opened_count') or 0) + 1
+        # Roll all gifts up front so each open is independent
+        won_items = [_get_random_gift(case_info['min'], case_info['max']) for _ in range(quantity)]
 
-        # Race-safe atomic decrement: only succeeds if stars are still >= price
+        new_spent = (u.get('total_spent') or 0) + total_cost
+        new_count = (u.get('cases_opened_count') or 0) + quantity
+
+        # Atomic deduction: succeeds only if balance hasn't changed since we read it
         upd = supabase.table("users").update({
-            "stars": balance - price,
+            "stars": balance - total_cost,
             "total_spent": new_spent,
             "cases_opened_count": new_count
         }).eq("user_id", uid).eq("stars", balance).execute()
         if not upd.data:
-            # Concurrent request modified balance between our read and write — abort
-            logger.warning(f"User {uid} open_case race lost (concurrent balance change)")
+            logger.warning(f"User {uid} open_case race lost (concurrent balance change, qty={quantity})")
             return web.json_response({"error": "concurrent_modification", "ok": False, "message": "Попробуйте ещё раз"}, status=409)
 
+        # Save all wins to inventory in one batch
         try:
-            supabase.table("user_inventory").insert({
+            inv_rows = [{
                 "user_id": uid,
                 "case_id": case_id,
-                "item_name": won_item['name'],
-                "item_image": won_item['image'],
-                "item_price": won_item['price'],
+                "item_name": w['name'],
+                "item_image": w['image'],
+                "item_price": w['price'],
                 "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            } for w in won_items]
+            supabase.table("user_inventory").insert(inv_rows).execute()
         except Exception as e:
             logger.error(f"Failed to save to user_inventory: {e}")
 
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -price,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-
-        _increment_achievement_progress(uid, 'cases_opened')
         try:
-            supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -total_cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log payment: {e}")
+
+        # Increment achievement+quests progress per opened case
+        for _ in range(quantity):
+            _increment_achievement_progress(uid, 'cases_opened')
+        try:
+            for _ in range(quantity):
+                supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
         except Exception as e:
             logger.error(f"Failed to increment case quests: {e}")
 
-        logger.info(f"✅ User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}). New balance: {balance - price}")
+        logger.info(f"✅ User {uid} opened case {case_id} x{quantity}: won {[w['name'] for w in won_items]} (total {total_cost}⭐). New balance: {balance - total_cost}")
 
         return web.json_response({
             "ok": True, "success": True,
-            "item": won_item, "deducted": price,
-            "new_balance": balance - price
+            "item": won_items[0],            # backward-compat with old single-open clients
+            "items": won_items,              # new multi-open payload
+            "deducted": total_cost,
+            "quantity": quantity,
+            "new_balance": balance - total_cost
         })
     except Exception as e:
         logger.error(f"Error in api_open_case: {e}")
         return web.json_response({"error": "server_error", "ok": False}, status=500)
+
 
 async def api_upgrade(request):
     """
