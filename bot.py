@@ -1838,11 +1838,18 @@ async def api_redeem_promo(request):
         if existing.data:
             return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
 
-        # User must exist
+        # User must exist — auto-create if missing (covers admins/new users who haven't opened webapp yet)
         user_res = supabase.table("users").select("stars").eq("user_id", uid).limit(1).execute()
         if not user_res.data:
-            return web.json_response({"success": False, "error": "user_not_found"}, status=404)
-        current_stars = int(user_res.data[0].get('stars', 0))
+            try:
+                supabase.table("users").insert({"user_id": uid, "stars": 0}).execute()
+                current_stars = 0
+                logger.info(f"Auto-created user record for {uid} during promo redemption")
+            except Exception as e:
+                logger.error(f"Failed to auto-create user {uid} for promo: {e}")
+                return web.json_response({"success": False, "error": "user_not_found"}, status=404)
+        else:
+            current_stars = int(user_res.data[0].get('stars', 0))
         reward = int(promo['reward_stars'])
         new_balance = current_stars + reward
 
