@@ -1226,50 +1226,123 @@ async def api_open_case(request):
         return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_upgrade(request):
+    """
+    Server-authoritative upgrade:
+    - Validates user OWNS source_item_id from inventory (no client trust)
+    - Recomputes chance from real prices (ignores client chance)
+    - Removes source from inventory on ANY outcome
+    - Adds upgraded item to inventory on success only
+    """
     try:
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
-        cost = int(data.get("cost", 0))
-        chance = float(data.get("chance", 0))
-        item_price = int(data.get("item_price", 0))
+        source_inv_id = data.get("source_inventory_id")
+        target_name = (data.get("target_name") or "").strip()
+        target_price = int(data.get("target_price", 0))
 
-        if not uid:
-            return web.json_response({"error": "no_id"}, status=400)
+        if not uid or source_inv_id is None or not target_name or target_price <= 0:
+            return web.json_response({"error": "invalid_data", "ok": False}, status=400)
 
-        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", int(uid)).execute()
+        uid = int(uid)
+
+        # 1) Verify user owns the source inventory item AND it has not been used
+        inv_res = supabase.table("user_inventory").select("id, item_name, item_image, item_price, withdrawn").eq("user_id", uid).eq("id", source_inv_id).execute()
+        if not inv_res.data:
+            return web.json_response({"error": "source_not_found", "ok": False, "message": "Предмет не найден в инвентаре"}, status=404)
+
+        source_item = inv_res.data[0]
+        if source_item.get("withdrawn"):
+            return web.json_response({"error": "source_used", "ok": False, "message": "Предмет уже использован"}, status=403)
+
+        source_price = int(source_item.get("item_price") or 0)
+        if source_price <= 0:
+            return web.json_response({"error": "invalid_source_price", "ok": False}, status=400)
+
+        # 2) Target must be strictly more expensive than source
+        if target_price <= source_price:
+            return web.json_response({"error": "invalid_target", "ok": False, "message": "Цель должна быть дороже"}, status=400)
+
+        # 3) Recompute chance on server (ignore client)
+        real_chance = (source_price / target_price) * 100.0
+        # Cap to sane range
+        if real_chance < 1: real_chance = 1.0
+        if real_chance > 95: real_chance = 95.0
+
+        # 4) Charge a small upgrade fee (10% of price diff, min 1 star)
+        price_diff = target_price - source_price
+        cost = max(1, int(price_diff * 0.10))
+
+        user_res = supabase.table("users").select("stars, total_spent, successful_upgrades_count").eq("user_id", uid).execute()
         if not user_res.data:
-            return web.json_response({"error": "user_not_found"}, status=404)
-
+            return web.json_response({"error": "user_not_found", "ok": False}, status=404)
         u = user_res.data[0]
-        balance = u['stars']
+        balance = int(u.get('stars') or 0)
         if balance < cost:
-            return web.json_response({"error": "insufficient_funds"}, status=403)
+            return web.json_response({"error": "insufficient_funds", "ok": False, "message": f"Нужно {cost}⭐", "required": cost}, status=403)
 
-        success = random.random() * 100 < chance
+        # 5) Roll
+        success = random.random() * 100 < real_chance
 
+        # 6) ALWAYS consume source item (mark withdrawn so it cannot be reused)
+        supabase.table("user_inventory").update({"withdrawn": True}).eq("id", source_inv_id).eq("user_id", uid).execute()
+
+        # 7) Apply outcome
         consolation = None
-        if not success and item_price > 100:
-            consolation_item = _get_random_gift(0, 100)
-            consolation = {"type": "poor_case", "item": consolation_item}
-
         new_spent = (u.get('total_spent') or 0) + cost
         updates = {"stars": balance - cost, "total_spent": new_spent}
 
         if success:
             updates["successful_upgrades_count"] = (u.get('successful_upgrades_count') or 0) + 1
-            _increment_achievement_progress(int(uid), 'upgrades_successful')
+            # Add upgraded item to inventory
+            try:
+                supabase.table("user_inventory").insert({
+                    "user_id": uid,
+                    "case_id": source_item.get("case_id") if isinstance(source_item, dict) else None,
+                    "item_name": target_name,
+                    "item_image": data.get("target_image") or "",
+                    "item_price": target_price,
+                    "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }).execute()
+            except Exception as e:
+                logger.error(f"Failed to insert upgraded item: {e}")
+            _increment_achievement_progress(uid, 'upgrades_successful')
+        else:
+            # Consolation if target was expensive
+            if target_price > 100:
+                consolation_item = _get_random_gift(0, 100)
+                consolation = {"type": "poor_case", "item": consolation_item}
+                try:
+                    supabase.table("user_inventory").insert({
+                        "user_id": uid,
+                        "case_id": None,
+                        "item_name": consolation_item['name'],
+                        "item_image": consolation_item['image'],
+                        "item_price": consolation_item['price'],
+                        "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    }).execute()
+                except Exception as e:
+                    logger.error(f"Failed to insert consolation: {e}")
 
-        supabase.table("users").update(updates).eq("user_id", int(uid)).execute()
+        supabase.table("users").update(updates).eq("user_id", uid).execute()
         supabase.table("payments").insert({
-            "user_id": int(uid),
+            "user_id": uid,
             "amount": -cost,
             "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
 
-        return web.json_response({"success": success, "consolation": consolation})
+        logger.info(f"Upgrade user={uid} src={source_price}⭐ tgt={target_price}⭐ chance={real_chance:.1f}% cost={cost} success={success}")
+
+        return web.json_response({
+            "ok": True,
+            "success": success,
+            "chance": real_chance,
+            "cost": cost,
+            "consolation": consolation,
+            "new_balance": balance - cost
+        })
     except Exception as e:
         logger.error(f"Error in api_upgrade: {e}")
-        return web.json_response({"error": "server_error"}, status=500)
+        return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_wheel_spin(request):
     """Wheel spin - drops ITEMS (not stars) into inventory."""
