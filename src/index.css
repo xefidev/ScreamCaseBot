@@ -151,3 +151,66 @@ button, input, .flex-center {
   transform: translateZ(0);
   -webkit-transform: translateZ(0);
 }
+
+
+/* ============ LOW-PERFORMANCE MODE ============
+   Activated via <html class="lowperf"> from PerfProvider.
+   Disables expensive blur/shadow effects, shortens animations,
+   skips decorative shimmer/gradient backgrounds. Core gameplay
+   animations (case opening, wheel spin) still run via JS but
+   without expensive CSS filters. */
+
+html.lowperf,
+html.lowperf body {
+  /* Hint the browser this mode prioritizes responsiveness */
+  text-rendering: optimizeSpeed;
+}
+
+html.lowperf * {
+  /* Cap all CSS transitions to a snappy short fade */
+  transition-duration: 0.12s !important;
+  animation-duration: 0.2s !important;
+}
+
+html.lowperf .glass-panel,
+html.lowperf .glass-card,
+html.lowperf .glass-button,
+html.lowperf .glass-input {
+  /* Drop backdrop-blur — most expensive op on weak GPUs */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  /* Compensate with a slightly more opaque bg so glass still reads */
+  background-color: rgba(28, 30, 35, 0.85) !important;
+}
+
+html.lowperf .shadow-glass,
+html.lowperf .shadow-xl,
+html.lowperf .shadow-2xl {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+html.lowperf .shimmer-bg,
+html.lowperf .oil-slick-bg {
+  /* Disable looping background animations entirely */
+  background: rgba(255, 255, 255, 0.04) !important;
+  animation: none !important;
+}
+
+html.lowperf .framer-motion-fix {
+  /* Don't force GPU layer creation on weak devices */
+  transform: none;
+  -webkit-transform: none;
+}
+
+/* Reduce filter/blur on standalone decorative elements */
+html.lowperf [class*="blur-"] {
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+/* Skip hover scale-up effects */
+html.lowperf .group-hover\:scale-110:hover,
+html.lowperf .hover\:scale-105:hover,
+html.lowperf [class*="hover:scale-"]:hover {
+  transform: none !important;
+}
