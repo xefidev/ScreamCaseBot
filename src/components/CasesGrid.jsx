@@ -61,7 +61,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
             src={caseItem?.image || '/asset/Case/CaseBlack.png'}
             alt={caseItem?.name || 'Case'}
             className="w-24 h-24 object-contain relative z-10"
-            onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+            onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
             loading="lazy"
             style={{
               filter: `drop-shadow(0 0 20px ${caseItem?.glowColor || '#ffffff'}80)`,
@@ -104,7 +104,7 @@ const CaseCard = ({ caseItem, onClick, isFlashDiscount }) => {
               )}
               <span className={`flex items-center gap-1 ${isFlashDiscount ? 'text-red-400' : 'text-white'}`}>
                 {isFlashDiscount && (caseItem?.price || 0) > 1 ? discountedPrice : (caseItem?.price || 0)}
-                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
               </span>
             </div>
           )}
