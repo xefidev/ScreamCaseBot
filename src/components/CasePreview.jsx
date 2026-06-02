@@ -158,6 +158,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
     } catch (e) {
         console.error("Error in handleOpen:", e);
+        stopSound();
         setIsSpinning(false);
         // \u041e\u0442\u043a\u0430\u0442 \u043e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0433\u043e \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044f \u2014 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u043c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u0441\u0443\u043c\u043c\u0443 (\u0441\u0435\u0440\u0432\u0435\u0440 \u043d\u0435 \u0441\u043f\u0438\u0441\u0430\u043b, \u0442\u0430\u043a \u043a\u0430\u043a \u043e\u0448\u0438\u0431\u043a\u0430)
         if (setBalance && totalCost > 0) setBalance(prev => prev + totalCost);
