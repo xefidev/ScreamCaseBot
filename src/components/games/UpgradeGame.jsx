@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
+import { usePerf } from '../../perfContext.jsx';
 import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
@@ -8,6 +9,7 @@ import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 import { playSound, stopSound } from '../../App';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
+  const { lowPerf: _lp } = usePerf();
   const [selectedSlot1, setSelectedSlot1] = useState(null);
   const [selectedSlot2, setSelectedSlot2] = useState(null);
   const [isUpgrading, setIsUpgrading] = useState(false);
@@ -302,7 +304,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
             </motion.div>
           )}
         </AnimatePresence>
-        {showConfetti && ( <div className="fixed inset-0 z-[100] pointer-events-none"><Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={400} colors={['#22c55e', '#4ade80', '#86efac', '#ffffff']} /></div> )}
+        {showConfetti && ( <div className="fixed inset-0 z-[100] pointer-events-none">{!_lp && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={180} tweenDuration={3000} colors={['#22c55e', '#4ade80', '#86efac', '#ffffff']} />}</div> )}
       </div>
     </div>
   );
