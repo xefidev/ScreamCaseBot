@@ -682,9 +682,9 @@ async def help_cmd(message: types.Message):
             text += "• `/admin_send <текст>` — Рассылка всем пользователям\n"
             text += "• `/hype <номер_шаблона>` — Маркетинговая рассылка\n"
             text += "\n🎟 **Промокоды:**\n"
-            text += "• `/promo CODE STARS USES [DAYS]` — Создать промокод\n"
-            text += "  `USES=0` → безлимит, `DAYS` опционально\n"
-            text += "  Пример: `/promo WELCOME 50 100 30`\n"
+            text += "• `/promo CODE MIN_DEPOSIT_24H DURATION_H` — Создать промокод\n"
+            text += "  Юзер должен пополнить ≥MIN_DEPOSIT⭐ за 24ч; код живёт DURATION_H часов\n"
+            text += "  Пример: `/promo WELCOME 50 24`\n"
             text += "• `/listpromo` — Список промокодов (топ 20)\n"
             text += "• `/delpromo CODE` — Деактивировать промокод\n"
 
