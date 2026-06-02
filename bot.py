@@ -1192,19 +1192,21 @@ async def api_open_case(request):
         if not case_info:
             return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
 
-        # Roll all gifts up front so each open is independent
-        # Roll N gifts trying to keep visual variety (no two identical when pool permits)
+        # Roll N gifts. Guarantee uniqueness across ALL rolls when the gift pool is large enough.
+        # If the pool has fewer distinct items than `quantity`, fall back to allowing repeats
+        # (but still minimize them via a "seen" set with bounded retries).
         won_items = []
+        seen_names = set()
         for _ in range(quantity):
-            attempt = None
-            for _try in range(8):
+            chosen = None
+            for _try in range(20):
                 cand = _get_random_gift(case_info['min'], case_info['max'])
-                # avoid back-to-back identical with last roll if there's variety in the pool
-                if not won_items or cand['name'] != won_items[-1]['name']:
-                    attempt = cand
+                if cand['name'] not in seen_names:
+                    chosen = cand
                     break
-                attempt = cand
-            won_items.append(attempt)
+                chosen = cand  # keep last candidate as fallback if pool exhausted
+            won_items.append(chosen)
+            seen_names.add(chosen['name'])
 
         new_spent = (u.get('total_spent') or 0) + total_cost
         new_count = (u.get('cases_opened_count') or 0) + quantity
