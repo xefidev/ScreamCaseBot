@@ -5,7 +5,7 @@ import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 
-import { playSound } from '../../App';
+import { playSound, stopSound } from '../../App';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
   const [selectedSlot1, setSelectedSlot1] = useState(null);
@@ -64,11 +64,18 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
         setConsolation(null);
         setShowConfetti(false);
 
-        const res = await upgradeItem(userId, upgradeCost, successChance, (selectedSlot1?.price || selectedSlot1?.cost || 0));
+        const res = await upgradeItem(
+      userId,
+      selectedSlot1?.id,
+      selectedSlot2?.name || 'Upgraded',
+      selectedSlot2?.price || selectedSlot2?.cost || 0,
+      selectedSlot2?.image || ''
+    );
+    const serverChance = (typeof res?.chance === 'number') ? res.chance : successChance;
         
         pendingResult.current = res;
 
-        const greenAngle = (successChance / 100) * 360;
+        const greenAngle = (serverChance / 100) * 360;
         let targetAngle;
         if (res.success) {
           targetAngle = (Math.random() * (greenAngle - 10)) + 5;
@@ -81,12 +88,17 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
         setAnimKey(prev => prev + 1);
         
         if (setBalance) {
-          const balanceData = await fetchBalance(userId);
-          setBalance(balanceData.stars);
+          if (typeof res?.new_balance === 'number') {
+            setBalance(res.new_balance);
+          } else {
+            const balanceData = await fetchBalance(userId);
+            setBalance(balanceData.stars);
+          }
         }
 
     } catch (error) {
         console.error("Upgrade error:", error);
+        stopSound();
         setIsUpgrading(false);
     }
   };
