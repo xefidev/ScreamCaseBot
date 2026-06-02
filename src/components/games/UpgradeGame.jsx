@@ -162,7 +162,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
           <span className="text-4xl font-black text-white drop-shadow-glow">{successChance}%</span>
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Шанс</span>
         </div>
-        <motion.div key={animKey} animate={{ rotate: arrowRotation }} transition={{ duration: 4.5, ease: [0.17, 0.67, 0.16, 0.99] }} onAnimationComplete={handleAnimationComplete} className="absolute top-[-15px] left-1/2 transform -translate-x-1/2 z-30" style={{ transformOrigin: '50% 115px' }}>
+        <motion.div key={animKey} animate={{ rotate: arrowRotation }} transition={{ duration: 4.5, ease: [0.17, 0.67, 0.16, 0.99] }} onAnimationComplete={handleAnimationComplete} className="absolute top-[-15px] left-1/2 transform -translate-x-1/2 z-30" style={{ transformOrigin: '50% 111px' }}>
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="filter drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]"><path d="M12 24L2 4H22L12 24Z" fill="white" /><path d="M12 20L5 6H19L12 20Z" fill="rgba(255,255,255,0.8)" /></svg>
         </motion.div>
       </div>
@@ -236,8 +236,15 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                   exit={{ opacity: 0, scale: 0.8 }} 
                   className={`text-center p-8 rounded-3xl border-2 relative overflow-hidden bg-[#1a1b1f] ${ result === 'success' ? 'border-green-500/60 shadow-[0_0_80px_rgba(34,197,94,0.25)]' : 'border-red-500/60 shadow-[0_0_80px_rgba(239,68,68,0.25)]' }`}>
                   <div className={`absolute inset-0 ${result === 'success' ? 'bg-gradient-to-br from-green-500/5 to-transparent' : 'bg-gradient-to-br from-red-500/5 to-transparent'} pointer-events-none`} />
-                  <p className={`font-black text-4xl mb-2 font-rounded uppercase tracking-tight ${ result === 'success' ? 'text-green-400 text-glow' : 'text-red-400 text-glow' }`}>{result === 'success' ? 'УСПЕХ!' : 'ПРОВАЛ!'}</p>
-                  <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">{result === 'success' ? 'Предмет улучшен' : 'Предмет потерян'}</p>
+                  <div className="flex items-center justify-center gap-3 mb-2">
+                    {result === 'fail' && (
+                      <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/20 border-2 border-red-500/60">
+                        <span className="text-red-400 text-3xl font-black">✕</span>
+                      </div>
+                    )}
+                    <p className={`font-black text-4xl font-rounded uppercase tracking-tight ${ result === 'success' ? 'text-green-400 text-glow' : 'text-red-400 text-glow' }`}>{result === 'success' ? 'УСПЕХ!' : 'ПРОВАЛ!'}</p>
+                  </div>
+                  <p className={`text-[11px] font-black uppercase tracking-[0.2em] ${result === 'success' ? 'text-white/40' : 'text-red-400/70'}`}>{result === 'success' ? 'Предмет улучшен' : '💀 Предмет потерян навсегда'}</p>
                   {result === 'fail' && consolation && (
                      <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center gap-3">
                         <span className="text-[10px] font-black text-yellow-500 uppercase">Утешительный приз:</span>
