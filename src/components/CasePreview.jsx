@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
+import { usePerf } from '../perfContext.jsx';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 import { playSound } from '../App';
 
 export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
+  const { lowPerf: _lp } = usePerf();
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -197,7 +199,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     <div className="h-full flex flex-col bg-[#1a1b1e]">
       {showConfetti && (
         <div className="fixed inset-0 z-60 pointer-events-none">
-          <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={200} />
+          {!_lp && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={120} tweenDuration={3000} />}
         </div>
       )}
 
