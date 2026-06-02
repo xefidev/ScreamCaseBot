@@ -15,6 +15,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [showResult, setShowResult] = useState(false);
   const [wonItems, setWonItems] = useState([]);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
+  const [multiReels, setMultiReels] = useState({ reels: [], animKey: 0 });
+  const reelsCompletedRef = useRef(0);
   const [currentStock, setCurrentStock] = useState(caseItem?.remaining_limit !== undefined ? caseItem?.remaining_limit : (caseItem?.stock || 0));
   const [quantity, setQuantity] = useState(1);
   const [promoCode, setPromoCode] = useState('');
@@ -89,18 +91,34 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     }
 
     if (targetQuantity > 1) {
-          // MULTI-OPEN: skip roulette animation, show grid of results immediately
-          stopSound();
-          setTimeout(() => {
-            setHasSpun(true);
-            setIsSpinning(false);
-            setShowConfetti(true);
-            setShowResult(true);
-            playSound('/asset/Sounds/win_sound.mp3');
-            if (onWin && results?.length > 0) {
-              try { onWin(results); } catch (e) { console.error('onWin error:', e); }
+          // MULTI-OPEN: N vertical reels spinning simultaneously, sound starts WITH animation
+          const REEL_ITEM_H = 96;                // px per item in vertical reel
+          const REPS_PER_REEL = 14;              // repetitions of spinItems per reel for length
+          const TARGET_REP_INDEX = 11;           // which repetition contains the winning slot
+
+          // Build reels: each reel has its own shuffled items list and own winning index
+          const reels = results.map((winItem, reelIdx) => {
+            const reelItems = [];
+            for (let r = 0; r < REPS_PER_REEL; r++) {
+              // light per-reel shuffle of spinItems so reels don't look identical
+              const shuffled = [...spinItems].sort(() => Math.random() - 0.5);
+              reelItems.push(...shuffled);
             }
-          }, 250);
+            // place real win at TARGET_REP_INDEX * spinItems.length + random offset
+            const slotOffset = Math.floor(Math.random() * spinItems.length);
+            const winIndex = TARGET_REP_INDEX * spinItems.length + slotOffset;
+            reelItems[winIndex] = { ...winItem };
+
+            // viewport center → translate so winIndex lands at center
+            const targetY = -(winIndex * REEL_ITEM_H);
+            return { items: reelItems, targetY, winIndex, itemH: REEL_ITEM_H };
+          });
+
+          reelsCompletedRef.current = 0;
+          animationKey.current += 1;
+          setMultiReels({ reels, animKey: animationKey.current });
+          // sound starts NOW, simultaneously with the reels animation
+          playSound('/asset/Sounds/spin_sound.mp3');
         } else {
           // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
                           if (setBalance && totalCost > 0) {
@@ -276,6 +294,66 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                           </div>
                         ))}
                       </motion.div>
+                    )}
+                    {multiReels?.reels?.length > 0 && (
+                      <div
+                        className={`grid gap-2 w-full ${
+                          multiReels.reels.length <= 2 ? 'grid-cols-2' :
+                          multiReels.reels.length <= 4 ? 'grid-cols-2' :
+                          multiReels.reels.length <= 6 ? 'grid-cols-3' :
+                          multiReels.reels.length <= 9 ? 'grid-cols-3' :
+                          'grid-cols-5'
+                        }`}
+                      >
+                        {multiReels.reels.map((reel, rIdx) => (
+                          <div
+                            key={`reel-${rIdx}-${multiReels.animKey}`}
+                            className="relative overflow-hidden rounded-xl border bg-black/30"
+                            style={{
+                              height: `${reel.itemH}px`,
+                              borderColor: `${caseItem?.glowColor || '#ffffff'}40`,
+                            }}
+                          >
+                            <motion.div
+                              className="flex flex-col"
+                              initial={{ y: 0 }}
+                              animate={{ y: reel.targetY }}
+                              transition={{
+                                duration: 3.6 + rIdx * 0.12,    // slight stagger so they finish 0..1.2s apart
+                                ease: [0.12, 0, 0.39, 0],
+                              }}
+                              onAnimationComplete={() => {
+                                reelsCompletedRef.current += 1;
+                                if (reelsCompletedRef.current >= multiReels.reels.length) {
+                                  handleAnimationComplete();
+                                }
+                              }}
+                            >
+                              {reel.items.map((it, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex-shrink-0 w-full flex items-center justify-center"
+                                  style={{
+                                    height: `${reel.itemH}px`,
+                                    backgroundColor: `${caseItem?.glowColor || '#ffffff'}08`,
+                                  }}
+                                >
+                                  <img
+                                    src={getDynamicGiftImage(it)}
+                                    alt="Gift"
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-16 h-16 object-contain"
+                                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                                  />
+                                </div>
+                              ))}
+                            </motion.div>
+                            {/* center selector line */}
+                            <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] bg-white/60" />
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
