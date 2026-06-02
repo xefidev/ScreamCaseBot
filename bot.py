@@ -482,6 +482,17 @@ async def check_ton_transactions():
                                     "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                                 }).execute()
 
+                                # Log deposit for promo-gate (last-24h tracking)
+                                try:
+                                    supabase.table("stars_deposits").insert({
+                                        "user_id": user_id,
+                                        "amount": int(stars_to_add),
+                                        "source": "ton",
+                                        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    }).execute()
+                                except Exception as _e:
+                                    logger.warning(f"stars_deposits insert (ton) failed: {_e}")
+
                                 try:
                                     await bot.send_message(user_id, f"✅ Оплата TON подтверждена!\n\nНа ваш баланс зачислено {stars_to_add} ⭐")
                                     logger.info(f"📩 Пользователь {user_id} уведомлен о зачислении.")
@@ -960,6 +971,16 @@ async def success_pay(m: types.Message):
             return
 
         update_balance(user_id, amount, "add", is_donation=True)
+        # Log deposit for promo-gate (last-24h tracking)
+        try:
+            supabase.table("stars_deposits").insert({
+                "user_id": user_id,
+                "amount": int(amount),
+                "source": "stars",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as _e:
+            logger.warning(f"stars_deposits insert (stars) failed: {_e}")
         logger.info(f"Payment successful for user {user_id}: +{amount} stars")
         await m.answer(f"✅ Спасибо за покупку! +{amount} ⭐")
 
@@ -1678,12 +1699,11 @@ async def api_ping(request):
 
 @dp.message(Command("promo"))
 async def admin_create_promo(message: types.Message):
-    """Admin: /promo CODE STARS USES [DAYS]
-    CODE  - alphanumeric code (will be uppercased)
-    STARS - reward stars amount
-    USES  - max redemptions (0 = unlimited)
-    DAYS  - optional, days until expiry (omit = never expires)
-    Example: /promo WELCOME 50 100 30
+    """Admin: /promo CODE MIN_DEPOSIT_24H DURATION_HOURS
+    CODE              - alphanumeric (uppercased)
+    MIN_DEPOSIT_24H   - минимум ⭐ пополнений за последние 24ч до активации
+    DURATION_HOURS    - срок жизни промокода в часах (общий)
+    Пример: /promo PROMO 50 1  →  код PROMO, нужно ≥50⭐/24ч, действует 1ч.
     """
     try:
         if message.from_user.id not in ADMIN_IDS:
@@ -1691,11 +1711,11 @@ async def admin_create_promo(message: types.Message):
             return
 
         parts = message.text.split()
-        if len(parts) < 4:
+        if len(parts) != 4:
             await message.answer(
-                "❌ Использование: `/promo CODE STARS USES [DAYS]`\n"
-                "Пример: `/promo WELCOME 50 100 30`\n"
-                "USES=0 → безлимит. DAYS не указан → бессрочно.",
+                "❌ Использование: `/promo CODE MIN_DEPOSIT_24H DURATION_HOURS`\n"
+                "Пример: `/promo PROMO 50 1`\n"
+                "→ код `PROMO`, нужно ≥50⭐ депозитов за 24ч, действует 1ч.",
                 parse_mode="Markdown"
             )
             return
@@ -1705,20 +1725,14 @@ async def admin_create_promo(message: types.Message):
             await message.answer("❌ Код должен быть alphanumeric, до 32 символов.")
             return
 
-        stars = int(parts[2])
-        uses = int(parts[3])
-        if stars <= 0 or stars > 1000000:
-            await message.answer("❌ STARS должно быть 1..1000000.")
+        min_deposit = int(parts[2])
+        duration_h = int(parts[3])
+        if min_deposit < 0 or min_deposit > 1000000:
+            await message.answer("❌ MIN_DEPOSIT_24H должно быть 0..1000000.")
             return
-        if uses < 0:
-            await message.answer("❌ USES должно быть >= 0 (0 = безлимит).")
+        if duration_h <= 0 or duration_h > 8760:
+            await message.answer("❌ DURATION_HOURS должно быть 1..8760.")
             return
-
-        expires_at = None
-        if len(parts) >= 5:
-            days = int(parts[4])
-            if days > 0:
-                expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
 
         existing = supabase.table("promo_codes").select("id").eq("code", code).limit(1).execute()
         if existing.data:
@@ -1727,25 +1741,20 @@ async def admin_create_promo(message: types.Message):
 
         supabase.table("promo_codes").insert({
             "code": code,
-            "reward_stars": stars,
-            "max_uses": uses,
-            "uses_count": 0,
-            "expires_at": expires_at,
+            "min_deposit_24h": min_deposit,
+            "duration_hours": duration_h,
             "created_by": message.from_user.id,
             "is_active": True
         }).execute()
 
-        exp_txt = f"до {expires_at}" if expires_at else "бессрочно"
-        uses_txt = "безлимит" if uses == 0 else f"{uses} активаций"
         await message.answer(
             f"✅ Промокод создан\n"
             f"🔑 `{code}`\n"
-            f"⭐ {stars}\n"
-            f"👥 {uses_txt}\n"
-            f"⏰ {exp_txt}",
+            f"💰 мин. пополнение за 24ч: {min_deposit}⭐\n"
+            f"⏰ срок жизни: {duration_h}ч",
             parse_mode="Markdown"
         )
-        logger.info(f"Admin {message.from_user.id} created promo {code}: {stars}⭐, {uses_txt}, {exp_txt}")
+        logger.info(f"Admin {message.from_user.id} created promo {code}: min_deposit={min_deposit}, duration={duration_h}h")
     except ValueError:
         await message.answer("❌ Некорректные числа.")
     except Exception as e:
@@ -1760,17 +1769,23 @@ async def admin_list_promo(message: types.Message):
             await message.answer("❌ Вы не администратор.")
             return
 
-        res = supabase.table("promo_codes").select("code, reward_stars, max_uses, uses_count, expires_at, is_active").order("created_at", desc=True).limit(20).execute()
+        res = supabase.table("promo_codes").select("code, min_deposit_24h, duration_hours, created_at, is_active").order("created_at", desc=True).limit(20).execute()
         if not res.data:
             await message.answer("📭 Промокодов нет.")
             return
 
+        now = datetime.now()
         lines_out = ["🎟 *Промокоды (последние 20):*\n"]
         for p in res.data:
-            status = "🟢" if p['is_active'] else "🔴"
-            used = f"{p['uses_count']}/{p['max_uses']}" if p['max_uses'] > 0 else f"{p['uses_count']}/∞"
-            exp = p.get('expires_at') or "∞"
-            lines_out.append(f"{status} `{p['code']}` — {p['reward_stars']}⭐ — {used} — {exp}")
+            alive = "🟢"
+            try:
+                created = datetime.strptime(str(p['created_at']).replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
+                expires = created + timedelta(hours=int(p['duration_hours']))
+                if (now > expires) or (not p['is_active']):
+                    alive = "🔴"
+            except Exception:
+                alive = "🟢" if p['is_active'] else "🔴"
+            lines_out.append(f"{alive} `{p['code']}` — мин. {p['min_deposit_24h']}⭐/24ч — живёт {p['duration_hours']}ч")
 
         await message.answer("\n".join(lines_out), parse_mode="Markdown")
     except Exception as e:
@@ -1801,7 +1816,11 @@ async def admin_delete_promo(message: types.Message):
 
 async def api_redeem_promo(request):
     """POST /api/redeem_promo  body: {code: str}
-    Activates promo code for the authenticated user.
+    Promo v2: код валиден IFF
+      (a) is_active = TRUE,
+      (b) created_at + duration_hours ещё не истёк (общий срок жизни),
+      (c) у юзера ≥ min_deposit_24h ⭐ пополнений за последние 24 часа.
+    На успех: открывает PROMO CASE → случайный гифт 0..599⭐, кладёт в инвентарь.
     """
     try:
         data = request.get('body_json') or await request.json()
@@ -1820,76 +1839,68 @@ async def api_redeem_promo(request):
             return web.json_response({"success": False, "error": "code_not_found"}, status=404)
         promo = promo_res.data[0]
 
-        # Expiry check
-        if promo.get('expires_at'):
-            try:
-                exp = datetime.strptime(promo['expires_at'].replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
-                if datetime.now() > exp:
-                    return web.json_response({"success": False, "error": "code_expired"}, status=403)
-            except Exception:
-                pass
+        # Global lifetime
+        try:
+            created = datetime.strptime(str(promo['created_at']).replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
+            expires = created + timedelta(hours=int(promo['duration_hours']))
+            if datetime.now() > expires:
+                return web.json_response({"success": False, "error": "code_expired"}, status=403)
+        except Exception as e:
+            logger.warning(f"promo lifetime parse error for {code}: {e}")
 
-        # Max uses check
-        if promo['max_uses'] > 0 and promo['uses_count'] >= promo['max_uses']:
-            return web.json_response({"success": False, "error": "code_exhausted"}, status=403)
-
-        # Already redeemed by this user?
-        existing = supabase.table("promo_redemptions").select("id").eq("promo_code_id", promo['id']).eq("user_id", uid).limit(1).execute()
-        if existing.data:
-            return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
-
-        # User must exist — auto-create if missing (covers admins/new users who haven't opened webapp yet)
+        # Auto-create user if missing
         user_res = supabase.table("users").select("stars").eq("user_id", uid).limit(1).execute()
         if not user_res.data:
             try:
                 supabase.table("users").insert({"user_id": uid, "stars": 0}).execute()
                 current_stars = 0
-                logger.info(f"Auto-created user record for {uid} during promo redemption")
+                logger.info(f"Auto-created user {uid} during promo redemption")
             except Exception as e:
-                logger.error(f"Failed to auto-create user {uid} for promo: {e}")
+                logger.error(f"Failed to auto-create user {uid}: {e}")
                 return web.json_response({"success": False, "error": "user_not_found"}, status=404)
         else:
             current_stars = int(user_res.data[0].get('stars', 0))
 
-        # Promo reward = PROMO CASE item (not stars). reward_stars from DB is used as item_price.
-        reward_value = int(promo['reward_stars'])
-        case_item = {
-            "name": "ПРОМО КЕЙС",
+        # Deposit gate
+        min_dep = int(promo.get('min_deposit_24h') or 0)
+        if min_dep > 0:
+            since = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+            dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", since).execute()
+            total_dep = sum(int(r.get("amount", 0)) for r in (dep_res.data or []))
+            if total_dep < min_dep:
+                return web.json_response({
+                    "success": False,
+                    "error": "insufficient_deposit",
+                    "required": min_dep,
+                    "have": total_dep
+                }, status=403)
+
+        # Open PROMO CASE → случайный гифт 0..599⭐
+        reward_value = random.randint(0, 599)
+        gift = {
+            "name": f"Подарок {reward_value}⭐",
             "price": reward_value,
             "image": "/asset/Gifts/Case.webp"
         }
 
-        # Insert redemption FIRST (unique constraint blocks race condition)
-        try:
-            supabase.table("promo_redemptions").insert({
-                "promo_code_id": promo['id'],
-                "user_id": uid
-            }).execute()
-        except Exception as e:
-            # Likely unique violation = already redeemed in a race
-            logger.warning(f"promo_redemptions insert failed for uid={uid} code={code}: {e}")
-            return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
-
-        # Bump uses_count and grant PROMO CASE to inventory (no star change)
-        supabase.table("promo_codes").update({"uses_count": promo['uses_count'] + 1}).eq("id", promo['id']).execute()
         try:
             supabase.table("inventory").insert({
                 "user_id": uid,
-                "item_name": case_item["name"],
-                "item_price": case_item["price"],
-                "item_image": case_item["image"],
+                "item_name": gift["name"],
+                "item_price": gift["price"],
+                "item_image": gift["image"],
                 "obtained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "source": "promo"
             }).execute()
         except Exception as e:
-            logger.error(f"Failed to grant PROMO CASE to {uid}: {e}")
+            logger.error(f"Failed to grant PROMO CASE gift to {uid}: {e}")
             return web.json_response({"success": False, "error": "server_error"}, status=500)
 
-        logger.info(f"User {uid} redeemed promo {code} -> PROMO CASE (value {reward_value}⭐)")
+        logger.info(f"User {uid} opened PROMO CASE via code {code} -> {reward_value}⭐ gift")
         return web.json_response({
             "success": True,
             "code": code,
-            "case_item": case_item,
+            "item": gift,
             "new_balance": current_stars
         })
     except Exception as e:
