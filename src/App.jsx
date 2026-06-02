@@ -187,6 +187,14 @@ export default function App() {
       return;
     }
     const amount = customAmount || starsAmount;
+    // Confirm dialog before creating invoice
+    const tg = window?.Telegram?.WebApp;
+    if (tg?.showConfirm) {
+      const confirmed = await new Promise((resolve) => {
+        tg.showConfirm(`Пополнить баланс на ${amount} ⭐ через Telegram Stars?`, (ok) => resolve(ok));
+      });
+      if (!confirmed) return;
+    }
     try {
       console.log('Creating invoice for user:', user.id, 'amount:', amount);
       if (!window.Telegram?.WebApp) {
@@ -261,15 +269,20 @@ export default function App() {
         };
 
         try {
-            const result = await tonConnectUI.sendTransaction(transaction);
-            if (result) {
+            const txResult = await tonConnectUI.sendTransaction(transaction);
+            if (txResult) {
               triggerHaptic('success');
-              window?.Telegram?.WebApp?.showAlert?.('🚀 Транзакция отправлена! Баланс обновится автоматически в течение минуты.');
+              window?.Telegram?.WebApp?.showAlert?.('🚀 Транзакция отправлена! Баланс обновится автоматически в течение 1-2 минут.');
               setShowTopUp(false);
               setTonInvoiceData(null);
+              // Optimistic balance refresh after 30s
+              setTimeout(() => {
+                fetchBalance(user.id).then(d => { if (d && typeof d.stars === 'number') setBalance(d.stars); }).catch(()=>{});
+              }, 30000);
             }
         } catch (err) {
-            console.warn('Auto-transaction declined or failed, showing manual details');
+            console.warn('TON auto-transaction declined/failed:', err?.message || err);
+            // Don't show alert — user just sees manual payment details modal as fallback
         }
       }
       
