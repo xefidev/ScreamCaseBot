@@ -1189,11 +1189,16 @@ async def api_open_case(request):
         new_spent = (u.get('total_spent') or 0) + price
         new_count = (u.get('cases_opened_count') or 0) + 1
 
-        supabase.table("users").update({
+        # Race-safe atomic decrement: only succeeds if stars are still >= price
+        upd = supabase.table("users").update({
             "stars": balance - price,
             "total_spent": new_spent,
             "cases_opened_count": new_count
-        }).eq("user_id", uid).execute()
+        }).eq("user_id", uid).eq("stars", balance).execute()
+        if not upd.data:
+            # Concurrent request modified balance between our read and write — abort
+            logger.warning(f"User {uid} open_case race lost (concurrent balance change)")
+            return web.json_response({"error": "concurrent_modification", "ok": False, "message": "Попробуйте ещё раз"}, status=409)
 
         try:
             supabase.table("user_inventory").insert({
@@ -1398,7 +1403,11 @@ async def api_wheel_spin(request):
         new_balance = balance - cost
         new_spent = (u.get('total_spent') or 0) + cost
 
-        supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).execute()
+        # Race-safe: only proceed if stars still equal what we read
+        upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
+        if not upd_u.data:
+            logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
+            return web.json_response({"error": "concurrent_modification"}, status=409)
         supabase.table("payments").insert({
             "user_id": uid,
             "amount": -cost,
@@ -1614,7 +1623,11 @@ async def api_claim_achievement(request):
         if a_status['progress'] < info['goal']:
             return web.json_response({"error": "not_reached"}, status=400)
 
-        supabase.table("user_achievements").update({"is_claimed": 1}).eq("user_id", uid).eq("achievement_id", aid).execute()
+        # Race-safe: only the request that flips is_claimed 0->1 grants the reward
+        claim_upd = supabase.table("user_achievements").update({"is_claimed": 1}) \
+            .eq("user_id", uid).eq("achievement_id", aid).eq("is_claimed", 0).execute()
+        if not claim_upd.data:
+            return web.json_response({"error": "already_claimed"}, status=400)
 
         user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
         if user_res.data:
@@ -1692,7 +1705,11 @@ async def api_claim_quest(request):
         if not q_status['is_completed']:
             return web.json_response({"error": "not_reached"}, status=400)
 
-        supabase.table("user_quests").update({"reward_claimed": True}).eq("user_id", uid).eq("quest_id", quest_id).execute()
+        # Race-safe: only the request that flips reward_claimed false->true grants
+        claim_upd = supabase.table("user_quests").update({"reward_claimed": True}) \
+            .eq("user_id", uid).eq("quest_id", quest_id).eq("reward_claimed", False).execute()
+        if not claim_upd.data:
+            return web.json_response({"error": "already_claimed"}, status=400)
 
         user_res = supabase.table("users").select("stars").eq("user_id", uid).execute()
         if user_res.data:
