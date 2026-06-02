@@ -40,6 +40,7 @@ const LoadingSpinner = () => (
 export default function App() {
   const { lowPerf } = usePerf();
   const [activeTab, setActiveTab] = useState('cases');
+  const [tabResetSignal, setTabResetSignal] = useState(0);
   const [activeGame, setActiveGame] = useState(null);
   const [showTopUp, setShowTopUp] = useState(false);
   const [starsAmount, setStarsAmount] = useState('100');
@@ -309,6 +310,7 @@ export default function App() {
             setBalance={setBalance}
             promoOpened={promoOpened}
             setPromoOpened={setPromoOpened}
+            resetSignal={tabResetSignal}
             onTopUpRequest={(needed) => {
                 setShowTopUp(true);
                 setStarsAmount(needed.toString());
@@ -468,7 +470,7 @@ export default function App() {
                 <button
                   key={key}
                   className="relative flex-1 flex flex-col items-center justify-center py-2 gap-1"
-                  onClick={() => { setActiveTab(key); setActiveGame(null); triggerHaptic(); }}
+                  onClick={() => { if (activeTab === key) { setTabResetSignal(s => s + 1); setActiveGame(null); } else { setActiveTab(key); setActiveGame(null); } triggerHaptic(); }}
                 >
                   <div className={`w-12 h-8 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-white/10 text-white' : 'text-white/20 hover:text-white/40'}`}>
                     <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
