@@ -125,8 +125,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               setBalance(prev => Math.max(0, prev - totalCost));
                           }
           
-                          playSound('/asset/Sounds/go-new-gambling.mp3');
-              
+                          // sound moved to sync with animation start (was playing 1-2s before reels moved due to API await)
                           setIsSpinning(true);
                           setWonItems([]);
           
@@ -195,6 +194,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               const targetX = containerCenter - itemCenter;
           
                               animationKey.current += 1;
+                              // sound starts EXACTLY here, synced with the spin animation
+                              playSound('/asset/Sounds/go-new-gambling.mp3');
                               setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
         }
     } catch (e) {
