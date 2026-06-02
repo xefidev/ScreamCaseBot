@@ -5,7 +5,7 @@ import { usePerf } from '../perfContext.jsx';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
-import { playSound } from '../App';
+import { playSound, preloadSounds } from '../App';
 
 export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
   const { lowPerf: _lp } = usePerf();
@@ -22,6 +22,16 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const [promoCode, setPromoCode] = useState('');
   const [isCollecting, setIsCollecting] = useState(false);
   const animationKey = useRef(0);
+
+  // Preload spin sounds the moment the modal opens — guarantees no network/decode lag
+  // when the user clicks open, so audio + animation start the same frame.
+  React.useEffect(() => {
+    preloadSounds([
+      '/asset/Sounds/go-new-gambling.mp3',
+      '/asset/Sounds/spin_sound.mp3',
+      '/asset/Sounds/win_sound.mp3',
+    ]);
+  }, []);
 
   if (!caseItem) return null;
 
@@ -117,8 +127,11 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           reelsCompletedRef.current = 0;
           animationKey.current += 1;
           setMultiReels({ reels, animKey: animationKey.current });
-          // sound starts NOW, simultaneously with the reels animation
-          playSound('/asset/Sounds/spin_sound.mp3');
+          // Sound + animation start the SAME frame.
+          // requestAnimationFrame fires right before the browser paints the new
+          // setMultiReels state, so the audio's first sample lines up with the
+          // first painted frame of the reels moving.
+          requestAnimationFrame(() => playSound('/asset/Sounds/spin_sound.mp3'));
         } else {
           // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
                           if (setBalance && totalCost > 0) {
@@ -194,9 +207,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               const targetX = containerCenter - itemCenter;
           
                               animationKey.current += 1;
-                              // sound starts EXACTLY here, synced with the spin animation
-                              playSound('/asset/Sounds/go-new-gambling.mp3');
                               setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
+                              // Sound + animation start the SAME frame.
+                              // requestAnimationFrame fires right before the browser paints
+                              // the new setSpinData state, so audio lines up with the first
+                              // painted frame of the wheel moving (not 16+ms early).
+                              requestAnimationFrame(() => playSound('/asset/Sounds/go-new-gambling.mp3'));
         }
     } catch (e) {
         console.error("Error in handleOpen:", e);
