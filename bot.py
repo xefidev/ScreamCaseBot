@@ -589,25 +589,30 @@ async def auth_middleware(request, handler):
 
         user_data = validate_init_data(init_data, TOKEN)
 
-        if not user_data and request.method == 'GET' and user_id_from_query:
-            try:
-                user_id_int = int(user_id_from_query)
-                logger.warning(f"⚠️ GET {request.path}: InitData invalid, using query user_id fallback (user={user_id_int})")
-                request['user_id'] = user_id_int
-                request['user_data'] = {'id': user_id_int}
-                return await handler(request)
-            except (ValueError, TypeError):
-                pass
+        # SECURITY: fallback to query/body user_id is gated behind DEBUG_AUTH env var.
+        # In production (DEBUG_AUTH unset/false) ANY request without a valid initData signature is rejected.
+        # Previously this fallback allowed full account takeover by passing arbitrary user_id.
+        DEBUG_AUTH = os.getenv("DEBUG_AUTH", "").lower() in ("1", "true", "yes")
+        if DEBUG_AUTH:
+            if not user_data and request.method == 'GET' and user_id_from_query:
+                try:
+                    user_id_int = int(user_id_from_query)
+                    logger.warning(f"⚠️ DEBUG: GET {request.path}: InitData invalid, using query user_id fallback (user={user_id_int})")
+                    request['user_id'] = user_id_int
+                    request['user_data'] = {'id': user_id_int}
+                    return await handler(request)
+                except (ValueError, TypeError):
+                    pass
 
-        if not user_data and request.method == 'POST' and user_id_from_body:
-            try:
-                user_id_int = int(user_id_from_body)
-                logger.warning(f"⚠️ POST {request.path}: InitData invalid, using body user_id fallback (user={user_id_int})")
-                request['user_id'] = user_id_int
-                request['user_data'] = {'id': user_id_int}
-                return await handler(request)
-            except (ValueError, TypeError):
-                pass
+            if not user_data and request.method == 'POST' and user_id_from_body:
+                try:
+                    user_id_int = int(user_id_from_body)
+                    logger.warning(f"⚠️ DEBUG: POST {request.path}: InitData invalid, using body user_id fallback (user={user_id_int})")
+                    request['user_id'] = user_id_int
+                    request['user_data'] = {'id': user_id_int}
+                    return await handler(request)
+                except (ValueError, TypeError):
+                    pass
 
         if not user_data:
             logger.warning(f"❌ Unauthorized access attempt to {request.path} ({request.method})")
@@ -1483,18 +1488,18 @@ async def api_claim_daily(request):
         return web.json_response({"error": "server_error"}, status=500)
 async def api_ton_success(request):
     try:
-        data = request.get('body_json') or await request.json()
-        uid = data.get("user_id")
+        uid = request.get('user_id')
         logger.info(f"🔄 Получено ручное уведомление об оплате от {uid}. Ожидаем подтверждения блокчейна...")
         return web.json_response({"success": True, "message": "Verification is now automatic. Please wait."})
-    except:
+    except Exception as e:
+        logger.error(f"api_ton_success error: {e}")
         return web.json_response({"success": True})
 
 async def api_invoice(request):
     """Генерирует данные для оплаты через TON."""
     try:
         data = request.get('body_json') or await request.json()
-        user_id = request.get('user_id') or data.get("user_id")
+        user_id = request.get('user_id')
 
         if not user_id:
             return web.json_response({"error": "no_user_id"}, status=400)
@@ -1524,7 +1529,7 @@ async def api_create_stars_invoice(request):
     """Generates a Telegram Stars (XTR) invoice with validation."""
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id') or data.get("user_id")
+        uid = request.get('user_id')
         amount = int(data.get("amount", 100))
 
         if not uid:
@@ -1935,7 +1940,7 @@ async def api_redeem_promo(request):
     """
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id') or data.get('user_id')
+        uid = request.get('user_id')
         if not uid:
             return web.json_response({"success": False, "error": "unauthorized"}, status=401)
         uid = int(uid)
