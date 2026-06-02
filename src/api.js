@@ -245,14 +245,14 @@ export const spinWheel = async (userId) => {
   }
 };
 
-export const upgradeItem = async (userId, cost, chance, itemPrice) => {
+export const upgradeItem = async (userId, sourceInventoryId, targetName, targetPrice, targetImage = '') => {
   try {
     if (!userId) throw new Error('Missing user_id');
     
     const response = await fetch(`${BACKEND_URL}/api/upgrade`, {
       method: 'POST',
       headers: getAuthHeaders(),
-      body: JSON.stringify(addAuthToBody({ user_id: userId, cost, chance, item_price: itemPrice })),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, source_inventory_id: sourceInventoryId, target_name: targetName, target_price: targetPrice, target_image: targetImage })),
     });
     
     if (!response.ok) {
