@@ -1193,7 +1193,18 @@ async def api_open_case(request):
             return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
 
         # Roll all gifts up front so each open is independent
-        won_items = [_get_random_gift(case_info['min'], case_info['max']) for _ in range(quantity)]
+        # Roll N gifts trying to keep visual variety (no two identical when pool permits)
+        won_items = []
+        for _ in range(quantity):
+            attempt = None
+            for _try in range(8):
+                cand = _get_random_gift(case_info['min'], case_info['max'])
+                # avoid back-to-back identical with last roll if there's variety in the pool
+                if not won_items or cand['name'] != won_items[-1]['name']:
+                    attempt = cand
+                    break
+                attempt = cand
+            won_items.append(attempt)
 
         new_spent = (u.get('total_spent') or 0) + total_cost
         new_count = (u.get('cases_opened_count') or 0) + quantity
