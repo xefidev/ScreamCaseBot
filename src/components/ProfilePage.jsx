@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../giftUtils';
-import { redeemPromo } from '../api';
 
 const PAGE_BG = '#1a1b1e';
 
@@ -21,9 +20,6 @@ export default function ProfilePage({
   const [user, setUser] = React.useState(null);
   const [sellingIds, setSellingIds] = useState(new Set());
   const [isSellingAll, setIsSellingAll] = useState(false);
-  const [promoCode, setPromoCode] = useState('');
-  const [promoLoading, setPromoLoading] = useState(false);
-  const [promoMessage, setPromoMessage] = useState(null); // { type: 'success'|'error', text }
 
   React.useEffect(() => {
     const userData = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -39,18 +35,17 @@ export default function ProfilePage({
 
   const handleSell = (item) => {
     if (sellingIds.has(item.id)) return;
-    
     triggerHaptic();
     if (!setInventory || !setBalance || !item?.id) return;
-    
+
     setSellingIds(prev => new Set(prev).add(item.id));
-    
+
     setInventory((prev) => {
       const itemExists = prev.some(i => i.id === item.id);
       if (!itemExists) return prev;
       return prev.filter((currentItem) => currentItem.id !== item.id);
     });
-    
+
     const sellPrice = Number(item.price || item.cost) || 0;
     if (sellPrice > 0) {
       setBalance((prev) => prev + sellPrice);
@@ -60,50 +55,16 @@ export default function ProfilePage({
 
   const handleSellAll = () => {
     if (inventory.length === 0 || isSellingAll) return;
-    
     triggerHaptic('heavy');
     setIsSellingAll(true);
-    
+
     const totalValue = inventory.reduce((sum, item) => sum + (Number(item.price || item.cost) || 0), 0);
-    
+
     setInventory([]);
     setBalance(prev => prev + totalValue);
     triggerHaptic('success');
-    
-    setTimeout(() => setIsSellingAll(false), 1000);
-  };
 
-  const handleRedeemPromo = async () => {
-    const code = promoCode.trim().toUpperCase();
-    if (!code) {
-      setPromoMessage({ type: 'error', text: 'Введите промокод' });
-      return;
-    }
-    const uid = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-    if (!uid) {
-      setPromoMessage({ type: 'error', text: 'Не удалось определить пользователя' });
-      return;
-    }
-    setPromoLoading(true);
-    setPromoMessage(null);
-    triggerHaptic('medium');
-    try {
-      const res = await redeemPromo(uid, code);
-      if (res?.success) {
-        // Промокод выдаёт PROMO CASE (не звёзды) — добавляем в инвентарь
-        if (res.case_item) {
-          setInventory(prev => [{ ...res.case_item, id: Date.now() }, ...prev]);
-        }
-        setPromoMessage({ type: 'success', text: `🎁 ПРОМО КЕЙС получен!` });
-        setPromoCode('');
-        triggerHaptic('success');
-      }
-    } catch (err) {
-      setPromoMessage({ type: 'error', text: err?.message || 'Ошибка активации' });
-    } finally {
-      setPromoLoading(false);
-      setTimeout(() => setPromoMessage(null), 4000);
-    }
+    setTimeout(() => setIsSellingAll(false), 1000);
   };
 
   return (
@@ -111,7 +72,7 @@ export default function ProfilePage({
       <div className="mb-6 flex justify-between items-center">
         <h2 className="text-2xl font-black uppercase tracking-widest text-white">Профиль</h2>
         {inventory.length > 0 && (
-          <button 
+          <button
             onClick={handleSellAll}
             disabled={isSellingAll}
             className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-[10px] font-black uppercase tracking-widest disabled:opacity-50"
@@ -141,43 +102,6 @@ export default function ProfilePage({
         </div>
       </motion.div>
 
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.05 }} className="glass-panel mb-6 p-5 bg-white/[0.02] border-white/10">
-        <h4 className="mb-3 text-xs font-black uppercase tracking-widest text-white/40">🎟 Промокод</h4>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={promoCode}
-            onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleRedeemPromo(); }}
-            placeholder="ВВЕДИТЕ КОД"
-            maxLength={32}
-            disabled={promoLoading}
-            className="flex-1 rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm font-black uppercase tracking-widest text-white placeholder-white/20 focus:outline-none focus:border-yellow-500/40 disabled:opacity-50"
-          />
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            onClick={handleRedeemPromo}
-            disabled={promoLoading || !promoCode.trim()}
-            className="px-5 py-3 rounded-xl bg-yellow-500/15 border border-yellow-500/30 text-yellow-400 text-[10px] font-black uppercase tracking-widest disabled:opacity-40"
-          >
-            {promoLoading ? '...' : 'АКТИВИРОВАТЬ'}
-          </motion.button>
-        </div>
-        {promoMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            className={`mt-3 rounded-lg px-3 py-2 text-[10px] font-black uppercase tracking-widest ${
-              promoMessage.type === 'success'
-                ? 'bg-green-500/10 border border-green-500/30 text-green-400'
-                : 'bg-red-500/10 border border-red-500/30 text-red-400'
-            }`}
-          >
-            {promoMessage.text}
-          </motion.div>
-        )}
-      </motion.div>
-
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }} className="glass-panel p-6 bg-white/[0.02] border-white/10">
         <h4 className="mb-4 text-xs font-black uppercase tracking-widest text-white/40">Инвентарь ({inventory?.length || 0})</h4>
         {!inventory || inventory.length === 0 ? (
@@ -188,9 +112,9 @@ export default function ProfilePage({
               <motion.div key={item.id} initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-between rounded-3xl border border-white/5 bg-white/[0.02] p-4 shadow-xl group">
                 <img src={getDynamicGiftImage(item)} alt="Gift" className="mb-3 h-20 w-20 object-contain transition-transform group-hover:scale-110" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
                 <p className="mb-3 w-full truncate text-center text-[9px] font-black uppercase tracking-tight text-white/60">{item.name || 'Gift'}</p>
-                <motion.button 
-                  whileTap={{ scale: 0.95 }} 
-                  onClick={() => handleSell(item)} 
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleSell(item)}
                   disabled={sellingIds.has(item.id)}
                   className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2 text-[8px] font-black uppercase tracking-widest text-red-400 disabled:opacity-50"
                 >
