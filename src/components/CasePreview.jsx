@@ -76,6 +76,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         return;
     }
 
+    if (isPromo && promoCode.trim().length === 0) {
+        window?.Telegram?.WebApp?.showAlert?.("❌ Введите промокод");
+        return;
+    }
     if (!canOpen) {
        window?.Telegram?.WebApp?.showAlert?.("\u274c \u041a\u0435\u0439\u0441 \u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d");
        return;
