@@ -335,7 +335,7 @@ export default function App() {
                   <ChevronLeft size={24} strokeWidth={2.5} />
                 </button>
               </div>
-              <WheelGame isPage onWin={() => { syncBalance(user?.id); }} balance={balance} setBalance={setBalance} />
+              <WheelGame isPage onWin={(seg) => { handleSpinComplete(seg?.item || seg, null); syncBalance(user?.id); }} balance={balance} setBalance={setBalance} />
             </motion.div>
           );
         }
