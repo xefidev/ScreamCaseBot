@@ -90,8 +90,11 @@ export default function ProfilePage({
     try {
       const res = await redeemPromo(uid, code);
       if (res?.success) {
-        setBalance(prev => (Number(prev) || 0) + Number(res.reward_stars || 0));
-        setPromoMessage({ type: 'success', text: `+${res.reward_stars} ⭐ зачислено` });
+        // Промокод выдаёт PROMO CASE (не звёзды) — добавляем в инвентарь
+        if (res.case_item) {
+          setInventory(prev => [{ ...res.case_item, id: Date.now() }, ...prev]);
+        }
+        setPromoMessage({ type: 'success', text: `🎁 ПРОМО КЕЙС получен!` });
         setPromoCode('');
         triggerHaptic('success');
       }
