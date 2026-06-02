@@ -1812,7 +1812,9 @@ async def admin_create_promo(message: types.Message):
             return
 
         parts = message.text.split()
-        if len(parts) != 4:
+        # Accept: /promo CODE MIN_DEPOSIT DURATION_H  (4 parts incl. command)
+        # Also accept: /promo CODE MIN_DEPOSIT USES DURATION_H (5 parts, legacy STARS USES DAYS form — middle arg ignored)
+        if len(parts) not in (4, 5):
             await message.answer(
                 "❌ Использование: `/promo CODE MIN_DEPOSIT_24H DURATION_HOURS`\n"
                 "Пример: `/promo PROMO 50 1`\n"
@@ -1826,8 +1828,16 @@ async def admin_create_promo(message: types.Message):
             await message.answer("❌ Код должен быть alphanumeric, до 32 символов.")
             return
 
-        min_deposit = int(parts[2])
-        duration_h = int(parts[3])
+        try:
+            if len(parts) == 4:
+                min_deposit = int(parts[2])
+                duration_h = int(parts[3])
+            else:  # 5 parts: CODE MIN_DEP <ignored> DURATION_H
+                min_deposit = int(parts[2])
+                duration_h = int(parts[4])
+        except ValueError:
+            await message.answer("❌ MIN_DEPOSIT_24H и DURATION_HOURS должны быть числами.")
+            return
         if min_deposit < 0 or min_deposit > 1000000:
             await message.answer("❌ MIN_DEPOSIT_24H должно быть 0..1000000.")
             return
