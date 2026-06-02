@@ -33,6 +33,18 @@ export const playSound = (path) => {
   }
 };
 
+export const stopSound = () => {
+  try {
+    if (globalAudio) {
+      globalAudio.pause();
+      globalAudio.currentTime = 0;
+      globalAudio = null;
+    }
+  } catch (e) {
+    console.error("Audio stop error", e);
+  }
+};
+
 const TABS = {
   cases: { label: 'Кейсы', icon: Briefcase },
   achievements: { label: 'Награды', icon: Trophy },
