@@ -1850,8 +1850,14 @@ async def api_redeem_promo(request):
                 return web.json_response({"success": False, "error": "user_not_found"}, status=404)
         else:
             current_stars = int(user_res.data[0].get('stars', 0))
-        reward = int(promo['reward_stars'])
-        new_balance = current_stars + reward
+
+        # Promo reward = PROMO CASE item (not stars). reward_stars from DB is used as item_price.
+        reward_value = int(promo['reward_stars'])
+        case_item = {
+            "name": "ПРОМО КЕЙС",
+            "price": reward_value,
+            "image": "/asset/Gifts/Case.webp"
+        }
 
         # Insert redemption FIRST (unique constraint blocks race condition)
         try:
@@ -1864,16 +1870,27 @@ async def api_redeem_promo(request):
             logger.warning(f"promo_redemptions insert failed for uid={uid} code={code}: {e}")
             return web.json_response({"success": False, "error": "already_redeemed"}, status=409)
 
-        # Then bump uses_count and credit user
+        # Bump uses_count and grant PROMO CASE to inventory (no star change)
         supabase.table("promo_codes").update({"uses_count": promo['uses_count'] + 1}).eq("id", promo['id']).execute()
-        supabase.table("users").update({"stars": new_balance}).eq("user_id", uid).execute()
+        try:
+            supabase.table("inventory").insert({
+                "user_id": uid,
+                "item_name": case_item["name"],
+                "item_price": case_item["price"],
+                "item_image": case_item["image"],
+                "obtained_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "source": "promo"
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to grant PROMO CASE to {uid}: {e}")
+            return web.json_response({"success": False, "error": "server_error"}, status=500)
 
-        logger.info(f"User {uid} redeemed promo {code} for {reward}⭐ (new balance: {new_balance})")
+        logger.info(f"User {uid} redeemed promo {code} -> PROMO CASE (value {reward_value}⭐)")
         return web.json_response({
             "success": True,
             "code": code,
-            "reward_stars": reward,
-            "new_balance": new_balance
+            "case_item": case_item,
+            "new_balance": current_stars
         })
     except Exception as e:
         logger.error(f"Error in api_redeem_promo: {e}", exc_info=True)
