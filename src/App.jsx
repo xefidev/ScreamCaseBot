@@ -18,10 +18,11 @@ const TON_WALLET = import.meta.env.VITE_TON_WALLET;
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
 // Звук через пул переиспользуемых Audio объектов (см. audioPool.js)
-import { playSound as poolPlay, stopSound as poolStop } from './audioPool';
+import { playSound as poolPlay, stopSound as poolStop, preloadSounds as poolPreload } from './audioPool';
 import { usePerf } from './perfContext.jsx';
 export const playSound = poolPlay;
 export const stopSound = poolStop;
+export const preloadSounds = poolPreload;
 
 const TABS = {
   cases: { label: 'Кейсы', icon: Briefcase },
