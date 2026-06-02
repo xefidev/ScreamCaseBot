@@ -88,82 +88,97 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
        return;
     }
 
-    // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
-    if (setBalance && totalCost > 0) {
-        setBalance(prev => Math.max(0, prev - totalCost));
-    }
-
-    playSound('/asset/Sounds/go-new-gambling.mp3');
-    
-    setIsSpinning(true);
-    setWonItems([]);
-
-    let lastServerBalance = null; // \u0411\u0430\u043b\u0430\u043d\u0441 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f
-
-    try {
-        const targetQuantity = effectiveQty;
-
-        // ONE atomic server call: server rolls N gifts and deducts price*N atomically
-        const response = await openCase(
-          user?.id,
-          caseItem?.id,
-          isPromo ? promoCode.trim().toUpperCase() : null,
-          targetQuantity
-        );
-        if (!response?.success) throw new Error('Failed to open case');
-        const results = Array.isArray(response.items) && response.items.length > 0
-          ? response.items
-          : (response.item ? [response.item] : []);
-        if (results.length === 0) throw new Error('Empty items from server');
-        if (typeof response.new_balance === 'number') {
-          lastServerBalance = response.new_balance;
+    if (targetQuantity > 1) {
+          // MULTI-OPEN: skip roulette animation, show grid of results immediately
+          stopSound();
+          setTimeout(() => {
+            setHasSpun(true);
+            setIsSpinning(false);
+            setShowConfetti(true);
+            setShowResult(true);
+            playSound('/asset/Sounds/win_sound.mp3');
+            if (onWin && results?.length > 0) {
+              try { onWin(results); } catch (e) { console.error('onWin error:', e); }
+            }
+          }, 250);
+        } else {
+          // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
+                          if (setBalance && totalCost > 0) {
+                              setBalance(prev => Math.max(0, prev - totalCost));
+                          }
+          
+                          playSound('/asset/Sounds/go-new-gambling.mp3');
+              
+                          setIsSpinning(true);
+                          setWonItems([]);
+          
+                          let lastServerBalance = null; // \u0411\u0430\u043b\u0430\u043d\u0441 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f
+          
+                          try {
+                              const targetQuantity = effectiveQty;
+          
+                              // ONE atomic server call: server rolls N gifts and deducts price*N atomically
+                              const response = await openCase(
+                                user?.id,
+                                caseItem?.id,
+                                isPromo ? promoCode.trim().toUpperCase() : null,
+                                targetQuantity
+                              );
+                              if (!response?.success) throw new Error('Failed to open case');
+                              const results = Array.isArray(response.items) && response.items.length > 0
+                                ? response.items
+                                : (response.item ? [response.item] : []);
+                              if (results.length === 0) throw new Error('Empty items from server');
+                              if (typeof response.new_balance === 'number') {
+                                lastServerBalance = response.new_balance;
+                              }
+                              }
+          
+                              // \u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u0443\u0435\u043c \u0431\u0430\u043b\u0430\u043d\u0441 \u0441 \u0438\u0441\u0442\u0438\u043d\u043d\u044b\u043c \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u0430
+                              if (setBalance && lastServerBalance !== null) {
+                                setBalance(lastServerBalance);
+                                console.log('\u2705 \u0411\u0430\u043b\u0430\u043d\u0441 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f \u043a\u0435\u0439\u0441\u0430:', lastServerBalance);
+                              }
+          
+                              triggerHaptic();
+                              if (setSpent) setSpent(prev => prev + totalCost);
+                              // promo no longer one-time gated; server enforces validity
+                              setCurrentStock(prev => Math.max(0, prev - targetQuantity));
+          
+                              setWonItems(results);
+                              setHasSpun(false);
+                              setShowConfetti(false);
+                              setShowResult(false);
+          
+                              const lastWonItem = results[results.length - 1];
+          
+                              // Строим ленту из 10 повторов spinItems, НО подменяем целевую позицию на реальный выигрыш с сервера.
+                              // Это гарантирует визуальное совпадение независимо от findIndex.
+                              const repetitions = 10;
+                              const extendedItems = [];
+                              for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
+          
+                              // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
+                              let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
+                              if (winIndex === -1) {
+                                  winIndex = Math.floor(spinItems.length / 2);
+                                  console.warn('⚠️ Выигранный предмет не найден в spinItems:', lastWonItem?.name);
+                              }
+          
+                              const targetIndex = spinItems.length * 7 + winIndex;
+                              // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
+                              if (lastWonItem && targetIndex < extendedItems.length) {
+                                  extendedItems[targetIndex] = { ...lastWonItem };
+                              }
+          
+                              const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
+                              const containerCenter = viewportWidth / 2;
+                              const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
+                              const targetX = containerCenter - itemCenter;
+          
+                              animationKey.current += 1;
+                              setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
         }
-        }
-
-        // \u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u0443\u0435\u043c \u0431\u0430\u043b\u0430\u043d\u0441 \u0441 \u0438\u0441\u0442\u0438\u043d\u043d\u044b\u043c \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u0430
-        if (setBalance && lastServerBalance !== null) {
-          setBalance(lastServerBalance);
-          console.log('\u2705 \u0411\u0430\u043b\u0430\u043d\u0441 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f \u043a\u0435\u0439\u0441\u0430:', lastServerBalance);
-        }
-
-        triggerHaptic();
-        if (setSpent) setSpent(prev => prev + totalCost);
-        // promo no longer one-time gated; server enforces validity
-        setCurrentStock(prev => Math.max(0, prev - targetQuantity));
-
-        setWonItems(results);
-        setHasSpun(false);
-        setShowConfetti(false);
-        setShowResult(false);
-
-        const lastWonItem = results[results.length - 1];
-
-        // Строим ленту из 10 повторов spinItems, НО подменяем целевую позицию на реальный выигрыш с сервера.
-        // Это гарантирует визуальное совпадение независимо от findIndex.
-        const repetitions = 10;
-        const extendedItems = [];
-        for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
-
-        // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
-        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
-        if (winIndex === -1) {
-            winIndex = Math.floor(spinItems.length / 2);
-            console.warn('⚠️ Выигранный предмет не найден в spinItems:', lastWonItem?.name);
-        }
-
-        const targetIndex = spinItems.length * 7 + winIndex;
-        // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
-        if (lastWonItem && targetIndex < extendedItems.length) {
-            extendedItems[targetIndex] = { ...lastWonItem };
-        }
-
-        const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
-        const containerCenter = viewportWidth / 2;
-        const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
-        const targetX = containerCenter - itemCenter;
-
-        animationKey.current += 1;
-        setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
     } catch (e) {
         console.error("Error in handleOpen:", e);
         stopSound();
