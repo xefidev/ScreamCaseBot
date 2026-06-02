@@ -1246,7 +1246,7 @@ async def api_upgrade(request):
         uid = int(uid)
 
         # 1) Verify user owns the source inventory item AND it has not been used
-        inv_res = supabase.table("user_inventory").select("id, item_name, item_image, item_price, withdrawn").eq("user_id", uid).eq("id", source_inv_id).execute()
+        inv_res = supabase.table("user_inventory").select("id, case_id, item_name, item_image, item_price, withdrawn").eq("user_id", uid).eq("id", source_inv_id).execute()
         if not inv_res.data:
             return web.json_response({"error": "source_not_found", "ok": False, "message": "Предмет не найден в инвентаре"}, status=404)
 
