@@ -24,7 +24,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
   const isPromo = caseItem?.name?.toLowerCase()?.includes('promo');
   const hasLimit = caseItem?.total_limit !== -1;
-  const canOpen = (!hasLimit || currentStock >= quantity) && !(isPromo && promoOpened) && (!isPromo || promoCode.trim().length > 0);
+  const canOpen = (!hasLimit || currentStock >= quantity) && (!isPromo || promoCode.trim().length > 0);
 
   const getCost = useMemo(() => {
     if (isPromo) return 0;
@@ -67,10 +67,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const handleOpen = async () => {
     if (isSpinning || !user?.id) return;
 
-    if (isPromo && promoCode.toUpperCase() !== 'SCREAM') {
-      window?.Telegram?.WebApp?.showAlert?.("\u274c \u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043f\u0440\u043e\u043c\u043e\u043a\u043e\u0434!");
-      return;
-    }
+    // promo code validated server-side via openCase
 
     const totalCost = getCost;
     
@@ -101,7 +98,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         const targetQuantity = (isDaily || isPromo) ? 1 : quantity;
 
         for (let i = 0; i < targetQuantity; i++) {
-          const response = await openCase(user?.id, caseItem?.id);
+          const response = await openCase(user?.id, caseItem?.id, isPromo ? promoCode.trim().toUpperCase() : null);
           // \u0421\u0435\u0440\u0432\u0435\u0440 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442: { ok, success, item, deducted, new_balance }
           if (!response?.success || !response?.item) throw new Error(`Failed to open case ${i+1}`);
           results.push(response.item);
@@ -119,7 +116,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         triggerHaptic();
         if (setSpent) setSpent(prev => prev + totalCost);
-        if (isPromo && setPromoOpened) setPromoOpened(true);
+        // promo no longer one-time gated; server enforces validity
         setCurrentStock(prev => Math.max(0, prev - targetQuantity));
 
         setWonItems(results);
@@ -282,7 +279,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               {isPromo && (
                 <div className="mb-6 glass-panel p-4 bg-white/5 border-white/10">
                   <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-3 font-black">Введите промокод</h3>
-                  <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} placeholder="SCREAM" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black uppercase tracking-widest focus:outline-none focus:border-white/30" />
+                  <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} placeholder="ВВЕДИТЕ КОД" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white font-black uppercase tracking-widest focus:outline-none focus:border-white/30" />
                 </div>
               )}
               <div className="mb-8">
