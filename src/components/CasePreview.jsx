@@ -102,7 +102,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
     if (targetQuantity > 1) {
           // MULTI-OPEN: N vertical reels spinning simultaneously, sound starts WITH animation
-          const REEL_ITEM_H = 96;                // px per item in vertical reel
+          const REEL_ITEM_H = targetQuantity >= 9 ? 72 : targetQuantity >= 6 ? 84 : 96;  // scales with quantity so all reels fit
           const REPS_PER_REEL = 14;              // repetitions of spinItems per reel for length
           const TARGET_REP_INDEX = 11;           // which repetition contains the winning slot
 
@@ -131,7 +131,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
           // requestAnimationFrame fires right before the browser paints the new
           // setMultiReels state, so the audio's first sample lines up with the
           // first painted frame of the reels moving.
-          requestAnimationFrame(() => playSound('/asset/Sounds/spin_sound.mp3'));
+          // Framer Motion's initial→animate needs ~2 frames to start visible motion
+          // (state commit → effect → first paint). Single rAF fires audio BEFORE
+          // the reels visually move. Double rAF aligns audio with the first real
+          // motion frame.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => playSound('/asset/Sounds/spin_sound.mp3'));
+          });
         } else {
           // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
                           if (setBalance && totalCost > 0) {
@@ -212,7 +218,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                               // requestAnimationFrame fires right before the browser paints
                               // the new setSpinData state, so audio lines up with the first
                               // painted frame of the wheel moving (not 16+ms early).
-                              requestAnimationFrame(() => playSound('/asset/Sounds/go-new-gambling.mp3'));
+                              // Double rAF: framer-motion takes 2 frames to start visible motion.
+                              requestAnimationFrame(() => {
+                                requestAnimationFrame(() => playSound('/asset/Sounds/go-new-gambling.mp3'));
+                              });
         }
     } catch (e) {
         console.error("Error in handleOpen:", e);
@@ -314,23 +323,27 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     )}
                     {multiReels?.reels?.length > 0 && (
                       <div
-                        className={`grid gap-2 w-full ${
-                          multiReels.reels.length <= 2 ? 'grid-cols-2' :
-                          multiReels.reels.length <= 4 ? 'grid-cols-2' :
+                        className={`grid gap-1.5 w-full ${
+                          multiReels.reels.length === 2 ? 'grid-cols-2' :
+                          multiReels.reels.length === 3 ? 'grid-cols-3' :
+                          multiReels.reels.length === 4 ? 'grid-cols-4' :
                           multiReels.reels.length <= 6 ? 'grid-cols-3' :
-                          multiReels.reels.length <= 9 ? 'grid-cols-3' :
+                          multiReels.reels.length <= 8 ? 'grid-cols-4' :
                           'grid-cols-5'
                         }`}
                       >
                         {multiReels.reels.map((reel, rIdx) => (
-                          <div
-                            key={`reel-${rIdx}-${multiReels.animKey}`}
-                            className="relative overflow-hidden rounded-xl border bg-black/30"
-                            style={{
-                              height: `${reel.itemH}px`,
-                              borderColor: `${caseItem?.glowColor || '#ffffff'}40`,
-                            }}
-                          >
+                          <div key={`wrap-${rIdx}-${multiReels.animKey}`} className="flex flex-col items-center gap-1 w-full">
+                            <span className="text-[10px] font-bold text-white/70 leading-none tracking-wider">
+                              {rIdx + 1}/{multiReels.reels.length}
+                            </span>
+                            <div
+                              className="relative overflow-hidden rounded-xl border bg-black/30 w-full"
+                              style={{
+                                height: `${reel.itemH}px`,
+                                borderColor: `${caseItem?.glowColor || '#ffffff'}40`,
+                              }}
+                            >
                             <motion.div
                               className="flex flex-col"
                               initial={{ y: 0 }}
@@ -368,6 +381,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                             </motion.div>
                             {/* center selector line */}
                             <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] bg-white/60" />
+                            </div>
                           </div>
                         ))}
                       </div>
