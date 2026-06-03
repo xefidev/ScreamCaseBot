@@ -1030,7 +1030,12 @@ async def api_balance(request):
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
         uid = int(uid)
-        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        # Try with promo_opened first; gracefully fall back if migration 004 not applied yet
+        try:
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        except Exception as col_err:
+            logger.warning(f"api_balance: promo_opened column missing, falling back: {col_err}")
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent").eq("user_id", uid).execute()
 
         if not res.data:
             return web.json_response({"ok": True, "stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
@@ -1441,19 +1446,35 @@ async def api_wheel_spin(request):
         if not upd_u.data:
             logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
             return web.json_response({"error": "concurrent_modification"}, status=409)
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -cost,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-        supabase.table("user_inventory").insert({
-            "user_id": uid,
-            "case_id": None,
-            "item_name": gift["name"],
-            "item_price": gift["price"],
-            "item_image": gift["image"],
-            "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
+        # payments insert (non-fatal: don't block wheel reward if log fails)
+        try:
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as pay_err:
+            logger.warning(f"wheel_spin: payments log failed (non-fatal): {pay_err}")
+
+        # user_inventory insert (FATAL: this is the actual reward)
+        try:
+            supabase.table("user_inventory").insert({
+                "user_id": uid,
+                "case_id": None,
+                "item_name": gift["name"],
+                "item_price": gift["price"],
+                "item_image": gift["image"],
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as inv_err:
+            logger.error(f"wheel_spin: inventory insert FAILED for user {uid}: {inv_err}", exc_info=True)
+            # Refund the user since they paid but got no item
+            try:
+                supabase.table("users").update({"stars": balance, "total_spent": u.get('total_spent') or 0}).eq("user_id", uid).execute()
+                logger.info(f"wheel_spin: refunded {cost}⭐ to user {uid} after inventory failure")
+            except Exception as refund_err:
+                logger.error(f"wheel_spin: refund FAILED for user {uid}: {refund_err}")
+            return web.json_response({"error": "inventory_write_failed"}, status=500)
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
