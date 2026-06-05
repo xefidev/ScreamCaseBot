@@ -323,7 +323,7 @@ export default function App() {
       case 'games':
         if (activeGame === 'wheel') {
           return (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full overflow-y-auto bg-[#1a1b1e]">
+            {lowPerf ? <div className="h-full overflow-y-auto bg-[#1a1b1e]"> : <motion.div initial={lowPerf ? undefined : { opacity: 0, x: 20 }} animate={lowPerf ? undefined : { opacity: 1, x: 0 }}>} className="h-full overflow-y-auto bg-[#1a1b1e]">
               <div className="px-6 py-4">
                 <button onClick={() => setActiveGame(null)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors">
                   <ChevronLeft size={24} strokeWidth={2.5} />
@@ -335,7 +335,7 @@ export default function App() {
         }
         if (activeGame === 'upgrade') {
           return (
-            <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full overflow-y-auto bg-[#1a1b1e]">
+            {lowPerf ? <div className="h-full overflow-y-auto bg-[#1a1b1e]"> : <motion.div initial={lowPerf ? undefined : { opacity: 0, x: 20 }} animate={lowPerf ? undefined : { opacity: 1, x: 0 }}>} className="h-full overflow-y-auto bg-[#1a1b1e]">
               <div className="px-6 py-4">
                 <button onClick={() => setActiveGame(null)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors">
                   <ChevronLeft size={24} strokeWidth={2.5} />
@@ -489,17 +489,16 @@ export default function App() {
 
       <AnimatePresence>
         {showTopUp && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          {lowPerf ? <div className="h-full overflow-y-auto bg-[#1a1b1e]"> : <motion.div             initial={lowPerf ? undefined : { opacity: 0 }}
+            animate={lowPerf ? undefined : { opacity: 1 }}>}
+            exit={lowPerf ? undefined : { opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4"
             onClick={() => setShowTopUp(false)}
           >
             <motion.div
-              initial={{ scale: 0.9, y: 40, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 40, opacity: 0 }}
+              initial={lowPerf ? undefined : { scale: 0.9, y: 40, opacity: 0 }}
+              animate={lowPerf ? undefined : { scale: 1, y: 0, opacity: 1 }}
+              exit={lowPerf ? undefined : { scale: 0.9, y: 40, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-sm mx-auto rounded-[2.5rem] border border-white/10 bg-[#1a1b1f] overflow-hidden shadow-2xl"
             >
@@ -511,7 +510,7 @@ export default function App() {
 
               <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
                 {tonPaymentData ? (
-                  <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                  {lowPerf ? <div className="h-full overflow-y-auto bg-[#1a1b1e]"> : <motion.div initial={lowPerf ? undefined : { opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>} className="space-y-4">
                      <div className="p-6 rounded-[2rem] bg-blue-500/10 border border-blue-500/30">
                         <h3 className="text-blue-400 font-black text-xs uppercase tracking-widest mb-4 text-center">Данные для оплаты TON</h3>
                         
