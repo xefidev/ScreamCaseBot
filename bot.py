@@ -1165,7 +1165,9 @@ async def api_open_case(request):
             promo = promo_res.data[0]
             try:
                 created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
-                expires_at = created_at + timedelta(hours=int(promo.get('duration_h') or 0))
+                # Support both duration_h and duration_hours column names
+                duration_hours = int(promo.get('duration_h') or promo.get('duration_hours') or 0)
+                expires_at = created_at + timedelta(hours=duration_hours)
                 now_utc = datetime.now(timezone.utc)
                 if now_utc > expires_at:
                     return web.json_response({"error": "promo_expired", "ok": False, "message": "Промокод истёк"}, status=403)
@@ -1174,13 +1176,23 @@ async def api_open_case(request):
 
             min_dep = int(promo.get('min_deposit_24h') or 0)
             if min_dep > 0:
-                window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
-                dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", window_start).execute()
-                total_dep = sum(int(d.get('amount') or 0) for d in (dep_res.data or []))
-                if total_dep < min_dep:
+                try:
+                    window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
+                    dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", window_start).execute()
+                    total_dep = sum(int(d.get('amount') or 0) for d in (dep_res.data or []))
+                    if total_dep < min_dep:
+                        return web.json_response({
+                            "error": "deposit_required", "ok": False,
+                            "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)",
+                            "required": min_dep, "have": total_dep
+                        }, status=403)
+                except Exception as e:
+                    logger.error(f"Deposit check query failed for user {uid}: {e}")
+                    # If we can't verify deposits (table missing, etc.), still enforce the gate
                     return web.json_response({
                         "error": "deposit_required", "ok": False,
-                        "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
+                        "message": f"Требуется депозит {min_dep}⭐ за 24ч. Проверьте историю пополнений.",
+                        "required": min_dep, "have": 0
                     }, status=403)
             price = 0
 
@@ -2029,7 +2041,9 @@ async def api_redeem_promo(request):
         # Global lifetime
         try:
             created = datetime.strptime(str(promo['created_at']).replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
-            expires = created + timedelta(hours=int(promo['duration_hours']))
+            # Support both duration_hours and duration_h column names
+            duration_hours = int(promo.get('duration_hours') or promo.get('duration_h') or 0)
+            expires = created + timedelta(hours=duration_hours)
             if datetime.now() > expires:
                 return web.json_response({"success": False, "error": "code_expired"}, status=403)
         except Exception as e:
@@ -2051,15 +2065,26 @@ async def api_redeem_promo(request):
         # Deposit gate
         min_dep = int(promo.get('min_deposit_24h') or 0)
         if min_dep > 0:
-            since = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-            dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", since).execute()
-            total_dep = sum(int(r.get("amount", 0)) for r in (dep_res.data or []))
-            if total_dep < min_dep:
+            try:
+                since = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
+                dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", since).execute()
+                total_dep = sum(int(r.get("amount", 0)) for r in (dep_res.data or []))
+                if total_dep < min_dep:
+                    return web.json_response({
+                        "success": False,
+                        "error": "insufficient_deposit",
+                        "required": min_dep,
+                        "have": total_dep,
+                        "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
+                    }, status=403)
+            except Exception as e:
+                logger.error(f"Deposit check query failed for user {uid}: {e}")
                 return web.json_response({
                     "success": False,
                     "error": "insufficient_deposit",
                     "required": min_dep,
-                    "have": total_dep
+                    "have": 0,
+                    "message": f"Требуется депозит {min_dep}⭐ за 24ч. Проверьте историю пополнений."
                 }, status=403)
 
         # Open PROMO CASE → случайный гифт 0..599⭐
