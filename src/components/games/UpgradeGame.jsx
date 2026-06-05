@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
+import { usePerf } from '../../perfContext.jsx';
 import { ALL_GIFTS } from '../../giftData';
 import { upgradeItem, fetchBalance } from '../../api';
 import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
@@ -8,6 +9,7 @@ import { DEFAULT_GIFT_IMAGE, getDynamicGiftImage } from '../../giftUtils';
 import { playSound, stopSound } from '../../App';
 
 export default function UpgradeGame({ isPage, inventory, setInventory, balance, setBalance, setSpent }) {
+  const { lowPerf: _lp } = usePerf();
   const [selectedSlot1, setSelectedSlot1] = useState(null);
   const [selectedSlot2, setSelectedSlot2] = useState(null);
   const [isUpgrading, setIsUpgrading] = useState(false);
@@ -212,8 +214,8 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                   <h4 className="text-white/30 text-[9px] uppercase tracking-widest mb-4 font-black">Текущий</h4>
                   {!selectedSlot1 ? ( <div className="w-32 h-32 mx-auto rounded-3xl border-2 border-dashed border-white/10 bg-white/[0.01] flex items-center justify-center"><span className="text-white/10 text-4xl font-black">?</span></div> ) : (
                     <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="p-5 rounded-3xl bg-white/5 border border-white/10 relative shadow-2xl">
-                      <img src={getDynamicGiftImage(selectedSlot1)} alt="Item" className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
-                      <div className="flex items-center justify-center gap-1.5 text-xs text-white/70 font-black font-rounded mt-4 bg-black/40 py-1.5 rounded-xl">{selectedSlot1?.price || selectedSlot1?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
+                      <img src={getDynamicGiftImage(selectedSlot1)} alt="Item" className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-white/70 font-black font-rounded mt-4 bg-black/40 py-1.5 rounded-xl">{selectedSlot1?.price || selectedSlot1?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
                     </motion.div>
                   )}
                 </div>
@@ -223,8 +225,8 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                   {!selectedSlot2 ? ( <motion.button whileHover={{ scale: 1.05, borderColor: 'rgba(34, 197, 94, 0.3)', backgroundColor: 'rgba(34, 197, 94, 0.05)' }} whileTap={{ scale: 0.95 }} onClick={() => { setShowGiftSelector(true); triggerHaptic('light'); }} className="w-32 h-32 mx-auto rounded-3xl border-2 border-dashed border-white/10 bg-white/[0.01] transition-all flex items-center justify-center"><span className="text-white/10 text-6xl font-black">+</span></motion.button> ) : (
                     <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="p-5 rounded-3xl bg-green-500/10 border border-green-500/30 relative shadow-[0_0_30px_rgba(34,197,94,0.1)]">
                        <div className="absolute inset-0 bg-green-500/5 blur-3xl rounded-full" />
-                      <img src={getDynamicGiftImage(selectedSlot2)} alt="Target" className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
-                      <div className="flex items-center justify-center gap-1.5 text-xs text-green-400 font-black font-rounded mt-4 bg-green-500/10 py-1.5 rounded-xl border border-green-500/20">{selectedSlot2?.price || selectedSlot2?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
+                      <img src={getDynamicGiftImage(selectedSlot2)} alt="Target" className="w-24 h-24 object-contain mx-auto relative z-10" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <div className="flex items-center justify-center gap-1.5 text-xs text-green-400 font-black font-rounded mt-4 bg-green-500/10 py-1.5 rounded-xl border border-green-500/20">{selectedSlot2?.price || selectedSlot2?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
                     </motion.div>
                   )}
                 </div>
@@ -260,7 +262,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
                   {result === 'fail' && consolation && (
                      <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center gap-3">
                         <span className="text-[10px] font-black text-yellow-500 uppercase">Утешительный приз:</span>
-                        <img src={getDynamicGiftImage(consolation)} className="h-8 w-8 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                        <img src={getDynamicGiftImage(consolation)} className="h-8 w-8 object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                      </div>
                   )}
                 </motion.div>
@@ -272,9 +274,9 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
               <div className="grid grid-cols-3 gap-4 max-h-72 overflow-y-auto pr-1">
                 {inventory.map(item => (
                   <motion.div key={item.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setSelectedSlot1(item); setResult(null); setSelectedSlot2(null); triggerHaptic('light'); }} className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex flex-col items-center ${ selectedSlot1?.id === item.id ? 'border-white/50 bg-white/10 shadow-[0_0_20px_rgba(255,255,255,0.15)]' : 'border-white/5 bg-white/[0.02] hover:border-white/10 hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]' }`}>
-                    <img src={getDynamicGiftImage(item)} alt="Gift" className="w-16 h-16 object-contain mb-2 mx-auto" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                    <img src={getDynamicGiftImage(item)} alt="Gift" className="w-16 h-16 object-contain mb-2 mx-auto" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     <span className="text-white text-[10px] font-black text-center truncate block font-rounded w-full px-1">{item?.name || 'Gift'}</span>
-                    <div className="flex items-center justify-center gap-1 text-white/40 text-[10px] mt-2 font-black font-rounded">{item?.price || item?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
+                    <div className="flex items-center justify-center gap-1 text-white/40 text-[10px] mt-2 font-black font-rounded">{item?.price || item?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
                   </motion.div>
                 ))}
               </div>
@@ -287,13 +289,13 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4">
               <motion.div initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 30 }} className="glass-panel w-full max-w-lg mx-4 max-h-[85vh] overflow-hidden flex flex-col p-8 border-white/10 bg-[#15161a]">
                 <div className="flex justify-between items-center mb-8"><h3 className="text-white font-black text-2xl uppercase tracking-tight">Выберите цель</h3><button onClick={() => setShowGiftSelector(false)} className="text-white/20 hover:text-white text-3xl transition-colors">✕</button></div>
-                {selectedSlot1 && ( <div className="mb-8 px-5 py-4 rounded-2xl bg-white/[0.02] border border-white/5"><p className="text-white/30 text-[10px] font-black uppercase tracking-[0.2em] text-center">Доступны предметы дороже {selectedSlot1?.price || selectedSlot1?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3 inline mx-2 mb-0.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></p></div> )}
+                {selectedSlot1 && ( <div className="mb-8 px-5 py-4 rounded-2xl bg-white/[0.02] border border-white/5"><p className="text-white/30 text-[10px] font-black uppercase tracking-[0.2em] text-center">Доступны предметы дороже {selectedSlot1?.price || selectedSlot1?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3 inline mx-2 mb-0.5" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></p></div> )}
                 <div className="grid grid-cols-3 gap-4 overflow-y-auto pr-2 pb-6 custom-scrollbar">
                   {eligibleTargets.map((gift, idx) => (
                     <motion.div key={idx} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => { setSelectedSlot2(gift); setShowGiftSelector(false); triggerHaptic('light'); }} className={`p-4 rounded-3xl border-2 cursor-pointer transition-all flex flex-col items-center ${ selectedSlot2?.name === gift.name ? 'border-green-500/60 bg-green-500/10' : 'border-white/5 bg-white/[0.03] hover:border-white/10' }`}>
-                      <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-20 h-20 object-contain mb-3 mx-auto" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                      <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-20 h-20 object-contain mb-3 mx-auto" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                       <p className="text-white text-[10px] font-black text-center truncate block font-rounded w-full mb-1.5">{gift?.name || 'Gift'}</p>
-                      <div className="flex items-center justify-center gap-1 text-green-400 text-[11px] font-black font-rounded bg-green-500/5 px-2 py-1 rounded-lg">{gift?.price || gift?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
+                      <div className="flex items-center justify-center gap-1 text-green-400 text-[11px] font-black font-rounded bg-green-500/5 px-2 py-1 rounded-lg">{gift?.price || gift?.cost || 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></div>
                     </motion.div>
                   ))}
                   {eligibleTargets.length === 0 && selectedSlot1 && ( <div className="col-span-3 py-20 text-center"><p className="text-white/10 text-sm font-black uppercase tracking-[0.3em]">Цели не найдены</p></div> )}
@@ -302,7 +304,7 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
             </motion.div>
           )}
         </AnimatePresence>
-        {showConfetti && ( <div className="fixed inset-0 z-[100] pointer-events-none"><Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={400} colors={['#22c55e', '#4ade80', '#86efac', '#ffffff']} /></div> )}
+        {showConfetti && ( <div className="fixed inset-0 z-[100] pointer-events-none">{!_lp && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={180} tweenDuration={3000} colors={['#22c55e', '#4ade80', '#86efac', '#ffffff']} />}</div> )}
       </div>
     </div>
   );
@@ -317,7 +319,7 @@ function UpgradeButtonContent({ canUpgrade, isUpgrading, upgradeCost, handleUpgr
     <div className="w-full space-y-4">
       <motion.button whileHover={{ scale: canUpgrade ? 1.02 : 1 }} whileTap={{ scale: canUpgrade ? 0.98 : 1 }} onClick={() => { handleUpgrade(); }} disabled={isUpgrading || !canUpgrade} className="w-full py-6 rounded-2xl font-black text-2xl disabled:opacity-50 transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-2xl relative overflow-hidden group" style={{ backgroundColor: canUpgrade ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.02)', border: `2px solid ${canUpgrade ? 'rgba(34, 197, 94, 0.6)' : 'rgba(255, 255, 255, 0.05)'}`, color: canUpgrade ? '#4ade80' : 'rgba(255,255,255,0.1)' }}>
         {canUpgrade && ( <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" /> )}
-        Апгрейд ({upgradeCost} <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />)
+        Апгрейд ({upgradeCost} <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />)
       </motion.button>
       {!canUpgrade && !isUpgrading && ( <p className="text-red-500/50 text-[9px] text-center font-black uppercase tracking-[0.3em] animate-pulse">Недостаточно звёзд</p> )}
     </div>

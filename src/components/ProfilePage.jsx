@@ -130,10 +130,12 @@ export default function ProfilePage({
             onClick={handleTogglePerf}
             role="switch"
             aria-checked={lowPerf}
-            className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors duration-200 ${lowPerf ? 'bg-green-500/40 border-green-400/60' : 'bg-white/5 border-white/15'}`}
+            className={`relative h-7 w-[52px] shrink-0 rounded-full border transition-colors duration-300 ease-out ${lowPerf ? 'bg-green-500 border-green-400' : 'bg-white/10 border-white/15'}`}
+            style={{ padding: 0 }}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
+              className="absolute top-1/2 -translate-y-1/2 h-5 w-5 rounded-full bg-white shadow-lg transition-transform duration-300 ease-out"
+              style={{ left: '3px', transform: `translate(${lowPerf ? '22px' : '0px'}, -50%)` }}
             />
           </button>
         </div>

@@ -80,7 +80,7 @@ export default function SpinModal({ caseItem, onSpinComplete, onClose, isSpinnin
               <motion.div ref={ribbonRef} className="flex gap-3" animate={controls}>
                 {TRIPLE_LOOT.map((item, idx) => (
                   <div key={idx} className="flex-shrink-0 w-28 h-28 rounded-xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: (item.color || '#ffffff') + '40', backgroundColor: (item.color || '#ffffff') + '10' }}>
-                    <img src={getDynamicGiftImage(item)} alt={item.name} className="w-14 h-14 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
+                    <img src={getDynamicGiftImage(item)} alt={item.name} className="w-14 h-14 object-contain mb-1" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} loading="lazy" />
                     <span className="text-white/70 text-[10px] text-center font-semibold uppercase">{item.rarity}</span>
                   </div>
                 ))}

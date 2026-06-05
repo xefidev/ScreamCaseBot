@@ -214,3 +214,31 @@ html.lowperf .hover\:scale-105:hover,
 html.lowperf [class*="hover:scale-"]:hover {
   transform: none !important;
 }
+
+
+/* ============ LOW-PERFORMANCE MODE: extra overrides ============ */
+html.lowperf .motion-safe\:animate-pulse,
+html.lowperf .animate-pulse,
+html.lowperf .animate-spin,
+html.lowperf .animate-bounce,
+html.lowperf .animate-ping {
+  animation: none !important;
+}
+
+html.lowperf [class*="bg-gradient-"] {
+  /* Кэп градиентов до плоских цветов на самых слабых */
+  background-image: none !important;
+}
+
+/* Framer-motion элементы — режем длительность через CSS var */
+html.lowperf {
+  --motion-duration: 0.12s;
+}
+
+/* Большие декоративные размытые круги — частая причина лагов в Telegram WebView */
+html.lowperf .rounded-full[class*="blur"],
+html.lowperf [class*="filter-blur"],
+html.lowperf [style*="filter: blur"],
+html.lowperf [style*="filter:blur"] {
+  display: none !important;
+}
