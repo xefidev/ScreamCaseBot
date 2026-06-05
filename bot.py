@@ -1030,7 +1030,12 @@ async def api_balance(request):
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
         uid = int(uid)
-        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        # Try with promo_opened first; gracefully fall back if migration 004 not applied yet
+        try:
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        except Exception as col_err:
+            logger.warning(f"api_balance: promo_opened column missing, falling back: {col_err}")
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent").eq("user_id", uid).execute()
 
         if not res.data:
             return web.json_response({"ok": True, "stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
@@ -1107,6 +1112,12 @@ async def api_open_case(request):
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
         case_id = data.get("case_id")
+        # quantity: 1..10 (multi-open). For daily/promo cases forced to 1.
+        try:
+            quantity = int(data.get("quantity", 1) or 1)
+        except Exception:
+            quantity = 1
+        quantity = max(1, min(10, quantity))
 
         if not uid or case_id is None:
             return web.json_response({"error": "invalid_data", "ok": False}, status=400)
@@ -1114,6 +1125,7 @@ async def api_open_case(request):
         case_id = int(case_id)
         uid = int(uid)
 
+        # Daily case — always quantity=1
         if case_id == 2:
             res = await api_claim_daily_internal(uid)
             if res.status == 200:
@@ -1125,7 +1137,7 @@ async def api_open_case(request):
                 except Exception as e:
                     logger.error(f"Failed to increment case quests: {e}")
                 logger.info(f"✅ User {uid} opened Daily Case, won: {won_item['name']}")
-                return web.json_response({"ok": True, "success": True, "item": won_item, "deducted": 1})
+                return web.json_response({"ok": True, "success": True, "item": won_item, "items": [won_item], "deducted": 1, "quantity": 1})
             return res
 
         price = CASES_PRICES.get(case_id)
@@ -1139,8 +1151,9 @@ async def api_open_case(request):
         u = user_res.data[0]
         balance = u.get('stars', 0)
 
-        # PROMO CASE — server-side promo_code validation
+        # PROMO CASE — server-side promo_code validation. Promo cases forced to quantity=1.
         if case_id == 1:
+            quantity = 1
             promo_code = (data.get("promo_code") or "").strip().upper()
             if not promo_code:
                 return web.json_response({"error": "promo_code_required", "ok": False, "message": "Введите промокод"}, status=400)
@@ -1150,7 +1163,6 @@ async def api_open_case(request):
                 return web.json_response({"error": "promo_invalid", "ok": False, "message": "Неверный промокод"}, status=403)
 
             promo = promo_res.data[0]
-            # Duration window check (active for duration_h hours since created_at)
             try:
                 created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
                 expires_at = created_at + timedelta(hours=int(promo.get('duration_h') or 0))
@@ -1160,7 +1172,6 @@ async def api_open_case(request):
             except Exception as e:
                 logger.warning(f"Promo duration check failed: {e}")
 
-            # Deposit gate: user must have deposited >= min_deposit_24h within duration window (or last 24h)
             min_dep = int(promo.get('min_deposit_24h') or 0)
             if min_dep > 0:
                 window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
@@ -1171,69 +1182,96 @@ async def api_open_case(request):
                         "error": "deposit_required", "ok": False,
                         "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
                     }, status=403)
-
             price = 0
 
-        if balance < price:
+        total_cost = price * quantity
+
+        if balance < total_cost:
             return web.json_response({
                 "error": "insufficient_funds", "ok": False,
                 "message": "Недостаточно звёзд для открытия кейса",
-                "required": price, "balance": balance
+                "required": total_cost, "balance": balance
             }, status=403)
 
         case_info = CASES_DATA.get(case_id)
         if not case_info:
             return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
 
-        won_item = _get_random_gift(case_info['min'], case_info['max'])
-        new_spent = (u.get('total_spent') or 0) + price
-        new_count = (u.get('cases_opened_count') or 0) + 1
+        # Roll N gifts. Guarantee uniqueness across ALL rolls when the gift pool is large enough.
+        # If the pool has fewer distinct items than `quantity`, fall back to allowing repeats
+        # (but still minimize them via a "seen" set with bounded retries).
+        won_items = []
+        seen_names = set()
+        for _ in range(quantity):
+            chosen = None
+            for _try in range(20):
+                cand = _get_random_gift(case_info['min'], case_info['max'])
+                if cand['name'] not in seen_names:
+                    chosen = cand
+                    break
+                chosen = cand  # keep last candidate as fallback if pool exhausted
+            won_items.append(chosen)
+            seen_names.add(chosen['name'])
 
-        # Race-safe atomic decrement: only succeeds if stars are still >= price
+        new_spent = (u.get('total_spent') or 0) + total_cost
+        new_count = (u.get('cases_opened_count') or 0) + quantity
+
+        # Atomic deduction: succeeds only if balance hasn't changed since we read it
         upd = supabase.table("users").update({
-            "stars": balance - price,
+            "stars": balance - total_cost,
             "total_spent": new_spent,
             "cases_opened_count": new_count
         }).eq("user_id", uid).eq("stars", balance).execute()
         if not upd.data:
-            # Concurrent request modified balance between our read and write — abort
-            logger.warning(f"User {uid} open_case race lost (concurrent balance change)")
+            logger.warning(f"User {uid} open_case race lost (concurrent balance change, qty={quantity})")
             return web.json_response({"error": "concurrent_modification", "ok": False, "message": "Попробуйте ещё раз"}, status=409)
 
+        # Save all wins to inventory in one batch
         try:
-            supabase.table("user_inventory").insert({
+            inv_rows = [{
                 "user_id": uid,
                 "case_id": case_id,
-                "item_name": won_item['name'],
-                "item_image": won_item['image'],
-                "item_price": won_item['price'],
+                "item_name": w['name'],
+                "item_image": w['image'],
+                "item_price": w['price'],
                 "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            } for w in won_items]
+            supabase.table("user_inventory").insert(inv_rows).execute()
         except Exception as e:
             logger.error(f"Failed to save to user_inventory: {e}")
 
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -price,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-
-        _increment_achievement_progress(uid, 'cases_opened')
         try:
-            supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -total_cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log payment: {e}")
+
+        # Increment achievement+quests progress per opened case
+        for _ in range(quantity):
+            _increment_achievement_progress(uid, 'cases_opened')
+        try:
+            for _ in range(quantity):
+                supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
         except Exception as e:
             logger.error(f"Failed to increment case quests: {e}")
 
-        logger.info(f"✅ User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}). New balance: {balance - price}")
+        logger.info(f"✅ User {uid} opened case {case_id} x{quantity}: won {[w['name'] for w in won_items]} (total {total_cost}⭐). New balance: {balance - total_cost}")
 
         return web.json_response({
             "ok": True, "success": True,
-            "item": won_item, "deducted": price,
-            "new_balance": balance - price
+            "item": won_items[0],            # backward-compat with old single-open clients
+            "items": won_items,              # new multi-open payload
+            "deducted": total_cost,
+            "quantity": quantity,
+            "new_balance": balance - total_cost
         })
     except Exception as e:
         logger.error(f"Error in api_open_case: {e}")
         return web.json_response({"error": "server_error", "ok": False}, status=500)
+
 
 async def api_upgrade(request):
     """
@@ -1408,19 +1446,35 @@ async def api_wheel_spin(request):
         if not upd_u.data:
             logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
             return web.json_response({"error": "concurrent_modification"}, status=409)
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -cost,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-        supabase.table("user_inventory").insert({
-            "user_id": uid,
-            "case_id": None,
-            "item_name": gift["name"],
-            "item_price": gift["price"],
-            "item_image": gift["image"],
-            "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
+        # payments insert (non-fatal: don't block wheel reward if log fails)
+        try:
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as pay_err:
+            logger.warning(f"wheel_spin: payments log failed (non-fatal): {pay_err}")
+
+        # user_inventory insert (FATAL: this is the actual reward)
+        try:
+            supabase.table("user_inventory").insert({
+                "user_id": uid,
+                "case_id": None,
+                "item_name": gift["name"],
+                "item_price": gift["price"],
+                "item_image": gift["image"],
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as inv_err:
+            logger.error(f"wheel_spin: inventory insert FAILED for user {uid}: {inv_err}", exc_info=True)
+            # Refund the user since they paid but got no item
+            try:
+                supabase.table("users").update({"stars": balance, "total_spent": u.get('total_spent') or 0}).eq("user_id", uid).execute()
+                logger.info(f"wheel_spin: refunded {cost}⭐ to user {uid} after inventory failure")
+            except Exception as refund_err:
+                logger.error(f"wheel_spin: refund FAILED for user {uid}: {refund_err}")
+            return web.json_response({"error": "inventory_write_failed"}, status=500)
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
@@ -1945,6 +1999,64 @@ async def admin_delete_promo(message: types.Message):
     except Exception as e:
         logger.error(f"Error in admin_delete_promo: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {e}")
+
+@dp.message(Command("luck"))
+async def admin_set_luck(message: types.Message):
+    """Admin: /luck USER_ID N — set user's luck level (0-100). 
+    N=0: normal odds, N=100: only rarest items (jackpot only).
+    """
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        parts = message.text.split()
+        if len(parts) < 3:
+            await message.answer(
+                "❌ Использование: `/luck USER_ID N`\n"
+                "`N` — уровень удачи от 0 до 100\n"
+                "• 0 = обычные шансы\n"
+                "• 50 = повышенный шанс на редкие предметы\n"
+                "• 100 = ТОЛЬКО редкие предметы (jackpot)\n\n"
+                "Пример: `/luck 123456 75`",
+                parse_mode="Markdown"
+            )
+            return
+
+        try:
+            target_id = int(parts[1])
+            luck_level = int(parts[2])
+        except ValueError:
+            await message.answer("❌ USER_ID и N должны быть числами.")
+            return
+
+        if luck_level < 0 or luck_level > 100:
+            await message.answer("❌ N должно быть от 0 до 100.")
+            return
+
+        # Check user exists
+        user_res = supabase.table("users").select("user_id, luck_level").eq("user_id", target_id).execute()
+        if not user_res.data:
+            await message.answer(f"❌ Пользователь `{target_id}` не найден.", parse_mode="Markdown")
+            return
+
+        old_luck = user_res.data[0].get('luck_level', 0) or 0
+
+        # Update luck level
+        supabase.table("users").update({"luck_level": luck_level}).eq("user_id", target_id).execute()
+
+        await message.answer(
+            f"✅ Уровень удачи обновлён\n"
+            f"👤 Пользователь: `{target_id}`\n"
+            f"🎲 Старый уровень: `{old_luck}`\n"
+            f"🍀 Новый уровень: `{luck_level}`",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {message.from_user.id} set luck_level={luck_level} for user {target_id} (was {old_luck})")
+    except Exception as e:
+        logger.error(f"Error in admin_set_luck: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
 
 
 async def api_redeem_promo(request):

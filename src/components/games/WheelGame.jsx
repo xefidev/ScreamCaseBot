@@ -166,7 +166,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
           <h2 className="text-3xl font-black text-white font-rounded uppercase tracking-tight text-glow">Колесо Фортуны</h2>
           <div className="mt-3 inline-flex items-center gap-3 px-5 py-2 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md">
             <span className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em]">Стоимость: {SPIN_COST}</span>
-            <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+            <img src="/asset/Icons/TelegramStar.png" className="h-5 w-5" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
           </div>
         </div>
 
@@ -243,7 +243,7 @@ export default function WheelGame({ onClose, isPage, onWin, balance = 0, setBala
                     src={getDynamicGiftImage(winSegment.item)} 
                     alt={winSegment.item.name} 
                     className="h-44 w-44 object-contain mx-auto relative z-10" 
-                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
+                    onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} 
                     style={{ filter: `drop-shadow(0 0 40px ${winSegment.color}80)` }} 
                   />
                 </motion.div>

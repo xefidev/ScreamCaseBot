@@ -438,7 +438,7 @@ export const claimDaily = async (userId) => {
   }
 };
 
-export const openCase = async (userId, caseId, promoCode = null) => {
+export const openCase = async (userId, caseId, promoCode = null, quantity = 1) => {
   try {
     if (!userId || caseId === null) {
       throw new Error('Missing userId or caseId');
@@ -447,6 +447,7 @@ export const openCase = async (userId, caseId, promoCode = null) => {
     const payload = {
       user_id: userId,
       case_id: caseId,
+      quantity: Math.max(1, Math.min(10, parseInt(quantity, 10) || 1)),
       ...(promoCode ? { promo_code: promoCode } : {})
     };
     

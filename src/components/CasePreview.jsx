@@ -1,23 +1,37 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
+import { usePerf } from '../perfContext.jsx';
 import { getGiftsInRange, ALL_GIFTS } from '../giftData';
 import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
-import { playSound } from '../App';
+import { playSound, preloadSounds } from '../App';
 
 export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
+  const { lowPerf: _lp } = usePerf();
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [wonItems, setWonItems] = useState([]);
   const [spinData, setSpinData] = useState({ items: [], targetX: 0 });
+  const [multiReels, setMultiReels] = useState({ reels: [], animKey: 0 });
+  const reelsCompletedRef = useRef(0);
   const [currentStock, setCurrentStock] = useState(caseItem?.remaining_limit !== undefined ? caseItem?.remaining_limit : (caseItem?.stock || 0));
   const [quantity, setQuantity] = useState(1);
   const [promoCode, setPromoCode] = useState('');
   const [isCollecting, setIsCollecting] = useState(false);
   const animationKey = useRef(0);
+
+  // Preload spin sounds the moment the modal opens — guarantees no network/decode lag
+  // when the user clicks open, so audio + animation start the same frame.
+  React.useEffect(() => {
+    preloadSounds([
+      '/asset/Sounds/go-new-gambling.mp3',
+      '/asset/Sounds/spin_sound.mp3',
+      '/asset/Sounds/win_sound.mp3',
+    ]);
+  }, []);
 
   if (!caseItem) return null;
 
@@ -69,8 +83,9 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
     // promo code validated server-side via openCase
 
-    const totalCost = getCost;
-    
+    const effectiveQty = (isDaily || isPromo) ? 1 : quantity;
+    const totalCost = getCost * effectiveQty;
+
     if (balance < totalCost) {
         window?.Telegram?.WebApp?.showAlert?.("\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0437\u0432\u0451\u0437\u0434!");
         return;
@@ -85,77 +100,129 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
        return;
     }
 
-    // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
-    if (setBalance && totalCost > 0) {
-        setBalance(prev => Math.max(0, prev - totalCost));
-    }
+    if (targetQuantity > 1) {
+          // MULTI-OPEN: N vertical reels spinning simultaneously, sound starts WITH animation
+          const REEL_ITEM_H = targetQuantity >= 9 ? 72 : targetQuantity >= 6 ? 84 : 96;  // scales with quantity so all reels fit
+          const REPS_PER_REEL = 14;              // repetitions of spinItems per reel for length
+          const TARGET_REP_INDEX = 11;           // which repetition contains the winning slot
 
-    playSound('/asset/Sounds/go-new-gambling.mp3');
-    
-    setIsSpinning(true);
-    setWonItems([]);
+          // Build reels: each reel has its own shuffled items list and own winning index
+          const reels = results.map((winItem, reelIdx) => {
+            const reelItems = [];
+            for (let r = 0; r < REPS_PER_REEL; r++) {
+              // light per-reel shuffle of spinItems so reels don't look identical
+              const shuffled = [...spinItems].sort(() => Math.random() - 0.5);
+              reelItems.push(...shuffled);
+            }
+            // place real win at TARGET_REP_INDEX * spinItems.length + random offset
+            const slotOffset = Math.floor(Math.random() * spinItems.length);
+            const winIndex = TARGET_REP_INDEX * spinItems.length + slotOffset;
+            reelItems[winIndex] = { ...winItem };
 
-    let lastServerBalance = null; // \u0411\u0430\u043b\u0430\u043d\u0441 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f
+            // viewport center → translate so winIndex lands at center
+            const targetY = -(winIndex * REEL_ITEM_H);
+            return { items: reelItems, targetY, winIndex, itemH: REEL_ITEM_H };
+          });
 
-    try {
-        const results = [];
-        const targetQuantity = (isDaily || isPromo) ? 1 : quantity;
-
-        for (let i = 0; i < targetQuantity; i++) {
-          const response = await openCase(user?.id, caseItem?.id, isPromo ? promoCode.trim().toUpperCase() : null);
-          // \u0421\u0435\u0440\u0432\u0435\u0440 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u0442: { ok, success, item, deducted, new_balance }
-          if (!response?.success || !response?.item) throw new Error(`Failed to open case ${i+1}`);
-          results.push(response.item);
-          // \u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u043c \u0440\u0435\u0430\u043b\u044c\u043d\u044b\u0439 \u0431\u0430\u043b\u0430\u043d\u0441 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430
-          if (typeof response.new_balance === 'number') {
-            lastServerBalance = response.new_balance;
-          }
+          reelsCompletedRef.current = 0;
+          animationKey.current += 1;
+          setMultiReels({ reels, animKey: animationKey.current });
+          // Sound + animation start the SAME frame.
+          // requestAnimationFrame fires right before the browser paints the new
+          // setMultiReels state, so the audio's first sample lines up with the
+          // first painted frame of the reels moving.
+          // Framer Motion's initial→animate needs ~2 frames to start visible motion
+          // (state commit → effect → first paint). Single rAF fires audio BEFORE
+          // the reels visually move. Double rAF aligns audio with the first real
+          // motion frame.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => playSound('/asset/Sounds/spin_sound.mp3'));
+          });
+        } else {
+          // \u041e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0435 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0434\u043b\u044f UI (\u0435\u0441\u043b\u0438 \u0446\u0435\u043d\u0430 > 0)
+                          if (setBalance && totalCost > 0) {
+                              setBalance(prev => Math.max(0, prev - totalCost));
+                          }
+          
+                          // sound moved to sync with animation start (was playing 1-2s before reels moved due to API await)
+                          setIsSpinning(true);
+                          setWonItems([]);
+          
+                          let lastServerBalance = null; // \u0411\u0430\u043b\u0430\u043d\u0441 \u0441 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f
+          
+                          try {
+                              const targetQuantity = effectiveQty;
+          
+                              // ONE atomic server call: server rolls N gifts and deducts price*N atomically
+                              const response = await openCase(
+                                user?.id,
+                                caseItem?.id,
+                                isPromo ? promoCode.trim().toUpperCase() : null,
+                                targetQuantity
+                              );
+                              if (!response?.success) throw new Error('Failed to open case');
+                              const results = Array.isArray(response.items) && response.items.length > 0
+                                ? response.items
+                                : (response.item ? [response.item] : []);
+                              if (results.length === 0) throw new Error('Empty items from server');
+                              if (typeof response.new_balance === 'number') {
+                                lastServerBalance = response.new_balance;
+                              }
+                              }
+          
+                              // \u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u0443\u0435\u043c \u0431\u0430\u043b\u0430\u043d\u0441 \u0441 \u0438\u0441\u0442\u0438\u043d\u043d\u044b\u043c \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u0430
+                              if (setBalance && lastServerBalance !== null) {
+                                setBalance(lastServerBalance);
+                                console.log('\u2705 \u0411\u0430\u043b\u0430\u043d\u0441 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f \u043a\u0435\u0439\u0441\u0430:', lastServerBalance);
+                              }
+          
+                              triggerHaptic();
+                              if (setSpent) setSpent(prev => prev + totalCost);
+                              // promo no longer one-time gated; server enforces validity
+                              setCurrentStock(prev => Math.max(0, prev - targetQuantity));
+          
+                              setWonItems(results);
+                              setHasSpun(false);
+                              setShowConfetti(false);
+                              setShowResult(false);
+          
+                              const lastWonItem = results[results.length - 1];
+          
+                              // Строим ленту из 10 повторов spinItems, НО подменяем целевую позицию на реальный выигрыш с сервера.
+                              // Это гарантирует визуальное совпадение независимо от findIndex.
+                              const repetitions = 10;
+                              const extendedItems = [];
+                              for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
+          
+                              // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
+                              let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
+                              if (winIndex === -1) {
+                                  winIndex = Math.floor(spinItems.length / 2);
+                                  console.warn('⚠️ Выигранный предмет не найден в spinItems:', lastWonItem?.name);
+                              }
+          
+                              const targetIndex = spinItems.length * 7 + winIndex;
+                              // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
+                              if (lastWonItem && targetIndex < extendedItems.length) {
+                                  extendedItems[targetIndex] = { ...lastWonItem };
+                              }
+          
+                              const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
+                              const containerCenter = viewportWidth / 2;
+                              const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
+                              const targetX = containerCenter - itemCenter;
+          
+                              animationKey.current += 1;
+                              setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
+                              // Sound + animation start the SAME frame.
+                              // requestAnimationFrame fires right before the browser paints
+                              // the new setSpinData state, so audio lines up with the first
+                              // painted frame of the wheel moving (not 16+ms early).
+                              // Double rAF: framer-motion takes 2 frames to start visible motion.
+                              requestAnimationFrame(() => {
+                                requestAnimationFrame(() => playSound('/asset/Sounds/go-new-gambling.mp3'));
+                              });
         }
-
-        // \u0421\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u0443\u0435\u043c \u0431\u0430\u043b\u0430\u043d\u0441 \u0441 \u0438\u0441\u0442\u0438\u043d\u043d\u044b\u043c \u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435\u043c \u0441\u0435\u0440\u0432\u0435\u0440\u0430
-        if (setBalance && lastServerBalance !== null) {
-          setBalance(lastServerBalance);
-          console.log('\u2705 \u0411\u0430\u043b\u0430\u043d\u0441 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f \u043a\u0435\u0439\u0441\u0430:', lastServerBalance);
-        }
-
-        triggerHaptic();
-        if (setSpent) setSpent(prev => prev + totalCost);
-        // promo no longer one-time gated; server enforces validity
-        setCurrentStock(prev => Math.max(0, prev - targetQuantity));
-
-        setWonItems(results);
-        setHasSpun(false);
-        setShowConfetti(false);
-        setShowResult(false);
-
-        const lastWonItem = results[results.length - 1];
-
-        // Строим ленту из 10 повторов spinItems, НО подменяем целевую позицию на реальный выигрыш с сервера.
-        // Это гарантирует визуальное совпадение независимо от findIndex.
-        const repetitions = 10;
-        const extendedItems = [];
-        for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
-
-        // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
-        let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
-        if (winIndex === -1) {
-            winIndex = Math.floor(spinItems.length / 2);
-            console.warn('⚠️ Выигранный предмет не найден в spinItems:', lastWonItem?.name);
-        }
-
-        const targetIndex = spinItems.length * 7 + winIndex;
-        // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
-        if (lastWonItem && targetIndex < extendedItems.length) {
-            extendedItems[targetIndex] = { ...lastWonItem };
-        }
-
-        const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
-        const containerCenter = viewportWidth / 2;
-        const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
-        const targetX = containerCenter - itemCenter;
-
-        animationKey.current += 1;
-        setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
     } catch (e) {
         console.error("Error in handleOpen:", e);
         stopSound();
@@ -197,7 +264,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
     <div className="h-full flex flex-col bg-[#1a1b1e]">
       {showConfetti && (
         <div className="fixed inset-0 z-60 pointer-events-none">
-          <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={200} />
+          {!_lp && <Confetti width={window.innerWidth} height={window.innerHeight} recycle={false} numberOfPieces={120} tweenDuration={3000} />}
         </div>
       )}
 
@@ -224,13 +291,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {previewGifts?.map((gift, idx) => (
               <motion.div key={idx} animate={{ y: [0, -12, 0], rotate: [0, 4, -4, 0], scale: [1.3, 1.4, 1.3] }} transition={{ duration: 2.5 + idx * 0.4, repeat: Infinity, ease: "easeInOut", delay: idx * 0.6 }} className="absolute" style={{ left: previewGifts?.length === 1 ? '50%' : idx === 0 ? '35%' : '65%', top: '15%', transform: 'translateX(-50%)', zIndex: 10 }}>
                 <div className="rounded-3xl p-4" style={{ backgroundColor: `${caseItem?.glowColor || '#ffffff'}15` }}>
-                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+                  <img src={getDynamicGiftImage(gift)} alt="Gift" className="w-28 h-28 object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}80)` }} />
                 </div>
               </motion.div>
             ))}
           </div>
           <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
-            <img src={caseItem?.image || '/asset/Case/CaseBlack.png'} alt="Case" className="w-48 h-48 object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
+            <img src={caseItem?.image || '/asset/Case/CaseBlack.png'} alt="Case" className="w-48 h-48 object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} style={{ filter: `drop-shadow(0 0 30px ${caseItem?.glowColor || '#ffffff'}80)` }} />
           </div>
         </div>
 
@@ -246,13 +313,78 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                       <motion.div key={spinData?.animKey} className="flex gap-3" initial={{ x: 0 }} animate={{ x: spinData?.targetX }} transition={{ duration: 4, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete}>
                         {spinData?.items?.map((item, idx) => (
                           <div key={idx} className="flex-shrink-0 w-36 h-36 rounded-2xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}40`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                            <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                             <div className="flex items-center justify-center gap-1 text-[10px] text-white/70">
-                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
+                              <span className="font-bold flex items-center gap-0.5 font-rounded text-xs">{item?.price ?? item?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-4 w-4" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span>
                             </div>
                           </div>
                         ))}
                       </motion.div>
+                    )}
+                    {multiReels?.reels?.length > 0 && (
+                      <div
+                        className={`grid gap-1.5 w-full ${
+                          multiReels.reels.length === 2 ? 'grid-cols-2' :
+                          multiReels.reels.length === 3 ? 'grid-cols-3' :
+                          multiReels.reels.length === 4 ? 'grid-cols-4' :
+                          multiReels.reels.length <= 6 ? 'grid-cols-3' :
+                          multiReels.reels.length <= 8 ? 'grid-cols-4' :
+                          'grid-cols-5'
+                        }`}
+                      >
+                        {multiReels.reels.map((reel, rIdx) => (
+                          <div key={`wrap-${rIdx}-${multiReels.animKey}`} className="flex flex-col items-center gap-1 w-full">
+                            <span className="text-[10px] font-bold text-white/70 leading-none tracking-wider">
+                              {rIdx + 1}/{multiReels.reels.length}
+                            </span>
+                            <div
+                              className="relative overflow-hidden rounded-xl border bg-black/30 w-full"
+                              style={{
+                                height: `${reel.itemH}px`,
+                                borderColor: `${caseItem?.glowColor || '#ffffff'}40`,
+                              }}
+                            >
+                            <motion.div
+                              className="flex flex-col"
+                              initial={{ y: 0 }}
+                              animate={{ y: reel.targetY }}
+                              transition={{
+                                duration: 3.6 + rIdx * 0.12,    // slight stagger so they finish 0..1.2s apart
+                                ease: [0.12, 0, 0.39, 0],
+                              }}
+                              onAnimationComplete={() => {
+                                reelsCompletedRef.current += 1;
+                                if (reelsCompletedRef.current >= multiReels.reels.length) {
+                                  handleAnimationComplete();
+                                }
+                              }}
+                            >
+                              {reel.items.map((it, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex-shrink-0 w-full flex items-center justify-center"
+                                  style={{
+                                    height: `${reel.itemH}px`,
+                                    backgroundColor: `${caseItem?.glowColor || '#ffffff'}08`,
+                                  }}
+                                >
+                                  <img
+                                    src={getDynamicGiftImage(it)}
+                                    alt="Gift"
+                                    loading="lazy"
+                                    decoding="async"
+                                    className="w-16 h-16 object-contain"
+                                    onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }}
+                                  />
+                                </div>
+                              ))}
+                            </motion.div>
+                            {/* center selector line */}
+                            <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 h-[2px] bg-white/60" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -264,10 +396,10 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     </p>
                     <div className={`grid gap-4 ${wonItems?.length > 2 ? 'grid-cols-2' : wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {wonItems?.map((wonItem, idx) => wonItem && (
-                        <motion.div key={idx} initial={{ opacity: 0, y: 20, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: idx * 0.15, duration: 0.4 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
-                          <p className={`${wonItems?.length > 2 ? 'text-[10px]' : wonItems?.length > 1 ? 'text-xs' : 'text-xl'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
-                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
+                        <motion.div key={idx} initial={{ opacity: 0, y: 20, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: Math.min(idx * 0.08, 0.6), duration: 0.3 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
+                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length <= 1 ? 'h-44 w-44' : wonItems?.length === 2 ? 'h-28 w-28' : wonItems?.length <= 4 ? 'h-20 w-20' : wonItems?.length <= 6 ? 'h-16 w-16' : wonItems?.length <= 9 ? 'h-14 w-14' : 'h-12 w-12'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={wonItems?.length > 4 ? false : { y: [0, -8, 0] }} transition={wonItems?.length > 4 ? undefined : { duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
+                          <p className={`${wonItems?.length <= 1 ? 'text-xl' : wonItems?.length === 2 ? 'text-sm' : wonItems?.length <= 4 ? 'text-[10px]' : wonItems?.length <= 9 ? 'text-[9px]' : 'text-[8px]'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
+                          <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                         </motion.div>
                       ))}
                     </div>
@@ -304,12 +436,12 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 {dropItems?.map((item, idx) => (
                   <motion.div key={idx} whileHover={{ scale: 1.05 }} className="glass-panel w-full max-w-[140px] p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg">
                     <div className="w-16 h-16 flex items-center justify-center mb-2">
-                        <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                        <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
                     <p className="text-white font-bold text-[10px] text-center truncate w-full uppercase tracking-tight mb-1">{item?.name || 'Gift'}</p>
                     <div className="flex items-center justify-center gap-1.5 px-2 py-0.5 rounded-full bg-white/5 border border-white/5">
                         <span className="text-white/60 text-[9px] font-black">{item?.price ?? item?.cost ?? 0}</span>
-                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                        <img src="/asset/Icons/TelegramStar.png" className="h-2.5 w-2.5" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
                   </motion.div>
                 ))}
@@ -335,7 +467,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             {isLowBalance ? (
               <div className="flex items-center gap-2">
                 <span>ПОПОЛНИТЬ НА {missingAmount}</span>
-                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" />
+                <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars"  loading="lazy" decoding="async" />
               </div>
             ) : isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
               <div className="flex items-center justify-center gap-2">
@@ -343,7 +475,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 <div className="w-px h-4 bg-white/20 mx-1" />
                 <span className="flex items-center gap-1">
                   {isDaily ? 1 : getCost} 
-                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
+                  <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                 </span>
               </div>
             )}

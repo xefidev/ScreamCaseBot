@@ -10,6 +10,8 @@ function getPool(path) {
         const a = new Audio(path);
         a.preload = 'auto';
         a.volume = 0.5;
+        // force browser to actually fetch+decode now, not on first play()
+        try { a.load(); } catch {}
         pool.push(a);
       } catch (e) {
         console.warn('Audio create failed', e);
@@ -18,6 +20,30 @@ function getPool(path) {
     cache.set(path, { pool, idx: 0 });
   }
   return cache.get(path);
+}
+
+// Preload a list of sounds and wait until they can play through.
+// Resolves even on error so we never block the UI.
+export function preloadSounds(paths) {
+  const tasks = paths.map((path) => new Promise((resolve) => {
+    try {
+      const entry = getPool(path);
+      const a = entry.pool[0];
+      if (!a) return resolve();
+      if (a.readyState >= 3) return resolve(); // HAVE_FUTURE_DATA or more
+      const done = () => { cleanup(); resolve(); };
+      const cleanup = () => {
+        a.removeEventListener('canplaythrough', done);
+        a.removeEventListener('error', done);
+      };
+      a.addEventListener('canplaythrough', done, { once: true });
+      a.addEventListener('error', done, { once: true });
+      try { a.load(); } catch {}
+      // safety timeout — never wait more than 2s
+      setTimeout(done, 2000);
+    } catch { resolve(); }
+  }));
+  return Promise.all(tasks);
 }
 
 export function playSound(path) {
