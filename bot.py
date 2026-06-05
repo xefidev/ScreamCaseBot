@@ -701,13 +701,49 @@ async def help_cmd(message: types.Message):
 
 
 @dp.message(Command("luck"))
-async def luck_cmd(message: types.Message):
+async def luck_cmd(message: types.Message, command: CommandObject):
     try:
-        if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Команда только для администраторов.")
-            return
         uid = message.from_user.id
-        # Get user luck level
+
+        # Parse argument if provided
+        args = (command.args or "").strip()
+
+        if args:
+            # Admin is setting luck level
+            if message.from_user.id not in ADMIN_IDS:
+                return  # Ignore silently
+            try:
+                level = int(args)
+                if level < 0 or level > 5:
+                    await message.answer("❌ Уровень удачи должен быть от 0 до 5.")
+                    return
+                supabase.table("users").update({"luck_level": level}).eq("user_id", uid).execute()
+                logger.info(f"Admin {uid} set their luck level to {level}")
+                await message.answer(f"✅ Уровень удачи установлен на {level}")
+                return
+            except ValueError:
+                if message.from_user.id in ADMIN_IDS:
+                    try:
+                        target_id = int(args)
+                        user_res = supabase.table("users").select("luck_level").eq("user_id", target_id).limit(1).execute()
+                        if not user_res.data:
+                            await message.answer("❌ Пользователь не найден.")
+                            return
+                        luck = user_res.data[0].get("luck_level") or 0
+                        luck_text = {
+                            0: "🎲 Обычная удача", 1: "🍀 Слегка везучий", 2: "✨ Везучий",
+                            3: "🌟 Очень везучий", 4: "💎 Ультра везучий", 5: "👑 Бог удачи"
+                        }.get(luck, "🎲 Обычная удача")
+                        await message.answer(f"🎯 **Уровень удачи пользователя `{target_id}`: {luck}**
+
+{luck_text}")
+                        return
+                    except ValueError:
+                        pass
+                await message.answer("❌ Использование: `/luck` — показать свой уровень, `/luck 0-5` — установить (админ).")
+                return
+
+        # No args — show current luck level (anyone can check)
         user_res = supabase.table("users").select("luck_level").eq("user_id", uid).limit(1).execute()
         if not user_res.data:
             await message.answer("❌ Пользователь не найден. Запустите бота через /start")
@@ -715,28 +751,25 @@ async def luck_cmd(message: types.Message):
 
         luck = user_res.data[0].get("luck_level") or 0
 
-        # Luck description
         luck_text = {
-            0: "🎲 Обычная удача",
-            1: "🍀 Слегка везучий",
-            2: "✨ Везучий",
-            3: "🌟 Очень везучий",
-            4: "💎 Ультра везучий",
-            5: "👑 Бог удачи"
+            0: "🎲 Обычная удача", 1: "🍀 Слегка везучий", 2: "✨ Везучий",
+            3: "🌟 Очень везучий", 4: "💎 Ультра везучий", 5: "👑 Бог удачи"
         }.get(luck, "🎲 Обычная удача")
 
-        await message.answer(f"🎯 **Ваш уровень удачи: {luck}**\n\n{luck_text}\n\nУдача влияет на шансы выпадения редких предметов из кейсов.")
+        await message.answer(f"🎯 **Ваш уровень удачи: {luck}**
+
+{luck_text}
+
+Удача влияет на шансы выпадения редких предметов из кейсов.")
     except Exception as e:
         logger.error(f"Error in luck_cmd: {e}")
         await message.answer("❌ Ошибка при получении уровня удачи.")
-
 
 
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         parts = message.text.split()
@@ -779,7 +812,6 @@ async def admin_add(message: types.Message):
 async def admin_set(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         parts = message.text.split()
@@ -808,7 +840,6 @@ async def admin_set(message: types.Message):
 async def admin_user_info(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         parts = message.text.split()
@@ -843,7 +874,6 @@ async def admin_user_info(message: types.Message):
 async def admin_stats(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         count_res = supabase.table("users").select("*", count="exact").limit(1).execute()
@@ -895,7 +925,6 @@ async def admin_stats(message: types.Message):
 async def admin_send(message: types.Message, command: CommandObject):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         text_to_send = (command.args or "").strip()
@@ -929,7 +958,6 @@ async def admin_send(message: types.Message, command: CommandObject):
 async def admin_hype(message: types.Message, command: CommandObject):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         try:
@@ -1860,7 +1888,6 @@ async def admin_create_promo(message: types.Message):
     """
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         parts = message.text.split()
@@ -1929,7 +1956,6 @@ async def admin_create_promo(message: types.Message):
 async def admin_list_promo(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
 
         res = supabase.table("promo_codes").select("code, min_deposit_24h, duration_hours, created_at, is_active").order("created_at", desc=True).limit(20).execute()
@@ -1960,7 +1986,6 @@ async def admin_list_promo(message: types.Message):
 async def admin_delete_promo(message: types.Message):
     try:
         if message.from_user.id not in ADMIN_IDS:
-            await message.answer("❌ Вы не администратор.")
             return
         parts = message.text.split()
         if len(parts) < 2:
