@@ -677,6 +677,7 @@ async def help_cmd(message: types.Message):
         text = "📖 **Команды бота**\n\n"
         text += "• `/start` — Запуск приложения\n"
         text += "• `/help` — Справка по командам\n"
+        text += "• `/luck` — Уровень удачи\n"
 
         if message.from_user.id in ADMIN_IDS:
             text += "\n🛠 **Админ-панель:**\n"
@@ -697,6 +698,35 @@ async def help_cmd(message: types.Message):
     except Exception as e:
         logger.error(f"Error in help_cmd: {e}")
         await message.answer("❌ Ошибка при получении справки.")
+
+
+@dp.message(Command("luck"))
+async def luck_cmd(message: types.Message):
+    try:
+        uid = message.from_user.id
+        # Get user luck level
+        user_res = supabase.table("users").select("luck_level").eq("user_id", uid).limit(1).execute()
+        if not user_res.data:
+            await message.answer("❌ Пользователь не найден. Запустите бота через /start")
+            return
+
+        luck = user_res.data[0].get("luck_level") or 0
+
+        # Luck description
+        luck_text = {
+            0: "🎲 Обычная удача",
+            1: "🍀 Слегка везучий",
+            2: "✨ Везучий",
+            3: "🌟 Очень везучий",
+            4: "💎 Ультра везучий",
+            5: "👑 Бог удачи"
+        }.get(luck, "🎲 Обычная удача")
+
+        await message.answer(f"🎯 **Ваш уровень удачи: {luck}**\n\n{luck_text}\n\nУдача влияет на шансы выпадения редких предметов из кейсов.")
+    except Exception as e:
+        logger.error(f"Error in luck_cmd: {e}")
+        await message.answer("❌ Ошибка при получении уровня удачи.")
+
 
 
 @dp.message(Command("+"))
