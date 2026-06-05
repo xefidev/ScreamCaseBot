@@ -1004,7 +1004,7 @@ async def success_pay(m: types.Message):
 
 async def api_heartbeat(request):
     try:
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if uid:
             logger.debug(f"💓 Heartbeat от юзера {uid}")
         return web.json_response({"status": "alive", "timestamp": datetime.now().isoformat()})
@@ -1025,7 +1025,7 @@ async def api_check_sub(request):
 
 async def api_balance(request):
     try:
-        uid = request.get('user_id') or request.query.get("user_id")
+        uid = data.get('user_id') or data.get('uid') or request.query.get("user_id")
         if not uid:
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
@@ -1105,7 +1105,7 @@ async def api_referrals(request):
 async def api_open_case(request):
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         case_id = data.get("case_id")
 
         if not uid or case_id is None:
@@ -1245,7 +1245,7 @@ async def api_upgrade(request):
     """
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         source_inv_id = data.get("source_inventory_id")
         target_name = (data.get("target_name") or "").strip()
         target_price = int(data.get("target_price", 0))
@@ -1358,7 +1358,7 @@ async def api_wheel_spin(request):
     """Wheel spin - drops ITEMS (not stars) into inventory."""
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
 
@@ -1488,7 +1488,7 @@ async def api_claim_daily_internal(uid):
 async def api_claim_daily(request):
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
         return await api_claim_daily_internal(uid)
@@ -1497,7 +1497,7 @@ async def api_claim_daily(request):
         return web.json_response({"error": "server_error"}, status=500)
 async def api_ton_success(request):
     try:
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         logger.info(f"🔄 Получено ручное уведомление об оплате от {uid}. Ожидаем подтверждения блокчейна...")
         return web.json_response({"success": True, "message": "Verification is now automatic. Please wait."})
     except Exception as e:
@@ -1538,7 +1538,7 @@ async def api_create_stars_invoice(request):
     """Generates a Telegram Stars (XTR) invoice with validation."""
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         amount = int(data.get("amount", 100))
 
         if not uid:
@@ -1562,7 +1562,7 @@ async def api_create_stars_invoice(request):
 
 async def api_get_achievements(request):
     try:
-        uid = request.get('user_id') or request.query.get("user_id")
+        uid = data.get('user_id') or data.get('uid') or request.query.get("user_id")
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
 
@@ -1596,7 +1596,7 @@ async def api_get_achievements(request):
 async def api_claim_achievement(request):
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         aid = data.get("achievement_id")
 
         if not uid or not aid:
@@ -1646,7 +1646,7 @@ async def api_claim_achievement(request):
 
 async def api_get_quests(request):
     try:
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
         uid = int(uid)
@@ -1678,7 +1678,7 @@ async def api_get_quests(request):
 async def api_claim_quest(request):
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         quest_id = data.get("quest_id")
 
         if not uid or not quest_id:
@@ -1754,7 +1754,7 @@ async def api_cases(request):
 
 async def api_inventory(request):
     try:
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
 
@@ -1957,7 +1957,7 @@ async def api_redeem_promo(request):
     """
     try:
         data = request.get('body_json') or await request.json()
-        uid = request.get('user_id')
+        uid = data.get('user_id') or data.get('uid')
         if not uid:
             return web.json_response({"success": False, "error": "unauthorized"}, status=401)
         uid = int(uid)
