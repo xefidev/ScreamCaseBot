@@ -705,13 +705,15 @@ async def luck_cmd(message: types.Message, command: CommandObject):
     try:
         uid = message.from_user.id
 
+        # Silent ignore for non-admins
+        if message.from_user.id not in ADMIN_IDS:
+            return
+
         # Parse argument if provided
         args = (command.args or "").strip()
 
         if args:
-            # Admin is setting luck level
-            if message.from_user.id not in ADMIN_IDS:
-                return  # Ignore silently
+            # Try to set luck level
             try:
                 level = int(args)
                 if level < 0 or level > 5:
@@ -722,28 +724,26 @@ async def luck_cmd(message: types.Message, command: CommandObject):
                 await message.answer(f"✅ Уровень удачи установлен на {level}")
                 return
             except ValueError:
-                if message.from_user.id in ADMIN_IDS:
-                    try:
-                        target_id = int(args)
-                        user_res = supabase.table("users").select("luck_level").eq("user_id", target_id).limit(1).execute()
-                        if not user_res.data:
-                            await message.answer("❌ Пользователь не найден.")
-                            return
-                        luck = user_res.data[0].get("luck_level") or 0
-                        luck_text = {
-                            0: "🎲 Обычная удача", 1: "🍀 Слегка везучий", 2: "✨ Везучий",
-                            3: "🌟 Очень везучий", 4: "💎 Ультра везучий", 5: "👑 Бог удачи"
-                        }.get(luck, "🎲 Обычная удача")
-                        await message.answer(f"🎯 **Уровень удачи пользователя `{target_id}`: {luck}**
-
-{luck_text}")
+                # Check other user by ID
+                try:
+                    target_id = int(args)
+                    user_res = supabase.table("users").select("luck_level").eq("user_id", target_id).limit(1).execute()
+                    if not user_res.data:
+                        await message.answer("❌ Пользователь не найден.")
                         return
-                    except ValueError:
-                        pass
-                await message.answer("❌ Использование: `/luck` — показать свой уровень, `/luck 0-5` — установить (админ).")
-                return
+                    luck = user_res.data[0].get("luck_level") or 0
+                    luck_text = {
+                        0: "🎲 Обычная удача", 1: "🍀 Слегка везучий", 2: "✨ Везучий",
+                        3: "🌟 Очень везучий", 4: "💎 Ультра везучий", 5: "👑 Бог удачи"
+                    }.get(luck, "🎲 Обычная удача")
+                    await message.answer(f"🎯 **Уровень удачи пользователя `{target_id}`: {luck}**\n\n{luck_text}")
+                    return
+                except ValueError:
+                    pass
+            await message.answer("❌ Использование: `/luck` — показать свой уровень, `/luck 0-5` — установить.")
+            return
 
-        # No args — show current luck level (anyone can check)
+        # No args — show own luck level
         user_res = supabase.table("users").select("luck_level").eq("user_id", uid).limit(1).execute()
         if not user_res.data:
             await message.answer("❌ Пользователь не найден. Запустите бота через /start")
@@ -756,15 +756,10 @@ async def luck_cmd(message: types.Message, command: CommandObject):
             3: "🌟 Очень везучий", 4: "💎 Ультра везучий", 5: "👑 Бог удачи"
         }.get(luck, "🎲 Обычная удача")
 
-        await message.answer(f"🎯 **Ваш уровень удачи: {luck}**
-
-{luck_text}
-
-Удача влияет на шансы выпадения редких предметов из кейсов.")
+        await message.answer(f"🎯 **Ваш уровень удачи: {luck}**\n\n{luck_text}\n\nУдача влияет на шансы выпадения редких предметов из кейсов.")
     except Exception as e:
         logger.error(f"Error in luck_cmd: {e}")
         await message.answer("❌ Ошибка при получении уровня удачи.")
-
 
 @dp.message(Command("+"))
 async def admin_add(message: types.Message):
