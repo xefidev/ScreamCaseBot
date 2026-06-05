@@ -677,10 +677,10 @@ async def help_cmd(message: types.Message):
         text = "📖 **Команды бота**\n\n"
         text += "• `/start` — Запуск приложения\n"
         text += "• `/help` — Справка по командам\n"
-        text += "• `/luck` — Уровень удачи\n"
 
         if message.from_user.id in ADMIN_IDS:
             text += "\n🛠 **Админ-панель:**\n"
+        text += "• `/luck` — Уровень удачи (админ)\n"
             text += "• `/+ <число>` — Добавить себе звезд\n"
             text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
             text += "• `/user <ID>` — Информация об игроке\n"
