@@ -594,12 +594,18 @@ export const redeemPromo = async (userId, code) => {
         already_redeemed: '❌ Вы уже активировали этот код',
         user_not_found: '❌ Пользователь не найден',
         unauthorized: '❌ Нет авторизации',
+        insufficient_deposit: `❌ Для активации пополните на ${data.required || '?'}⭐ (у вас ${data.have || 0}⭐ за 24ч)`,
       };
-      const msg = messages[errCode] || '❌ Ошибка активации промокода';
+      let msg = messages[errCode] || '❌ Ошибка активации промокода';
+      if (errCode === 'insufficient_deposit') {
+        msg = `❌ Для активации пополните на ${data.required || '?'}⭐ (у вас ${data.have || 0}⭐ за 24ч)`;
+      }
       showAlert(msg);
       const err = new Error(msg);
       err.status = response.status;
       err.errorCode = errCode;
+      err.required = data.required;
+      err.have = data.have;
       throw err;
     }
 
