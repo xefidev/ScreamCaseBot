@@ -230,7 +230,34 @@ const [promoCode, setPromoCode] = useState('');
         setIsSpinning(false);
         // \u041e\u0442\u043a\u0430\u0442 \u043e\u043f\u0442\u0438\u043c\u0438\u0441\u0442\u0438\u0447\u043d\u043e\u0433\u043e \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u044f \u2014 \u0432\u043e\u0437\u0432\u0440\u0430\u0449\u0430\u0435\u043c \u043b\u043e\u043a\u0430\u043b\u044c\u043d\u0443\u044e \u0441\u0443\u043c\u043c\u0443 (\u0441\u0435\u0440\u0432\u0435\u0440 \u043d\u0435 \u0441\u043f\u0438\u0441\u0430\u043b, \u0442\u0430\u043a \u043a\u0430\u043a \u043e\u0448\u0438\u0431\u043a\u0430)
         if (setBalance && totalCost > 0) setBalance(prev => prev + totalCost);
-        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert("\u274c \u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u0438 \u043a\u0435\u0439\u0441\u0430");
+
+        // Promo-specific error messages
+        let errorMsg = "\u274c \u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u0438 \u043a\u0435\u0439\u0441\u0430";
+        if (isPromo) {
+          const errCode = e?.errorCode || e?.details?.error;
+          const errDetails = e?.details || {};
+          if (errCode === 'invalid_code' || errCode === 'code_not_found') {
+            errorMsg = "\u274c \u041f\u0440\u043e\u043c\u043e\u043a\u043e\u0434 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
+          } else if (errCode === 'already_opened' || errCode === 'already_redeemed') {
+            errorMsg = "\u274c \u0412\u044b \u0443\u0436\u0435 \u043e\u0442\u043a\u0440\u044b\u0432\u0430\u043b\u0438 \u044d\u0442\u043e\u0442 \u043f\u0440\u043e\u043c\u043e-\u043a\u0435\u0439\u0441";
+          } else if (errCode === 'expired' || errCode === 'code_expired') {
+            errorMsg = "\u274c \u041f\u0440\u043e\u043c\u043e\u043a\u043e\u0434 \u0438\u0441\u0442\u0451\u043a";
+          } else if (errCode === 'insufficient_deposit') {
+            const required = errDetails.required || e?.required || '?';
+            const have = errDetails.have || e?.have || 0;
+            errorMsg = `\u274c \u0414\u043b\u044f \u0430\u043a\u0442\u0438\u0432\u0430\u0446\u0438\u0438 \u043f\u043e\u043f\u043e\u043b\u043d\u0438\u0442\u0435 \u043d\u0430 ${required}\u2b50 (\u0443 \u0432\u0430\u0441 ${have}\u2b50 \u0437\u0430 24\u0447)`;
+          } else if (errCode === 'no_code') {
+            errorMsg = "\u274c \u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043f\u0440\u043e\u043c\u043e\u043a\u043e\u0434";
+          } else if (errCode === 'code_exhausted') {
+            errorMsg = "\u274c \u041f\u0440\u043e\u043c\u043e\u043a\u043e\u0434 \u0431\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u0430\u043a\u0442\u0438\u0432\u0435\u043d";
+          } else if (errCode === 'unauthorized') {
+            errorMsg = "\u274c \u041d\u0435\u0442 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438";
+          } else if (errCode === 'user_not_found') {
+            errorMsg = "\u274c \u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
+          }
+        }
+
+        if (window.Telegram?.WebApp) window.Telegram.WebApp.showAlert(errorMsg);
     }
   };
 
