@@ -328,7 +328,11 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
         logger.error(f"Error in update_balance: {e}")
 
 
-def _get_random_gift(min_p, max_p):
+def _get_random_gift(min_p, max_p, luck_level=0):
+    """Get random gift with optional luck modifier.
+
+    luck_level: 0-100. 0 = normal odds, 100 = only rarest items.
+    """
     drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
     if not drop_items:
         drop_items = ALL_GIFTS[:10]
@@ -337,10 +341,24 @@ def _get_random_gift(min_p, max_p):
     mid = [i for i in drop_items if 50 < i['price'] <= 150]
     jackpot = [i for i in drop_items if i['price'] > 150]
 
-    rand = random.random() * 100
-    if rand < 85 and cheap:
+    # Apply luck modifier to tier weights
+    # luck_level 0: normal (85/12/3)
+    # luck_level 100: jackpot only (0/0/100)
+    cheap_weight = max(1, 85 - int(luck_level * 0.85))
+    mid_weight = max(1, 12 - int(luck_level * 0.12)) if luck_level < 100 else 0
+    jackpot_weight = max(1, 3 + int(luck_level * 0.97))
+
+    if luck_level >= 100:
+        cheap_weight = 0
+        mid_weight = 0
+        jackpot_weight = 100
+
+    total = cheap_weight + mid_weight + jackpot_weight
+    rand = random.random() * total
+
+    if rand < cheap_weight and cheap:
         return random.choice(cheap)
-    elif rand < 97 and mid:
+    elif rand < cheap_weight + mid_weight and mid:
         return random.choice(mid)
     elif jackpot:
         return random.choice(jackpot)
@@ -1393,7 +1411,11 @@ async def api_upgrade(request):
         return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_wheel_spin(request):
-    """Wheel spin - drops ITEMS (not stars) into inventory."""
+    """Wheel spin - drops ITEMS (not stars) into inventory.
+
+    FIX: inventory insert happens BEFORE star deduction.
+    If inventory fails, user keeps their stars — no fake refund needed.
+    """
     try:
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
@@ -1414,7 +1436,7 @@ async def api_wheel_spin(request):
             {"min": 1500, "max": 3000, "weight": 0.2},
         ]
 
-        user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars, total_spent, luck_level").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1423,6 +1445,7 @@ async def api_wheel_spin(request):
         if balance < cost:
             return web.json_response({"error": "insufficient_funds"}, status=403)
 
+        # Roll the prize
         total_weight = sum(seg["weight"] for seg in WHEEL_SEGMENTS)
         rand = random.random() * total_weight
         acc = 0
@@ -1434,29 +1457,15 @@ async def api_wheel_spin(request):
                 break
 
         seg = WHEEL_SEGMENTS[prize_index]
-        gift = _get_random_gift(seg["min"], seg["max"])
+
+        # Apply luck modifier if set
+        luck_level = int(u.get('luck_level') or 0)
+        gift = _get_random_gift(seg["min"], seg["max"], luck_level=luck_level)
         if not gift:
             return web.json_response({"error": "no_items_available"}, status=500)
 
-        new_balance = balance - cost
-        new_spent = (u.get('total_spent') or 0) + cost
-
-        # Race-safe: only proceed if stars still equal what we read
-        upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
-        if not upd_u.data:
-            logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
-            return web.json_response({"error": "concurrent_modification"}, status=409)
-        # payments insert (non-fatal: don't block wheel reward if log fails)
-        try:
-            supabase.table("payments").insert({
-                "user_id": uid,
-                "amount": -cost,
-                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
-        except Exception as pay_err:
-            logger.warning(f"wheel_spin: payments log failed (non-fatal): {pay_err}")
-
-        # user_inventory insert (FATAL: this is the actual reward)
+        # STEP 1: Save prize to inventory FIRST (before deducting stars)
+        # This ensures user never loses stars for a failed inventory write
         try:
             supabase.table("user_inventory").insert({
                 "user_id": uid,
@@ -1468,13 +1477,47 @@ async def api_wheel_spin(request):
             }).execute()
         except Exception as inv_err:
             logger.error(f"wheel_spin: inventory insert FAILED for user {uid}: {inv_err}", exc_info=True)
-            # Refund the user since they paid but got no item
-            try:
-                supabase.table("users").update({"stars": balance, "total_spent": u.get('total_spent') or 0}).eq("user_id", uid).execute()
-                logger.info(f"wheel_spin: refunded {cost}⭐ to user {uid} after inventory failure")
-            except Exception as refund_err:
-                logger.error(f"wheel_spin: refund FAILED for user {uid}: {refund_err}")
-            return web.json_response({"error": "inventory_write_failed"}, status=500)
+            # Inventory failed — user keeps stars, we return error
+            return web.json_response({
+                "error": "inventory_write_failed",
+                "message": "Временная ошибка сохранения приза. Попробуйте ещё раз — звёзды не списаны."
+            }, status=500)
+
+        # STEP 2: Now deduct stars (inventory succeeded)
+        new_balance = balance - cost
+        new_spent = (u.get('total_spent') or 0) + cost
+
+        upd_u = supabase.table("users").update({
+            "stars": new_balance,
+            "total_spent": new_spent
+        }).eq("user_id", uid).eq("stars", balance).execute()
+
+        if not upd_u.data:
+            logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
+            # Inventory already saved, but we couldn't deduct — this is a rare race.
+            # The user got the item for free. Log it for manual review.
+            logger.error(f"RACE: User {uid} got inventory item but star deduction failed. Item: {gift['name']}")
+            return web.json_response({
+                "success": True,
+                "prize_index": prize_index,
+                "item": {
+                    "name": gift["name"],
+                    "price": gift["price"],
+                    "image": gift["image"]
+                },
+                "new_balance": balance,  # stars not deducted due to race
+                "warning": "concurrent_modification"
+            })
+
+        # Log payment (non-fatal)
+        try:
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as pay_err:
+            logger.warning(f"wheel_spin: payments log failed (non-fatal): {pay_err}")
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
@@ -1490,6 +1533,7 @@ async def api_wheel_spin(request):
     except Exception as e:
         logger.error(f"Error in api_wheel_spin: {e}", exc_info=True)
         return web.json_response({"error": "server_error"}, status=500)
+
 
 async def api_claim_daily_internal(uid):
     """Daily case claim — 24h cooldown enforced via conditional update.
