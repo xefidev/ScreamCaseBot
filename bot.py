@@ -680,7 +680,7 @@ async def help_cmd(message: types.Message):
 
         if message.from_user.id in ADMIN_IDS:
             text += "\n🛠 **Админ-панель:**\n"
-        text += "• `/luck` — Уровень удачи (админ)\n"
+            text += "• `/luck` — Уровень удачи (админ)\n"
             text += "• `/+ <число>` — Добавить себе звезд\n"
             text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
             text += "• `/user <ID>` — Информация об игроке\n"
