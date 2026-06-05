@@ -703,6 +703,9 @@ async def help_cmd(message: types.Message):
 @dp.message(Command("luck"))
 async def luck_cmd(message: types.Message):
     try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Команда только для администраторов.")
+            return
         uid = message.from_user.id
         # Get user luck level
         user_res = supabase.table("users").select("luck_level").eq("user_id", uid).limit(1).execute()
