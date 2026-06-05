@@ -2000,100 +2000,85 @@ async def admin_delete_promo(message: types.Message):
         logger.error(f"Error in admin_delete_promo: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {e}")
 
+@dp.message(Command("resetpromo"))
+async def admin_reset_promo(message: types.Message):
+    """Admin: reset promo_opened for a user so they can open promo case again."""
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        parts = message.text.split()
+        if len(parts) < 2:
+            await message.answer("❌ Использование: `/resetpromo USER_ID`\nПример: `/resetpromo 123456`", parse_mode="Markdown")
+            return
+
+        try:
+            target_id = int(parts[1])
+        except ValueError:
+            await message.answer("❌ USER_ID должен быть числом.")
+            return
+
+        # Reset promo_opened
+        res = supabase.table("users").update({"promo_opened": False}).eq("user_id", target_id).execute()
+        if not res.data:
+            await message.answer(f"❌ Пользователь `{target_id}` не найден.", parse_mode="Markdown")
+            return
+
+        await message.answer(f"✅ Промо-кейс сброшен для пользователя `{target_id}`.\nТеперь он может открыть промо-кейс снова.", parse_mode="Markdown")
+        logger.info(f"Admin {message.from_user.id} reset promo_opened for user {target_id}")
+    except Exception as e:
+        logger.error(f"Error in admin_reset_promo: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
+
 
 async def api_redeem_promo(request):
-    """POST /api/redeem_promo  body: {code: str}
-    Promo v2: код валиден IFF
-      (a) is_active = TRUE,
-      (b) created_at + duration_hours ещё не истёк (общий срок жизни),
-      (c) у юзера ≥ min_deposit_24h ⭐ пополнений за последние 24 часа.
-    На успех: открывает PROMO CASE → случайный гифт 0..599⭐, кладёт в инвентарь.
-    """
+    """Redeem a promo code. Sets user.promo_opened = True on success."""
     try:
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
         if not uid:
-            return web.json_response({"success": False, "error": "unauthorized"}, status=401)
+            return web.json_response({"error": "no_id"}, status=400)
         uid = int(uid)
+        code = (data.get('code') or '').strip().upper()
+        if not code:
+            return web.json_response({"error": "no_code"}, status=400)
 
-        code = (data.get("code") or "").strip().upper()
-        if not code or not code.isalnum() or len(code) > 32:
-            return web.json_response({"success": False, "error": "invalid_code"}, status=400)
+        # Check if user already opened promo case
+        user_res = supabase.table("users").select("promo_opened").eq("user_id", uid).execute()
+        if user_res.data and user_res.data[0].get('promo_opened'):
+            return web.json_response({"error": "already_opened"}, status=403)
 
-        # Fetch promo
-        promo_res = supabase.table("promo_codes").select("*").eq("code", code).eq("is_active", True).limit(1).execute()
+        # Check promo code validity
+        promo_res = supabase.table("promo_codes").select("*").eq("code", code).eq("is_active", True).execute()
         if not promo_res.data:
-            return web.json_response({"success": False, "error": "code_not_found"}, status=404)
+            return web.json_response({"error": "invalid_code"}, status=404)
         promo = promo_res.data[0]
 
-        # Global lifetime
-        try:
-            created = datetime.strptime(str(promo['created_at']).replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
-            expires = created + timedelta(hours=int(promo['duration_hours']))
-            if datetime.now() > expires:
-                return web.json_response({"success": False, "error": "code_expired"}, status=403)
-        except Exception as e:
-            logger.warning(f"promo lifetime parse error for {code}: {e}")
+        # Check expiry
+        created = datetime.strptime(str(promo['created_at']).replace('T', ' ').split('.')[0].split('+')[0], "%Y-%m-%d %H:%M:%S")
+        expires = created + timedelta(hours=int(promo['duration_hours']))
+        if datetime.now() > expires:
+            return web.json_response({"error": "expired"}, status=410)
 
-        # Auto-create user if missing
-        user_res = supabase.table("users").select("stars").eq("user_id", uid).limit(1).execute()
-        if not user_res.data:
-            try:
-                supabase.table("users").insert({"user_id": uid, "stars": 0}).execute()
-                current_stars = 0
-                logger.info(f"Auto-created user {uid} during promo redemption")
-            except Exception as e:
-                logger.error(f"Failed to auto-create user {uid}: {e}")
-                return web.json_response({"success": False, "error": "user_not_found"}, status=404)
-        else:
-            current_stars = int(user_res.data[0].get('stars', 0))
+        # Check min deposit in last 24h
+        min_deposit = int(promo['min_deposit_24h'])
+        if min_deposit > 0:
+            since = datetime.now() - timedelta(hours=24)
+            payments = supabase.table("payments").select("amount").eq("user_id", uid).gte("date", since.strftime("%Y-%m-%d %H:%M:%S")).execute()
+            total_deposit = sum(p['amount'] for p in payments.data if p['amount'] > 0)
+            if total_deposit < min_deposit:
+                return web.json_response({"error": "min_deposit_not_met", "required": min_deposit, "current": total_deposit}, status=403)
 
-        # Deposit gate
-        min_dep = int(promo.get('min_deposit_24h') or 0)
-        if min_dep > 0:
-            since = (datetime.now() - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
-            dep_res = supabase.table("stars_deposits").select("amount").eq("user_id", uid).gte("created_at", since).execute()
-            total_dep = sum(int(r.get("amount", 0)) for r in (dep_res.data or []))
-            if total_dep < min_dep:
-                return web.json_response({
-                    "success": False,
-                    "error": "insufficient_deposit",
-                    "required": min_dep,
-                    "have": total_dep
-                }, status=403)
+        # Mark promo as opened for this user
+        supabase.table("users").update({"promo_opened": True}).eq("user_id", uid).execute()
 
-        # Open PROMO CASE → случайный гифт 0..599⭐
-        reward_value = random.randint(0, 599)
-        gift = {
-            "name": f"Подарок {reward_value}⭐",
-            "price": reward_value,
-            "image": "/asset/Gifts/Case.webp"
-        }
-
-        try:
-            supabase.table("user_inventory").insert({
-                "user_id": uid,
-                "case_id": 1,
-                "item_name": gift["name"],
-                "item_price": gift["price"],
-                "item_image": gift["image"],
-                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
-        except Exception as e:
-            logger.error(f"Failed to grant PROMO CASE gift to {uid}: {e}")
-            return web.json_response({"success": False, "error": "server_error"}, status=500)
-
-        logger.info(f"User {uid} opened PROMO CASE via code {code} -> {reward_value}⭐ gift")
-        return web.json_response({
-            "success": True,
-            "code": code,
-            "item": gift,
-            "new_balance": current_stars
-        })
+        # Return success — frontend will call api_open_case with case_id=1
+        return web.json_response({"success": True, "code": code, "case_id": 1})
     except Exception as e:
         logger.error(f"Error in api_redeem_promo: {e}", exc_info=True)
-        return web.json_response({"success": False, "error": "server_error"}, status=500)
-
+        return web.json_response({"error": "server_error"}, status=500)
 
 
 async def main():
