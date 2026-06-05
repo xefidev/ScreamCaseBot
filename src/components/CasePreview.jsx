@@ -19,7 +19,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   const reelsCompletedRef = useRef(0);
   const [currentStock, setCurrentStock] = useState(caseItem?.remaining_limit !== undefined ? caseItem?.remaining_limit : (caseItem?.stock || 0));
   const [quantity, setQuantity] = useState(1);
-  const [promoCode, setPromoCode] = useState('');
+    const { lowPerf } = usePerf();
+const [promoCode, setPromoCode] = useState('');
   const [isCollecting, setIsCollecting] = useState(false);
   const animationKey = useRef(0);
 
@@ -434,7 +435,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
               <h3 className="text-white text-[10px] uppercase tracking-[0.2em] mb-4 font-black text-center">Возможный дроп</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 w-full p-4 max-h-[32rem] overflow-y-auto pr-1 custom-scrollbar justify-items-center">
                 {dropItems?.map((item, idx) => (
-                  <motion.div key={idx} whileHover={{ scale: 1.05 }} className="glass-panel w-full max-w-[140px] p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg">
+                  <motion.div key={idx} whileHover={lowPerf ? undefined : { scale: 1.05 }} className="glass-panel w-full max-w-[140px] p-3 flex flex-col items-center bg-white/[0.03] border border-white/5 rounded-2xl shadow-lg">
                     <div className="w-16 h-16 flex items-center justify-center mb-2">
                         <img src={getDynamicGiftImage(item)} alt="Gift" className="w-full h-full object-contain" onError={(e) = loading="lazy" decoding="async"> { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
                     </div>
@@ -454,14 +455,14 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       <div className="p-4 bg-[#1a1b1e] border-t border-white/10">
         {!isSpinning && !hasSpun ? (
           <motion.button 
-            whileHover={{ scale: 1.02 }} 
-            whileTap={{ scale: 0.98 }} 
+            whileHover={lowPerf ? undefined : { scale: 1.02 }} 
+            whileTap={lowPerf ? undefined : { scale: 0.98 }} 
             onClick={isLowBalance ? () => onTopUpRequest(missingAmount) : handleOpen} 
             className="w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-lg shadow-black/20" 
             style={{ 
-              backgroundColor: isLowBalance ? 'rgba(234, 179, 8, 0.2)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
-              border: `1px solid ${isLowBalance ? 'rgba(234, 179, 8, 0.4)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
-              color: isLowBalance ? '#eab308' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.2)' : (caseItem?.glowColor || '#ffffff')
+              backgroundColor: isLowBalance ? 'rgba(234, 179, 8, 0.2)' : (isPromo && !promoCode.trim()) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
+              border: `1px solid ${isLowBalance ? 'rgba(234, 179, 8, 0.4)' : (isPromo && !promoCode.trim()) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
+              color: isLowBalance ? '#eab308' : (isPromo && !promoCode.trim()) ? 'rgba(255,255,255,0.2)' : (caseItem?.glowColor || '#ffffff')
             }}
           >
             {isLowBalance ? (
@@ -469,7 +470,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                 <span>ПОПОЛНИТЬ НА {missingAmount}</span>
                 <img src="/asset/Icons/TelegramStar.png" className="h-6 w-6" alt="Stars"  loading="lazy" decoding="async" />
               </div>
-            ) : isPromo && promoOpened ? 'УЖЕ ОТКРЫТО' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
+            ) : isPromo && !promoCode.trim() ? 'ВВЕДИТЕ ПРОМОКОД' : (isPromo || caseItem?.price === 0) ? 'ОТКРЫТЬ БЕСПЛАТНО' : (
               <div className="flex items-center justify-center gap-2">
                 <span>ОТКРЫТЬ x{isDaily ? 1 : quantity}</span>
                 <div className="w-px h-4 bg-white/20 mx-1" />
@@ -481,7 +482,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
             )}
           </motion.button>
         ) : hasSpun && showResult ? (
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleClaim} disabled={isCollecting} className="w-full py-5 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center disabled:opacity-50 shadow-lg shadow-black/20 uppercase tracking-widest">ЗАБРАТЬ</motion.button>
+          <motion.button whileHover={lowPerf ? undefined : { scale: 1.02 }} whileTap={lowPerf ? undefined : { scale: 0.98 }} onClick={handleClaim} disabled={isCollecting} className="w-full py-5 rounded-2xl bg-white/10 border border-white/20 text-white font-black text-xl font-rounded flex items-center justify-center disabled:opacity-50 shadow-lg shadow-black/20 uppercase tracking-widest">ЗАБРАТЬ</motion.button>
         ) : (
           <div className="flex flex-col items-center justify-center py-2 gap-2">
             <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-6 h-6 border-3 border-white/10 border-t-white rounded-full" />
