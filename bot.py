@@ -2000,6 +2000,64 @@ async def admin_delete_promo(message: types.Message):
         logger.error(f"Error in admin_delete_promo: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {e}")
 
+@dp.message(Command("luck"))
+async def admin_set_luck(message: types.Message):
+    """Admin: /luck USER_ID N — set user's luck level (0-100). 
+    N=0: normal odds, N=100: only rarest items (jackpot only).
+    """
+    try:
+        if message.from_user.id not in ADMIN_IDS:
+            await message.answer("❌ Вы не администратор.")
+            return
+
+        parts = message.text.split()
+        if len(parts) < 3:
+            await message.answer(
+                "❌ Использование: `/luck USER_ID N`\n"
+                "`N` — уровень удачи от 0 до 100\n"
+                "• 0 = обычные шансы\n"
+                "• 50 = повышенный шанс на редкие предметы\n"
+                "• 100 = ТОЛЬКО редкие предметы (jackpot)\n\n"
+                "Пример: `/luck 123456 75`",
+                parse_mode="Markdown"
+            )
+            return
+
+        try:
+            target_id = int(parts[1])
+            luck_level = int(parts[2])
+        except ValueError:
+            await message.answer("❌ USER_ID и N должны быть числами.")
+            return
+
+        if luck_level < 0 or luck_level > 100:
+            await message.answer("❌ N должно быть от 0 до 100.")
+            return
+
+        # Check user exists
+        user_res = supabase.table("users").select("user_id, luck_level").eq("user_id", target_id).execute()
+        if not user_res.data:
+            await message.answer(f"❌ Пользователь `{target_id}` не найден.", parse_mode="Markdown")
+            return
+
+        old_luck = user_res.data[0].get('luck_level', 0) or 0
+
+        # Update luck level
+        supabase.table("users").update({"luck_level": luck_level}).eq("user_id", target_id).execute()
+
+        await message.answer(
+            f"✅ Уровень удачи обновлён\n"
+            f"👤 Пользователь: `{target_id}`\n"
+            f"🎲 Старый уровень: `{old_luck}`\n"
+            f"🍀 Новый уровень: `{luck_level}`",
+            parse_mode="Markdown"
+        )
+        logger.info(f"Admin {message.from_user.id} set luck_level={luck_level} for user {target_id} (was {old_luck})")
+    except Exception as e:
+        logger.error(f"Error in admin_set_luck: {e}", exc_info=True)
+        await message.answer(f"❌ Ошибка: {e}")
+
+
 
 async def api_redeem_promo(request):
     """POST /api/redeem_promo  body: {code: str}
