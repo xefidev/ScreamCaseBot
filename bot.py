@@ -1434,15 +1434,6 @@ async def api_wheel_spin(request):
         new_spent = (u.get('total_spent') or 0) + cost
 
         # Race-safe: only proceed if stars still equal what we read
-        upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
-        if not upd_u.data:
-            logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
-            return web.json_response({"error": "concurrent_modification"}, status=409)
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -cost,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
         supabase.table("user_inventory").insert({
             "user_id": uid,
             "case_id": None,
@@ -1451,6 +1442,12 @@ async def api_wheel_spin(request):
             "item_image": gift["image"],
             "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }).execute()
+
+        # Deduct stars after successful inventory insert
+        upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
+        if not upd_u.data:
+            logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
+            return web.json_response({"error": "concurrent_modification"}, status=409)
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
@@ -2060,6 +2057,9 @@ async def api_redeem_promo(request):
             return web.json_response({"success": False, "error": "server_error"}, status=500)
 
         logger.info(f"User {uid} opened PROMO CASE via code {code} -> {reward_value}⭐ gift")
+        
+        # Mark promo case as opened
+        supabase.table("users").update({"promo_opened": True}).eq("user_id", uid).execute()
         return web.json_response({
             "success": True,
             "code": code,
