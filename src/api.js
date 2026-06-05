@@ -101,7 +101,15 @@ const formatErrorMessage = (errorData) => {
     'task_not_found': '❌ Задание не найдено',
     'task_not_met': '❌ Условия задания не выполнены',
     'already_opened': '❌ Вы уже открывали этот кейс!',
-    'case_limit_reached': '❌ Кейсы этого типа закончились!'
+    'case_limit_reached': '❌ Кейсы этого типа закончились!',
+    // Promo case errors from api_open_case
+    'promo_invalid': '❌ Промокод не найден',
+    'promo_expired': '❌ Промокод истёк',
+    'deposit_required': errorData.message || '❌ Требуется депозит для активации промокода',
+    'promo_code_required': '❌ Введите промокод',
+    'concurrent_modification': '❌ Попробуйте ещё раз',
+    'case_data_missing': '❌ Ошибка данных кейса',
+    'insufficient_deposit': errorData.message || `❌ Для активации пополните на ${errorData.required || '?'}⭐ (у вас ${errorData.have || 0}⭐ за 24ч)`
   };
   
   return errorMessages[errorData.error] || `❌ ${errorData.error || 'Ошибка'}`;
