@@ -328,7 +328,11 @@ def update_balance(user_id, amount, mode="add", is_donation=False):
         logger.error(f"Error in update_balance: {e}")
 
 
-def _get_random_gift(min_p, max_p):
+def _get_random_gift(min_p, max_p, luck_level=0):
+    """Get random gift with optional luck modifier.
+
+    luck_level: 0-100. 0 = normal odds, 100 = only rarest items.
+    """
     drop_items = [g for g in ALL_GIFTS if g['price'] >= min_p and g['price'] <= max_p]
     if not drop_items:
         drop_items = ALL_GIFTS[:10]
@@ -337,10 +341,24 @@ def _get_random_gift(min_p, max_p):
     mid = [i for i in drop_items if 50 < i['price'] <= 150]
     jackpot = [i for i in drop_items if i['price'] > 150]
 
-    rand = random.random() * 100
-    if rand < 85 and cheap:
+    # Apply luck modifier to tier weights
+    # luck_level 0: normal (85/12/3)
+    # luck_level 100: jackpot only (0/0/100)
+    cheap_weight = max(1, 85 - int(luck_level * 0.85))
+    mid_weight = max(1, 12 - int(luck_level * 0.12)) if luck_level < 100 else 0
+    jackpot_weight = max(1, 3 + int(luck_level * 0.97))
+
+    if luck_level >= 100:
+        cheap_weight = 0
+        mid_weight = 0
+        jackpot_weight = 100
+
+    total = cheap_weight + mid_weight + jackpot_weight
+    rand = random.random() * total
+
+    if rand < cheap_weight and cheap:
         return random.choice(cheap)
-    elif rand < 97 and mid:
+    elif rand < cheap_weight + mid_weight and mid:
         return random.choice(mid)
     elif jackpot:
         return random.choice(jackpot)
@@ -1030,7 +1048,12 @@ async def api_balance(request):
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
         uid = int(uid)
-        res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        # Try with promo_opened first; gracefully fall back if migration 004 not applied yet
+        try:
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent, promo_opened").eq("user_id", uid).execute()
+        except Exception as col_err:
+            logger.warning(f"api_balance: promo_opened column missing, falling back: {col_err}")
+            res = supabase.table("users").select("stars, tickets, total_donated_stars, total_spent").eq("user_id", uid).execute()
 
         if not res.data:
             return web.json_response({"ok": True, "stars": 0, "tickets": 0, "donor": 0, "spent": 0, "promo_opened": 0})
@@ -1107,6 +1130,12 @@ async def api_open_case(request):
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
         case_id = data.get("case_id")
+        # quantity: 1..10 (multi-open). For daily/promo cases forced to 1.
+        try:
+            quantity = int(data.get("quantity", 1) or 1)
+        except Exception:
+            quantity = 1
+        quantity = max(1, min(10, quantity))
 
         if not uid or case_id is None:
             return web.json_response({"error": "invalid_data", "ok": False}, status=400)
@@ -1114,6 +1143,7 @@ async def api_open_case(request):
         case_id = int(case_id)
         uid = int(uid)
 
+        # Daily case — always quantity=1
         if case_id == 2:
             res = await api_claim_daily_internal(uid)
             if res.status == 200:
@@ -1125,7 +1155,7 @@ async def api_open_case(request):
                 except Exception as e:
                     logger.error(f"Failed to increment case quests: {e}")
                 logger.info(f"✅ User {uid} opened Daily Case, won: {won_item['name']}")
-                return web.json_response({"ok": True, "success": True, "item": won_item, "deducted": 1})
+                return web.json_response({"ok": True, "success": True, "item": won_item, "items": [won_item], "deducted": 1, "quantity": 1})
             return res
 
         price = CASES_PRICES.get(case_id)
@@ -1139,8 +1169,9 @@ async def api_open_case(request):
         u = user_res.data[0]
         balance = u.get('stars', 0)
 
-        # PROMO CASE — server-side promo_code validation
+        # PROMO CASE — server-side promo_code validation. Promo cases forced to quantity=1.
         if case_id == 1:
+            quantity = 1
             promo_code = (data.get("promo_code") or "").strip().upper()
             if not promo_code:
                 return web.json_response({"error": "promo_code_required", "ok": False, "message": "Введите промокод"}, status=400)
@@ -1150,7 +1181,6 @@ async def api_open_case(request):
                 return web.json_response({"error": "promo_invalid", "ok": False, "message": "Неверный промокод"}, status=403)
 
             promo = promo_res.data[0]
-            # Duration window check (active for duration_h hours since created_at)
             try:
                 created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
                 expires_at = created_at + timedelta(hours=int(promo.get('duration_h') or 0))
@@ -1160,7 +1190,6 @@ async def api_open_case(request):
             except Exception as e:
                 logger.warning(f"Promo duration check failed: {e}")
 
-            # Deposit gate: user must have deposited >= min_deposit_24h within duration window (or last 24h)
             min_dep = int(promo.get('min_deposit_24h') or 0)
             if min_dep > 0:
                 window_start = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
@@ -1171,69 +1200,96 @@ async def api_open_case(request):
                         "error": "deposit_required", "ok": False,
                         "message": f"Требуется депозит {min_dep}⭐ за 24ч (у вас {total_dep}⭐)"
                     }, status=403)
-
             price = 0
 
-        if balance < price:
+        total_cost = price * quantity
+
+        if balance < total_cost:
             return web.json_response({
                 "error": "insufficient_funds", "ok": False,
                 "message": "Недостаточно звёзд для открытия кейса",
-                "required": price, "balance": balance
+                "required": total_cost, "balance": balance
             }, status=403)
 
         case_info = CASES_DATA.get(case_id)
         if not case_info:
             return web.json_response({"error": "case_data_missing", "ok": False}, status=500)
 
-        won_item = _get_random_gift(case_info['min'], case_info['max'])
-        new_spent = (u.get('total_spent') or 0) + price
-        new_count = (u.get('cases_opened_count') or 0) + 1
+        # Roll N gifts. Guarantee uniqueness across ALL rolls when the gift pool is large enough.
+        # If the pool has fewer distinct items than `quantity`, fall back to allowing repeats
+        # (but still minimize them via a "seen" set with bounded retries).
+        won_items = []
+        seen_names = set()
+        for _ in range(quantity):
+            chosen = None
+            for _try in range(20):
+                cand = _get_random_gift(case_info['min'], case_info['max'])
+                if cand['name'] not in seen_names:
+                    chosen = cand
+                    break
+                chosen = cand  # keep last candidate as fallback if pool exhausted
+            won_items.append(chosen)
+            seen_names.add(chosen['name'])
 
-        # Race-safe atomic decrement: only succeeds if stars are still >= price
+        new_spent = (u.get('total_spent') or 0) + total_cost
+        new_count = (u.get('cases_opened_count') or 0) + quantity
+
+        # Atomic deduction: succeeds only if balance hasn't changed since we read it
         upd = supabase.table("users").update({
-            "stars": balance - price,
+            "stars": balance - total_cost,
             "total_spent": new_spent,
             "cases_opened_count": new_count
         }).eq("user_id", uid).eq("stars", balance).execute()
         if not upd.data:
-            # Concurrent request modified balance between our read and write — abort
-            logger.warning(f"User {uid} open_case race lost (concurrent balance change)")
+            logger.warning(f"User {uid} open_case race lost (concurrent balance change, qty={quantity})")
             return web.json_response({"error": "concurrent_modification", "ok": False, "message": "Попробуйте ещё раз"}, status=409)
 
+        # Save all wins to inventory in one batch
         try:
-            supabase.table("user_inventory").insert({
+            inv_rows = [{
                 "user_id": uid,
                 "case_id": case_id,
-                "item_name": won_item['name'],
-                "item_image": won_item['image'],
-                "item_price": won_item['price'],
+                "item_name": w['name'],
+                "item_image": w['image'],
+                "item_price": w['price'],
                 "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }).execute()
+            } for w in won_items]
+            supabase.table("user_inventory").insert(inv_rows).execute()
         except Exception as e:
             logger.error(f"Failed to save to user_inventory: {e}")
 
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -price,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-
-        _increment_achievement_progress(uid, 'cases_opened')
         try:
-            supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -total_cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to log payment: {e}")
+
+        # Increment achievement+quests progress per opened case
+        for _ in range(quantity):
+            _increment_achievement_progress(uid, 'cases_opened')
+        try:
+            for _ in range(quantity):
+                supabase.rpc("increment_case_quests", {"p_user_id": uid}).execute()
         except Exception as e:
             logger.error(f"Failed to increment case quests: {e}")
 
-        logger.info(f"✅ User {uid} opened case {case_id}: won {won_item['name']} ({won_item['price']}). New balance: {balance - price}")
+        logger.info(f"✅ User {uid} opened case {case_id} x{quantity}: won {[w['name'] for w in won_items]} (total {total_cost}⭐). New balance: {balance - total_cost}")
 
         return web.json_response({
             "ok": True, "success": True,
-            "item": won_item, "deducted": price,
-            "new_balance": balance - price
+            "item": won_items[0],            # backward-compat with old single-open clients
+            "items": won_items,              # new multi-open payload
+            "deducted": total_cost,
+            "quantity": quantity,
+            "new_balance": balance - total_cost
         })
     except Exception as e:
         logger.error(f"Error in api_open_case: {e}")
         return web.json_response({"error": "server_error", "ok": False}, status=500)
+
 
 async def api_upgrade(request):
     """
@@ -1355,7 +1411,11 @@ async def api_upgrade(request):
         return web.json_response({"error": "server_error", "ok": False}, status=500)
 
 async def api_wheel_spin(request):
-    """Wheel spin - drops ITEMS (not stars) into inventory."""
+    """Wheel spin - drops ITEMS (not stars) into inventory.
+
+    FIX: inventory insert happens BEFORE star deduction.
+    If inventory fails, user keeps their stars — no fake refund needed.
+    """
     try:
         data = request.get('body_json') or await request.json()
         uid = request.get('user_id')
@@ -1376,7 +1436,7 @@ async def api_wheel_spin(request):
             {"min": 1500, "max": 3000, "weight": 0.2},
         ]
 
-        user_res = supabase.table("users").select("stars, total_spent").eq("user_id", uid).execute()
+        user_res = supabase.table("users").select("stars, total_spent, luck_level").eq("user_id", uid).execute()
         if not user_res.data:
             return web.json_response({"error": "user_not_found"}, status=404)
 
@@ -1385,6 +1445,7 @@ async def api_wheel_spin(request):
         if balance < cost:
             return web.json_response({"error": "insufficient_funds"}, status=403)
 
+        # Roll the prize
         total_weight = sum(seg["weight"] for seg in WHEEL_SEGMENTS)
         rand = random.random() * total_weight
         acc = 0
@@ -1396,31 +1457,67 @@ async def api_wheel_spin(request):
                 break
 
         seg = WHEEL_SEGMENTS[prize_index]
-        gift = _get_random_gift(seg["min"], seg["max"])
+
+        # Apply luck modifier if set
+        luck_level = int(u.get('luck_level') or 0)
+        gift = _get_random_gift(seg["min"], seg["max"], luck_level=luck_level)
         if not gift:
             return web.json_response({"error": "no_items_available"}, status=500)
 
+        # STEP 1: Save prize to inventory FIRST (before deducting stars)
+        # This ensures user never loses stars for a failed inventory write
+        try:
+            supabase.table("user_inventory").insert({
+                "user_id": uid,
+                "case_id": None,
+                "item_name": gift["name"],
+                "item_price": gift["price"],
+                "item_image": gift["image"],
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as inv_err:
+            logger.error(f"wheel_spin: inventory insert FAILED for user {uid}: {inv_err}", exc_info=True)
+            # Inventory failed — user keeps stars, we return error
+            return web.json_response({
+                "error": "inventory_write_failed",
+                "message": "Временная ошибка сохранения приза. Попробуйте ещё раз — звёзды не списаны."
+            }, status=500)
+
+        # STEP 2: Now deduct stars (inventory succeeded)
         new_balance = balance - cost
         new_spent = (u.get('total_spent') or 0) + cost
 
-        # Race-safe: only proceed if stars still equal what we read
-        upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
+        upd_u = supabase.table("users").update({
+            "stars": new_balance,
+            "total_spent": new_spent
+        }).eq("user_id", uid).eq("stars", balance).execute()
+
         if not upd_u.data:
             logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
-            return web.json_response({"error": "concurrent_modification"}, status=409)
-        supabase.table("payments").insert({
-            "user_id": uid,
-            "amount": -cost,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-        supabase.table("user_inventory").insert({
-            "user_id": uid,
-            "case_id": None,
-            "item_name": gift["name"],
-            "item_price": gift["price"],
-            "item_image": gift["image"],
-            "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
+            # Inventory already saved, but we couldn't deduct — this is a rare race.
+            # The user got the item for free. Log it for manual review.
+            logger.error(f"RACE: User {uid} got inventory item but star deduction failed. Item: {gift['name']}")
+            return web.json_response({
+                "success": True,
+                "prize_index": prize_index,
+                "item": {
+                    "name": gift["name"],
+                    "price": gift["price"],
+                    "image": gift["image"]
+                },
+                "new_balance": balance,  # stars not deducted due to race
+                "warning": "concurrent_modification"
+            })
+
+        # Log payment (non-fatal)
+        try:
+            supabase.table("payments").insert({
+                "user_id": uid,
+                "amount": -cost,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as pay_err:
+            logger.warning(f"wheel_spin: payments log failed (non-fatal): {pay_err}")
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
@@ -1436,6 +1533,7 @@ async def api_wheel_spin(request):
     except Exception as e:
         logger.error(f"Error in api_wheel_spin: {e}", exc_info=True)
         return web.json_response({"error": "server_error"}, status=500)
+
 
 async def api_claim_daily_internal(uid):
     """Daily case claim — 24h cooldown enforced via conditional update.
