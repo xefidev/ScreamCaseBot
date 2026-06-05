@@ -17,33 +17,11 @@ const TON_WALLET = import.meta.env.VITE_TON_WALLET;
 // Список ID администраторов
 const ADMIN_IDS = (import.meta.env.VITE_ADMIN_IDS || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
 
-// Глобальный контроллер звука
-let globalAudio = null;
-export const playSound = (path) => {
-  try {
-    if (globalAudio) {
-      globalAudio.pause();
-      globalAudio.currentTime = 0;
-    }
-    globalAudio = new Audio(path);
-    globalAudio.volume = 0.5;
-    globalAudio.play().catch(e => console.warn("Audio play blocked", e));
-  } catch (e) {
-    console.error("Audio error", e);
-  }
-};
-
-export const stopSound = () => {
-  try {
-    if (globalAudio) {
-      globalAudio.pause();
-      globalAudio.currentTime = 0;
-      globalAudio = null;
-    }
-  } catch (e) {
-    console.error("Audio stop error", e);
-  }
-};
+// Звук через пул переиспользуемых Audio объектов (см. audioPool.js)
+import { playSound as poolPlay, stopSound as poolStop } from './audioPool';
+import { usePerf } from './perfContext.jsx';
+export const playSound = poolPlay;
+export const stopSound = poolStop;
 
 const TABS = {
   cases: { label: 'Кейсы', icon: Briefcase },
@@ -60,6 +38,7 @@ const LoadingSpinner = () => (
 );
 
 export default function App() {
+  const { lowPerf } = usePerf();
   const [activeTab, setActiveTab] = useState('cases');
   const [activeGame, setActiveGame] = useState(null);
   const [showTopUp, setShowTopUp] = useState(false);
@@ -439,6 +418,8 @@ export default function App() {
                     src={user?.photo_url}
                     alt="profile"
                     className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                 ) : (
@@ -465,7 +446,7 @@ export default function App() {
                 <span className="text-[8px] font-black text-white/30 uppercase tracking-widest">Звёзд</span>
               </div>
               <div className="w-8 h-8 rounded-xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform relative">
-                <img src="/asset/Icons/TelegramStar.png" alt="star" className="h-6 w-6" />
+                <img src="/asset/Icons/TelegramStar.png" alt="star" className="h-6 w-6" loading="lazy" decoding="async" />
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center border-2 border-[#1a1b1e]">
                   <Plus size={8} className="text-black stroke-[4px]" />
                 </div>
@@ -568,7 +549,7 @@ export default function App() {
                     <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-yellow-500/30 transition-all group">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="w-12 h-12 rounded-2xl bg-yellow-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="stars" />
+                          <img src="/asset/Icons/TelegramStar.png" className="h-8 w-8" alt="stars" loading="lazy" decoding="async" />
                         </div>
                         <div>
                           <h3 className="font-black text-sm uppercase text-white tracking-tight">Telegram Stars</h3>
@@ -595,7 +576,7 @@ export default function App() {
                     <div className="p-6 rounded-[2rem] bg-white/5 border border-white/5 hover:border-blue-500/30 transition-all group">
                       <div className="flex items-center gap-4 mb-6">
                         <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <img src="/asset/Icons/TonCoin.png" className="h-8 w-8" alt="ton" />
+                          <img src="/asset/Icons/TonCoin.png" className="h-8 w-8" alt="ton" loading="lazy" decoding="async" />
                         </div>
                         <div>
                           <h3 className="font-black text-sm uppercase text-white tracking-tight">TON Coin</h3>
