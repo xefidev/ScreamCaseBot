@@ -1158,7 +1158,7 @@ async def api_open_case(request):
             if not promo_code:
                 return web.json_response({"error": "promo_code_required", "ok": False, "message": "Введите промокод"}, status=400)
 
-            promo_res = supabase.table("promo_codes").select("code, min_deposit_24h, duration_h, created_at, is_active").eq("code", promo_code).eq("is_active", True).execute()
+            promo_res = supabase.table("promo_codes").select("code, min_deposit_24h, duration_hours, created_at, is_active").eq("code", promo_code).eq("is_active", True).execute()
             if not promo_res.data:
                 return web.json_response({"error": "promo_invalid", "ok": False, "message": "Неверный промокод"}, status=403)
 
@@ -1166,7 +1166,7 @@ async def api_open_case(request):
             try:
                 created_at = datetime.fromisoformat(str(promo['created_at']).replace('Z', '+00:00'))
                 # Support both duration_h and duration_hours column names
-                duration_hours = int(promo.get('duration_h') or promo.get('duration_hours') or 0)
+                duration_hours = int(promo.get('duration_hours') or promo.get('duration_h') or 0)
                 expires_at = created_at + timedelta(hours=duration_hours)
                 now_utc = datetime.now(timezone.utc)
                 if now_utc > expires_at:
