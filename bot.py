@@ -717,9 +717,9 @@ async def luck_cmd(message: types.Message, command: CommandObject):
             try:
                 level = int(args)
                 if level < 0 or level > 5:
-                    await message.answer("❌ Уровень удачи должен быть от 0 до 5.")
-                    return
-                supabase.table("users").update({"luck_level": level}).eq("user_id", uid).execute()
+                    # Число > 5 — пробуем как ID пользователя
+                    target_id = level
+                    raise ValueError("redirect to user lookup")
                 logger.info(f"Admin {uid} set their luck level to {level}")
                 await message.answer(f"✅ Уровень удачи установлен на {level}")
                 return
