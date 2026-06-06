@@ -133,7 +133,7 @@ export default function ProfilePage({
             className={`relative h-7 w-12 shrink-0 rounded-full border transition-colors duration-200 ${lowPerf ? 'bg-green-500/40 border-green-400/60' : 'bg-white/5 border-white/15'}`}
           >
             <span
-              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
+              className={`absolute inset-y-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
               className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
           </button>
         </div>
