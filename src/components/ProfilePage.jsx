@@ -134,7 +134,7 @@ export default function ProfilePage({
           >
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
-            />
+              className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${lowPerf ? 'translate-x-6' : 'translate-x-0.5'}`}
           </button>
         </div>
         {lowPerf && (
