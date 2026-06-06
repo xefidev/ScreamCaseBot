@@ -6,7 +6,7 @@ import { openCase } from '../api';
 import { getDynamicGiftImage, DEFAULT_GIFT_IMAGE } from '../giftUtils';
 import { playSound } from '../App';
 
-export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest }) {
+export default function CasePreview({ user, caseItem, onClose, onWin, balance, setBalance, setSpent, flashDiscount = null, promoOpened = false, setPromoOpened = null, onTopUpRequest, lowPerf = false }) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [hasSpun, setHasSpun] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
@@ -156,6 +156,18 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
         animationKey.current += 1;
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
+        // Low perf mode — skip animation, show result immediately
+        if (lowPerf) {
+          setHasSpun(true);
+          setIsSpinning(false);
+          setShowConfetti(true);
+          setShowResult(true);
+          playSound('/asset/Sounds/win_sound.mp3');
+          if (onWin && wonItems?.length > 0) {
+            wonItems.forEach(item => { if (item) onWin(item, caseItem); });
+          }
+          setTimeout(() => setShowConfetti(false), 3000);
+        }
     } catch (e) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         if (viewportRef.current) viewportRef.current.scrollTo({ left: 0, behavior: 'auto' });
