@@ -157,6 +157,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         animationKey.current += 1;
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
     } catch (e) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        if (viewportRef.current) viewportRef.current.scrollTo({ left: 0, behavior: 'auto' });
         console.error("Error in handleOpen:", e);
         stopSound();
         setIsSpinning(false);
