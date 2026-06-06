@@ -1081,7 +1081,7 @@ async def api_check_sub(request):
 
 async def api_balance(request):
     try:
-        uid = data.get('user_id') or data.get('uid') or request.query.get("user_id")
+        uid = request.query.get("user_id")
         if not uid:
             return web.json_response({"error": "no_id", "ok": False}, status=400)
 
@@ -1615,7 +1615,7 @@ async def api_create_stars_invoice(request):
 
 async def api_get_achievements(request):
     try:
-        uid = data.get('user_id') or data.get('uid') or request.query.get("user_id")
+        uid = request.query.get("user_id") or request.query.get("uid")
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
 
@@ -1699,7 +1699,7 @@ async def api_claim_achievement(request):
 
 async def api_get_quests(request):
     try:
-        uid = data.get('user_id') or data.get('uid')
+        uid = request.query.get("user_id") or request.query.get("uid")
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
         uid = int(uid)
@@ -1807,7 +1807,7 @@ async def api_cases(request):
 
 async def api_inventory(request):
     try:
-        uid = data.get('user_id') or data.get('uid')
+        uid = request.query.get("user_id") or request.query.get("uid")
         if not uid:
             return web.json_response({"error": "unauthorized"}, status=401)
 
