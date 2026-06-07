@@ -49,3 +49,7 @@ export const getMotionProps = (lowPerf, full, reduced) => lowPerf ? (reduced ?? 
 
 export const getTransition = (lowPerf, normal = { duration: 0.3 }) =>
   lowPerf ? { duration: 0.12, ease: 'linear' } : normal;
+
+
+// Return whether animation should play at all
+export const shouldAnimate = (lowPerf) => !lowPerf;
