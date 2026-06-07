@@ -30,10 +30,8 @@ export function PerfProvider({ children }) {
     const root = document.documentElement;
     if (lowPerf) {
       root.classList.add('lowperf');
-      root.style.setProperty('--motion-duration', '0.15s');
     } else {
       root.classList.remove('lowperf');
-      root.style.setProperty('--motion-duration', '0.3s');
     }
   }, [lowPerf]);
 
