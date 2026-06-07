@@ -167,9 +167,9 @@ html.lowperf body {
 }
 
 html.lowperf * {
-  /* Cap all CSS transitions to a snappy short fade */
-  transition-duration: 0.12s !important;
-  animation-duration: 0.2s !important;
+  /* Remove ALL CSS animations/transitions on simple mode */
+  animation: none !important;
+  transition: none !important;
 }
 
 html.lowperf .glass-panel,
