@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion } MotionConfig, { AnimatePresence } from 'framer-motion';
 import CountUp from 'react-countup';
 import { useTonConnectUI } from '@tonconnect/ui-react';
 import { Briefcase, Trophy, Gamepad2, User, Zap, ChevronLeft, Plus } from 'lucide-react';
@@ -613,5 +613,6 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+    </MotionConfig>
   );
 }
