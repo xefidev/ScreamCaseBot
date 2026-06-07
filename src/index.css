@@ -169,7 +169,7 @@ html.lowperf body {
 html.lowperf * {
   /* Remove ALL CSS animations/transitions on simple mode */
   animation: none !important;
-  transition: none !important;
+  transition: none;
 }
 
 html.lowperf .glass-panel,
