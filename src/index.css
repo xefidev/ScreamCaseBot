@@ -172,6 +172,11 @@ html.lowperf * {
   transition: none;
 }
 
+/* Allow toggle knob to animate even in lowperf mode */
+html.lowperf button[role="switch"] span {
+  transition: transform 0.2s ease !important;
+}
+
 html.lowperf .glass-panel,
 html.lowperf .glass-card,
 html.lowperf .glass-button,
