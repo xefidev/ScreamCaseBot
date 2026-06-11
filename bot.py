@@ -1304,12 +1304,29 @@ async def api_upgrade(request):
         uid = data.get('user_id') or data.get('uid')
         source_inv_id = data.get("source_inventory_id")
         target_name = (data.get("target_name") or "").strip()
-        target_price = int(data.get("target_price", 0))
 
-        if not uid or source_inv_id is None or not target_name or target_price <= 0:
+        # Validate target_price
+        try:
+            target_price = int(data.get("target_price", 0))
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid target_price from user {uid}: {data.get('target_price')}")
+            return web.json_response({"error": "invalid_target_price", "ok": False, "message": "Некорректная цена цели"}, status=400)
+
+        # Validate source_inv_id
+        try:
+            source_inv_id = int(source_inv_id)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid source_inventory_id from user {uid}: {data.get('source_inventory_id')}")
+            return web.json_response({"error": "invalid_source_id", "ok": False, "message": "Некорректный ID предмета"}, status=400)
+
+        if not uid or not target_name or target_price <= 0:
             return web.json_response({"error": "invalid_data", "ok": False}, status=400)
 
-        uid = int(uid)
+        try:
+            uid = int(uid)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid uid: {uid}")
+            return web.json_response({"error": "invalid_user", "ok": False}, status=400)
 
         # 1) Verify user owns the source inventory item AND it has not been used
         inv_res = supabase.table("user_inventory").select("id, case_id, item_name, item_image, item_price, withdrawn").eq("user_id", uid).eq("id", source_inv_id).execute()
@@ -1418,7 +1435,11 @@ async def api_wheel_spin(request):
         if not uid:
             return web.json_response({"error": "no_id"}, status=400)
 
-        uid = int(uid)
+        try:
+            uid = int(uid)
+        except (ValueError, TypeError):
+            logger.warning(f"wheel_spin invalid uid: {uid}")
+            return web.json_response({"error": "invalid_user"}, status=400)
         cost = 50
 
         WHEEL_SEGMENTS = [
@@ -1437,7 +1458,7 @@ async def api_wheel_spin(request):
             return web.json_response({"error": "user_not_found"}, status=404)
 
         u = user_res.data[0]
-        balance = u['stars']
+        balance = int(u.get('stars') or 0)
         if balance < cost:
             return web.json_response({"error": "insufficient_funds"}, status=403)
 
