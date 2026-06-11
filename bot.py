@@ -1459,21 +1459,25 @@ async def api_wheel_spin(request):
         new_balance = balance - cost
         new_spent = (u.get('total_spent') or 0) + cost
 
-        # Race-safe: only proceed if stars still equal what we read
-        supabase.table("user_inventory").insert({
-            "user_id": uid,
-            "case_id": None,
-            "item_name": gift["name"],
-            "item_price": gift["price"],
-            "item_image": gift["image"],
-            "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }).execute()
-
-        # Deduct stars after successful inventory insert
+        # Race-safe: deduct stars first, then insert to inventory
         upd_u = supabase.table("users").update({"stars": new_balance, "total_spent": new_spent}).eq("user_id", uid).eq("stars", balance).execute()
         if not upd_u.data:
             logger.warning(f"User {uid} wheel_spin race lost (concurrent balance change)")
             return web.json_response({"error": "concurrent_modification"}, status=409)
+
+        # Insert to inventory after successful balance deduction
+        try:
+            supabase.table("user_inventory").insert({
+                "user_id": uid,
+                "case_id": None,
+                "item_name": gift["name"],
+                "item_price": gift["price"],
+                "item_image": gift["image"],
+                "opened_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.error(f"Failed to save wheel prize to inventory for {uid}: {e}")
+            # Prize is lost but balance was deducted - log for manual recovery
 
         logger.info(f"User {uid} spun wheel: won {gift['name']} ({gift['price']} stars)")
         return web.json_response({
@@ -2031,18 +2035,23 @@ async def api_redeem_promo(request):
         except Exception as e:
             logger.warning(f"promo lifetime parse error for {code}: {e}")
 
-        # Auto-create user if missing
-        user_res = supabase.table("users").select("stars").eq("user_id", uid).limit(1).execute()
+        # Check if user already opened promo case
+        user_res = supabase.table("users").select("stars, promo_opened").eq("user_id", uid).limit(1).execute()
         if not user_res.data:
             try:
-                supabase.table("users").insert({"user_id": uid, "stars": 0}).execute()
+                supabase.table("users").insert({"user_id": uid, "stars": 0, "promo_opened": False}).execute()
                 current_stars = 0
+                promo_opened = False
                 logger.info(f"Auto-created user {uid} during promo redemption")
             except Exception as e:
                 logger.error(f"Failed to auto-create user {uid}: {e}")
                 return web.json_response({"success": False, "error": "user_not_found"}, status=404)
         else:
             current_stars = int(user_res.data[0].get('stars', 0))
+            promo_opened = user_res.data[0].get('promo_opened', False)
+
+        if promo_opened:
+            return web.json_response({"success": False, "error": "already_opened", "message": "Промо-кейс уже открыт"}, status=403)
 
         # Deposit gate
         min_dep = int(promo.get('min_deposit_24h') or 0)
@@ -2081,8 +2090,11 @@ async def api_redeem_promo(request):
 
         logger.info(f"User {uid} opened PROMO CASE via code {code} -> {reward_value}⭐ gift")
         
-        # Mark promo case as opened
-        supabase.table("users").update({"promo_opened": True}).eq("user_id", uid).execute()
+        # Mark promo case as opened (race-safe: only if not already opened)
+        upd = supabase.table("users").update({"promo_opened": True}).eq("user_id", uid).eq("promo_opened", False).execute()
+        if not upd.data:
+            logger.warning(f"User {uid} promo case race condition - already opened")
+            return web.json_response({"success": False, "error": "already_opened", "message": "Промо-кейс уже открыт"}, status=409)
         return web.json_response({
             "success": True,
             "code": code,
