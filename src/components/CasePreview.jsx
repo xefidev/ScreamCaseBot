@@ -43,6 +43,16 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
   const previewGifts = useMemo(() => {
     if (!dropItems || dropItems.length === 0) return [];
+  // Mobile optimization: disable passive event listeners for better performance
+  useEffect(() => {
+    const wheelDiv = document.querySelector('[data-wheel-container]');
+    if (wheelDiv) {
+      wheelDiv.addEventListener('touchmove', (e) => {
+        // Allow natural scroll, prevent jank
+      }, { passive: true });
+    }
+  }, []);
+
     if (dropItems.length === 1) return [dropItems[0]];
     const sorted = [...dropItems].sort((a, b) => b.price - a.price);
     return sorted.slice(0, 2);
@@ -257,7 +267,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                   <div className="absolute left-1/2 top-2 transform -translate-x-1/2 w-0.5 h-40 bg-white/30 z-20 pointer-events-none" />
                   <div ref={viewportRef} className="overflow-hidden rounded-2xl bg-white/[0.02] border border-white/10 p-4">
                     {spinData?.items?.length > 0 && (
-                      <motion.div key={spinData?.animKey} className="flex gap-3" initial={{ x: 0 }} animate={{ x: spinData?.targetX }} transition={{ duration: 4, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete}>
+                      <motion.div key={spinData?.animKey} className="flex gap-3" initial={{ x: 0 }} animate={{ x: spinData?.targetX }} transition={{ duration: 4, ease: [0.12, 0, 0.39, 0] }} onAnimationComplete={handleAnimationComplete} style={{ willChange: 'transform', transform: 'translateZ(0)' }}>
                         {spinData?.items?.map((item, idx) => (
                           <div key={idx} className="flex-shrink-0 w-36 h-36 rounded-2xl border-2 flex flex-col items-center justify-center p-2" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}40`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
                             <img src={getDynamicGiftImage(item)} alt="Gift" className="w-28 h-28 object-contain mb-1" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} />
@@ -279,7 +289,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
                     <div className={`grid gap-4 ${wonItems?.length > 2 ? 'grid-cols-2' : wonItems?.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
                       {wonItems?.map((wonItem, idx) => wonItem && (
                         <motion.div key={idx} initial={{ opacity: 0, y: 20, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: idx * 0.15, duration: 0.4 }} className="text-center p-4 rounded-3xl relative overflow-hidden border" style={{ borderColor: `${caseItem?.glowColor || '#ffffff'}30`, backgroundColor: `${caseItem?.glowColor || '#ffffff'}10` }}>
-                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={{ y: [0, -8, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} style={{ filter: `drop-shadow(0 0 25px ${caseItem?.glowColor || '#ffffff'}90)` }} />
+                          <motion.img src={getDynamicGiftImage(wonItem)} alt="Gift" className={`${wonItems?.length > 2 ? 'h-16 w-16' : wonItems?.length > 1 ? 'h-24 w-24' : 'h-48 w-48'} object-contain mx-auto mb-2`} onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} animate={{ y: [0, -4, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }} style={{ willChange: 'transform', transform: 'translateZ(0)', filter: `drop-shadow(0 0 15px ${caseItem?.glowColor || '#ffffff'}60)` }} />
                           <p className={`${wonItems?.length > 2 ? 'text-[10px]' : wonItems?.length > 1 ? 'text-xs' : 'text-xl'} text-white font-black mb-1 font-rounded uppercase tracking-tight truncate`} style={{ color: caseItem?.glowColor || '#ffffff' }} title={wonItem?.name || 'Gift'}>{wonItem?.name || 'Gift'}</p>
                           <div className="flex items-center justify-center gap-1 text-white/70 text-sm"><span className="flex items-center gap-1 font-black font-rounded text-xs">{wonItem?.price ?? wonItem?.cost ?? 0} <img src="/asset/Icons/TelegramStar.png" className="h-3 w-3" alt="Stars" onError={(e) => { e.currentTarget.src = DEFAULT_GIFT_IMAGE; }} /></span></div>
                         </motion.div>
