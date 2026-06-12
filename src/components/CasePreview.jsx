@@ -230,8 +230,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
       )}
 
       <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar">
-        <div className="px-6 py-4 flex items-center justify-between sticky top-0 z-20 bg-[#1a1b1e]/80 backdrop-blur-lg">
-          <button onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors">
+        <div className="px-6 py-3 safe-pad-top flex items-center justify-between sticky top-0 z-20 bg-[#1a1b1e]/80 backdrop-blur-lg">
+          <button onClick={() => { if (!isSpinning && !showResult) { onClose(); triggerHaptic(); } }} className="tap-sm w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 active:bg-white/15 transition-colors">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
           </button>
           <div className="flex flex-col items-center">
@@ -347,13 +347,13 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         </AnimatePresence>
       </div>
 
-      <div className="p-4 bg-[#1a1b1e] border-t border-white/10">
+      <div className="p-4 safe-pad-bottom bg-[#1a1b1e] border-t border-white/10 shadow-[0_-8px_24px_rgba(0,0,0,0.35)]">
         {!isSpinning && !hasSpun ? (
           <motion.button 
             whileHover={{ scale: 1.02 }} 
             whileTap={{ scale: 0.98 }} 
             onClick={isLowBalance ? () => onTopUpRequest(missingAmount) : handleOpen} 
-            className="w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-lg shadow-black/20" 
+            className="tap-press w-full py-5 rounded-2xl font-black text-lg transition-all flex items-center justify-center gap-3 uppercase tracking-tighter shadow-lg shadow-black/20 active:brightness-110" 
             style={{ 
               backgroundColor: isLowBalance ? 'rgba(234, 179, 8, 0.2)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.05)' : (caseItem?.glowColor || '#ffffff') + '20', 
               border: `1px solid ${isLowBalance ? 'rgba(234, 179, 8, 0.4)' : (isPromo && promoOpened) ? 'rgba(255,255,255,0.1)' : (caseItem?.glowColor || '#ffffff') + '40'}`, 
