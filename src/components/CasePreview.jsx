@@ -136,7 +136,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         const extendedItems = [];
         for (let r = 0; r < repetitions; r++) extendedItems.push(...spinItems);
 
-        // Ищем выигрыш в локальном пуле (для красивого случая); если нет — всё равно подменим
+        // Локальный индекс выигрыша (для красоты); найден или нет — подменим целевую ячейку
         let winIndex = spinItems.findIndex(i => i?.name === lastWonItem?.name);
         if (winIndex === -1) {
             winIndex = Math.floor(spinItems.length / 2);
@@ -144,15 +144,27 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         }
 
         const targetIndex = spinItems.length * 7 + winIndex;
-        // КРИТИЧНО: подменяем ячейку на targetIndex на реальный выигрыш
-        if (lastWonItem && targetIndex < extendedItems.length) {
-            extendedItems[targetIndex] = { ...lastWonItem };
+        // КРИТИЧНО: подменяем целевую ячейку И её соседей на реальный выигрыш,
+        // чтобы любая возможная погрешность округления при остановке всё равно
+        // показала тот же предмет под индикатором.
+        if (lastWonItem) {
+            for (let off = -1; off <= 1; off++) {
+                const idx = targetIndex + off;
+                if (idx >= 0 && idx < extendedItems.length) {
+                    extendedItems[idx] = { ...lastWonItem };
+                }
+            }
         }
 
+        // Учитываем padding контейнера viewportRef (p-4 = 16px слева).
+        // Реальный контент сдвинут от края контейнера на padding.
+        const VIEWPORT_PADDING_X = 16;
         const viewportWidth = viewportRef.current ? viewportRef.current.offsetWidth : (window.innerWidth - 64);
-        const containerCenter = viewportWidth / 2;
+        const innerWidth = viewportWidth - VIEWPORT_PADDING_X * 2;
+        const containerCenter = VIEWPORT_PADDING_X + innerWidth / 2;
         const itemCenter = (targetIndex * FULL_ITEM_WIDTH) + (ITEM_SIZE / 2);
-        const targetX = containerCenter - itemCenter;
+        // Компенсируем padding слева — лента начинается от padding, не от 0
+        const targetX = containerCenter - itemCenter - VIEWPORT_PADDING_X;
 
         animationKey.current += 1;
         // Play spin sound synchronized with wheel start (not before server response)
