@@ -671,7 +671,7 @@ async def start_cmd(message: types.Message, command: CommandObject):
         await message.answer("❌ Ошибка при запуске. Попробуйте позже.")
 
 
-@dp.message(Command("ref"))
+@dp.message(Command("ref", "referal", "referral"))
 async def ref_cmd(message: types.Message):
     """Get personal referral link."""
     try:
@@ -700,23 +700,25 @@ async def help_cmd(message: types.Message):
         text += "• `/start` — Запуск приложения\n"
         text += "• `/help` — Справка по командам\n"
 
+        text += "• `/ref` — Ваша реферальная ссылка (+1⭐ за друга)\n"
+        text += "• `/referal` — То же что /ref\n"
+
         if message.from_user.id in ADMIN_IDS:
             text += "\n🛠 **Админ-панель:**\n"
-            text += "• `/ref` — Ваша реферальная ссылка (+1⭐ за друга)\n"
-    text += "• `/luck` — Уровень удачи (админ)\n"
+            text += "• `/luck` — Уровень удачи (админ)\n"
             text += "• `/+ <число>` — Добавить себе звезд\n"
             text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
             text += "• `/user <ID>` — Информация об игроке\n"
             text += "• `/stats` — Общая статистика\n"
             text += "• `/admin_send <текст>` — Рассылка всем пользователям\n"
             text += "• `/hype <номер_шаблона>` — Маркетинговая рассылка\n"
+            text += "• `/adminref [CODE]` — Реферальная ссылка (auto-start)\n"
             text += "\n🎟 **Промокоды:**\n"
             text += "• `/promo CODE MIN_DEPOSIT_24H DURATION_H` — Создать промокод\n"
             text += "  Юзер должен пополнить ≥MIN_DEPOSIT⭐ за 24ч; код живёт DURATION_H часов\n"
             text += "  Пример: `/promo WELCOME 50 24`\n"
             text += "• `/listpromo` — Список промокодов (топ 20)\n"
-            text += "• `/adminref [CODE]` — Реферальная ссылка (auto-start)\n"
-    text += "• `/delpromo CODE` — Деактивировать промокод\n"
+            text += "• `/delpromo CODE` — Деактивировать промокод\n"
 
         await message.answer(text, parse_mode="Markdown")
     except Exception as e:
