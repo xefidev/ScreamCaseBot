@@ -406,7 +406,7 @@ export default function App() {
   };
 
   return (
-    <MotionConfig reducedMotion={lowPerf ? "always" : "never"}>
+    <MotionConfig reducedMotion="never">
     <div className="h-screen w-full overflow-hidden flex justify-center items-center bg-[#1a1b1e] text-white font-rounded select-none">
       <div className="relative z-10 flex flex-col h-screen w-full max-w-md bg-[#1a1b1e] overflow-hidden">
         <div className="shrink-0">
