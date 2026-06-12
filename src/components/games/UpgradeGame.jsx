@@ -69,7 +69,9 @@ export default function UpgradeGame({ isPage, inventory, setInventory, balance, 
       selectedSlot1?.id,
       selectedSlot2?.name || 'Upgraded',
       selectedSlot2?.price || selectedSlot2?.cost || 0,
-      selectedSlot2?.image || ''
+      selectedSlot2?.image || '',
+      selectedSlot1?.name || selectedSlot1?.item_name || '',
+      selectedSlot1?.price || selectedSlot1?.cost || selectedSlot1?.item_price || 0
     );
     const serverChance = (typeof res?.chance === 'number') ? res.chance : successChance;
         
