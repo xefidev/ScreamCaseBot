@@ -160,62 +160,56 @@ button, input, .flex-center {
    animations (case opening, wheel spin) still run via JS but
    without expensive CSS filters. */
 
-html.lowperf,
-html.lowperf body {
-  /* Hint the browser this mode prioritizes responsiveness */
+
+/* === Universal mobile/GPU optimizations === */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeSpeed;
+  overscroll-behavior-y: none;
 }
 
-html.lowperf * {
-  /* Remove ALL CSS animations/transitions on simple mode */
-  animation: none !important;
-  transition: none;
+/* Promote heavy animated elements to GPU layer */
+.glass-panel,
+.glass-card,
+.shimmer-bg,
+.oil-slick-bg,
+[data-framer-motion],
+.case-preview-card,
+.spin-strip,
+.wheel-container {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
-/* Allow toggle knob to animate even in lowperf mode */
-html.lowperf button[role="switch"] span {
-  transition: transform 0.2s ease !important;
+/* Smooth scrolling on iOS */
+.overflow-y-auto,
+.overflow-auto,
+.overflow-scroll {
+  -webkit-overflow-scrolling: touch;
 }
 
-html.lowperf .glass-panel,
-html.lowperf .glass-card,
-html.lowperf .glass-button,
-html.lowperf .glass-input {
-  /* Drop backdrop-blur — most expensive op on weak GPUs */
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-  /* Compensate with a slightly more opaque bg so glass still reads */
-  background-color: rgba(28, 30, 35, 0.85) !important;
+/* Respect users who genuinely need reduced motion (OS-level) */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-html.lowperf .shadow-glass,
-html.lowperf .shadow-xl,
-html.lowperf .shadow-2xl {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-}
-
-html.lowperf .shimmer-bg,
-html.lowperf .oil-slick-bg {
-  /* Disable looping background animations entirely */
-  background: rgba(255, 255, 255, 0.04) !important;
-  animation: none !important;
-}
-
-html.lowperf .framer-motion-fix {
-  /* Don't force GPU layer creation on weak devices */
-  transform: none;
-  -webkit-transform: none;
-}
-
-/* Reduce filter/blur on standalone decorative elements */
-html.lowperf [class*="blur-"] {
-  filter: none !important;
-  -webkit-filter: none !important;
-}
-
-/* Skip hover scale-up effects */
-html.lowperf .group-hover\:scale-110:hover,
-html.lowperf .hover\:scale-105:hover,
-html.lowperf [class*="hover:scale-"]:hover {
-  transform: none !important;
+/* Reduce blur cost on low-DPI / low-power mobile */
+@media (max-width: 480px) {
+  .glass-panel,
+  .glass-card,
+  .glass-button {
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
 }
