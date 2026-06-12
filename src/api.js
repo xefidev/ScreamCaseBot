@@ -611,3 +611,58 @@ export const redeemPromo = async (userId, code) => {
     throw error;
   }
 };
+
+// === Withdrawal API ===
+
+export const requestWithdrawal = async (userId, invId) => {
+  try {
+    if (!userId || !invId) throw new Error('Missing params');
+    const response = await fetch(`${BACKEND_URL}/api/withdraw_request`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, inv_id: invId })),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) {
+      const msg = data.message || '❌ Не удалось создать заявку на вывод';
+      const err = new Error(msg);
+      err.status = response.status;
+      err.errorCode = data.error;
+      throw err;
+    }
+    return data; // { success, fee_stars, fee_ton, item_name, item_price }
+  } catch (error) {
+    console.error('requestWithdrawal error:', error);
+    if (!error.status) {
+      showAlert('❌ Ошибка сети. Попробуйте позже.');
+    }
+    throw error;
+  }
+};
+
+export const payWithdrawalFee = async (userId, invId, method) => {
+  try {
+    if (!userId || !invId) throw new Error('Missing params');
+    if (method !== 'stars' && method !== 'ton') throw new Error('Invalid payment method');
+    const response = await fetch(`${BACKEND_URL}/api/withdraw_pay`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(addAuthToBody({ user_id: userId, inv_id: invId, method })),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || data.error) {
+      const msg = data.message || '❌ Не удалось обработать оплату комиссии';
+      const err = new Error(msg);
+      err.status = response.status;
+      err.errorCode = data.error;
+      throw err;
+    }
+    return data; // { success, invoice_url?, ton_address?, comment? }
+  } catch (error) {
+    console.error('payWithdrawalFee error:', error);
+    if (!error.status) {
+      showAlert('❌ Ошибка сети. Попробуйте позже.');
+    }
+    throw error;
+  }
+};
