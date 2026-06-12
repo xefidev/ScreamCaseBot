@@ -54,7 +54,7 @@ const handleApiError = async (response) => {
 /**
  * Show Telegram alert with proper error message
  */
-const showAlert = (message) => {
+export const showAlert = (message) => {
   if (window.Telegram?.WebApp) {
     window.Telegram.WebApp.showAlert(message);
   } else {
