@@ -213,3 +213,167 @@ html, body {
     -webkit-backdrop-filter: blur(8px);
   }
 }
+
+/* ============ MOBILE UX ENHANCEMENTS ============ */
+
+/* Safe-area variables — respects iPhone notch / home-bar / Android nav */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --tap-min: 44px; /* Apple HIG minimum tap target */
+}
+
+.safe-pad-top    { padding-top: var(--safe-top); }
+.safe-pad-bottom { padding-bottom: var(--safe-bottom); }
+.safe-mt        { margin-top: var(--safe-top); }
+.safe-mb        { margin-bottom: var(--safe-bottom); }
+
+/* Ensure interactive things have minimum tap target on mobile */
+@media (max-width: 480px) {
+  button, a, [role="button"], [tabindex]:not([tabindex="-1"]) {
+    min-height: var(--tap-min);
+  }
+  button.tap-sm, a.tap-sm {
+    min-height: 0; /* opt-out */
+  }
+}
+
+/* Universal soft tap-press feedback */
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled),
+.tap-press:active {
+  transform: scale(0.96);
+  transition: transform 0.08s ease-out;
+}
+button, [role="button"], .tap-press {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.18s ease, opacity 0.18s ease;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Hide scrollbar but keep functionality (mobile) */
+.scroll-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scroll-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Smooth snap horizontal lists (tabs, cases row) */
+.snap-x-smooth {
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.snap-x-smooth > * {
+  scroll-snap-align: start;
+}
+
+/* Page transition — fade + tiny rise */
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter {
+  animation: pageEnter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Stagger reveal for grid items */
+@keyframes itemEnter {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.item-enter {
+  animation: itemEnter 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.stagger-1 { animation-delay: 0.04s; }
+.stagger-2 { animation-delay: 0.08s; }
+.stagger-3 { animation-delay: 0.12s; }
+.stagger-4 { animation-delay: 0.16s; }
+.stagger-5 { animation-delay: 0.20s; }
+.stagger-6 { animation-delay: 0.24s; }
+.stagger-7 { animation-delay: 0.28s; }
+.stagger-8 { animation-delay: 0.32s; }
+
+/* Subtle floating animation for hero items (cases) */
+@keyframes floatY {
+  0%, 100% { transform: translateY(0) translateZ(0); }
+  50%      { transform: translateY(-3px) translateZ(0); }
+}
+.float-y {
+  animation: floatY 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+html.lowperf .float-y { animation: none; }
+
+/* Soft pulse for important CTAs */
+@keyframes softPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.35); }
+  50%      { box-shadow: 0 0 0 12px rgba(168, 85, 247, 0); }
+}
+.cta-pulse {
+  animation: softPulse 2.4s ease-in-out infinite;
+}
+html.lowperf .cta-pulse { animation: none; }
+
+/* Bottom-nav active dot */
+@keyframes navDot {
+  from { opacity: 0; transform: scale(0); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.nav-active-dot {
+  animation: navDot 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Smooth in-app modal entry */
+@keyframes sheetUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sheet-up {
+  animation: sheetUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Skeleton shimmer (loading states) */
+@keyframes shimmerMove {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.10) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerMove 1.6s ease-in-out infinite;
+  border-radius: 12px;
+}
+html.lowperf .skeleton { animation: none; background: rgba(255,255,255,0.05); }
+
+/* Improve text legibility on small screens */
+@media (max-width: 380px) {
+  body { font-size: 14px; }
+}
+
+/* Disable iOS auto-zoom on focused input */
+@media (max-width: 480px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
+
+/* Press feedback for cards (kase tiles, gift tiles) */
+.tap-card {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.18s ease;
+  touch-action: manipulation;
+}
+.tap-card:active:not(.is-disabled) {
+  transform: scale(0.97);
+}
+
