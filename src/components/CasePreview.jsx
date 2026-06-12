@@ -22,7 +22,7 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
   if (!caseItem) return null;
 
   const isDaily = caseItem?.name?.toLowerCase()?.includes('daily');
-  const isPromo = caseItem?.name?.toLowerCase()?.includes('promo');
+  const isPromo = !!caseItem?.isPromo || caseItem?.name?.toLowerCase() === 'promo';
   const hasLimit = caseItem?.total_limit !== -1;
   const canOpen = (!hasLimit || currentStock >= quantity) && (!isPromo || promoCode.trim().length > 0);
 
@@ -155,6 +155,8 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
         const targetX = containerCenter - itemCenter;
 
         animationKey.current += 1;
+        // Play spin sound synchronized with wheel start (not before server response)
+        playSound('/asset/Sounds/go-new-gambling.mp3');
         setSpinData({ items: extendedItems, targetX, animKey: animationKey.current });
         // Low perf mode — skip animation, show result immediately
         if (lowPerf) {
