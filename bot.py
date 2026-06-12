@@ -2077,6 +2077,123 @@ async def admin_delete_promo(message: types.Message):
         await message.answer(f"❌ Ошибка: {e}")
 
 
+@routes.post('/api/withdraw_request')
+async def api_withdraw_request(request):
+    """User clicks 'Вывести' on an item > 500 stars. Returns fee requirements."""
+    try:
+        data = request.get('body_json') or await request.json()
+        uid = data.get('user_id') or data.get('uid')
+        inv_id = data.get('inventory_id')
+
+        if not uid or inv_id is None:
+            return web.json_response({"error": "invalid_data"}, status=400)
+
+        try:
+            uid = int(uid)
+            inv_id = int(inv_id)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "invalid_data"}, status=400)
+
+        # Verify ownership and price threshold
+        inv_res = supabase.table("user_inventory").select("id, item_name, item_price, withdrawn").eq("user_id", uid).eq("id", inv_id).execute()
+        if not inv_res.data:
+            return web.json_response({"error": "source_not_found"}, status=404)
+
+        item = inv_res.data[0]
+        if item.get("withdrawn"):
+            return web.json_response({"error": "source_used"}, status=403)
+
+        price = int(item.get("item_price") or 0)
+        if price < 500:
+            return web.json_response({"error": "withdrawal_not_available", "message": "Вывод доступен только для подарков от 500⭐"}, status=403)
+
+        return web.json_response({
+            "ok": True,
+            "fee_stars": 50,
+            "fee_ton": 5,
+            "item_name": item.get("item_name"),
+            "item_price": price,
+            "message": "Для вывода нужно оплатить комиссию: 50⭐ настоящих звёзд Telegram или 5 TON"
+        })
+    except Exception as e:
+        logger.error(f"api_withdraw_request error: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+
+@routes.post('/api/withdraw_pay')
+async def api_withdraw_pay(request):
+    """User confirms paying withdrawal fee. Creates invoice for real payment."""
+    try:
+        data = request.get('body_json') or await request.json()
+        uid = data.get('user_id') or data.get('uid')
+        inv_id = data.get('inventory_id')
+        method = (data.get('method') or 'stars').lower()
+
+        if not uid or inv_id is None:
+            return web.json_response({"error": "invalid_data"}, status=400)
+
+        try:
+            uid = int(uid)
+            inv_id = int(inv_id)
+        except (ValueError, TypeError):
+            return web.json_response({"error": "invalid_data"}, status=400)
+
+        # Verify item again
+        inv_res = supabase.table("user_inventory").select("id, item_name, item_price, withdrawn").eq("user_id", uid).eq("id", inv_id).execute()
+        if not inv_res.data:
+            return web.json_response({"error": "source_not_found"}, status=404)
+        item = inv_res.data[0]
+        if item.get("withdrawn"):
+            return web.json_response({"error": "source_used"}, status=403)
+        if int(item.get("item_price") or 0) < 500:
+            return web.json_response({"error": "withdrawal_not_available"}, status=403)
+
+        # Log withdrawal request for admin
+        try:
+            supabase.table("withdraw_requests").insert({
+                "user_id": uid,
+                "inventory_id": inv_id,
+                "item_name": item.get("item_name"),
+                "item_price": item.get("item_price"),
+                "method": method,
+                "status": "pending_payment",
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }).execute()
+        except Exception as e:
+            logger.warning(f"Failed to log withdraw request: {e}")
+
+        # Create invoice for the fee
+        if method == 'stars':
+            try:
+                invoice_link = await bot.create_invoice_link(
+                    title=f"Комиссия за вывод: {item.get('item_name')}",
+                    description=f"Оплата комиссии 50⭐ за вывод подарка стоимостью {item.get('item_price')}⭐",
+                    payload=f"withdraw_fee:{uid}:{inv_id}",
+                    provider_token="",
+                    currency="XTR",
+                    prices=[LabeledPrice(label="Комиссия за вывод", amount=50)]
+                )
+                return web.json_response({"ok": True, "invoice_link": invoice_link, "method": "stars", "amount": 50})
+            except Exception as e:
+                logger.error(f"Failed to create stars invoice for withdrawal: {e}")
+                return web.json_response({"error": "server_error"}, status=500)
+        elif method == 'ton':
+            # Return TON payment instructions
+            return web.json_response({
+                "ok": True,
+                "method": "ton",
+                "amount": 5,
+                "wallet": TON_WALLET if 'TON_WALLET' in globals() else "",
+                "comment": f"withdraw_{uid}_{inv_id}",
+                "message": "Отправьте 5 TON на указанный адрес с указанным комментарием"
+            })
+        else:
+            return web.json_response({"error": "invalid_data"}, status=400)
+    except Exception as e:
+        logger.error(f"api_withdraw_pay error: {e}")
+        return web.json_response({"error": "server_error"}, status=500)
+
+
 async def api_redeem_promo(request):
     """POST /api/redeem_promo  body: {code: str}
     Promo v2: код валиден IFF
@@ -2196,6 +2313,8 @@ async def main():
     app.router.add_post('/api/heartbeat', api_heartbeat)
     app.router.add_get('/api/check_sub', api_check_sub)
     app.router.add_get('/api/balance', api_balance)
+    app.router.add_post('/api/withdraw_request', api_withdraw_request)
+    app.router.add_post('/api/withdraw_pay', api_withdraw_pay)
     app.router.add_get('/api/referrals', api_referrals)
     app.router.add_get('/api/referral_link', api_referral_link)
     app.router.add_get('/api/cases', api_cases)
