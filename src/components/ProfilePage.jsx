@@ -148,7 +148,7 @@ export default function ProfilePage({
 
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} className="glass-panel relative mb-6 overflow-hidden p-6 bg-white/[0.02] border-white/10" style={{ willChange: 'transform' }}>
         <div className="relative z-10 flex items-center gap-4">
-          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-2xl">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-white/5 shadow-2xl" style={{ marginTop: '12px' }}>
             {user?.photo_url ? (
               <img src={user.photo_url} alt="Avatar" className="h-full w-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; }} loading="lazy" decoding="async" />
             ) : (
