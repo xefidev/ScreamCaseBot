@@ -1339,36 +1339,79 @@ async def api_upgrade(request):
             logger.warning(f"Invalid target_price from user {uid}: {data.get('target_price')}")
             return web.json_response({"error": "invalid_target_price", "ok": False, "message": "Некорректная цена цели"}, status=400)
 
-        # Validate source_inv_id
-        try:
-            source_inv_id = int(source_inv_id)
-        except (ValueError, TypeError):
-            logger.warning(f"Invalid source_inventory_id from user {uid}: {data.get('source_inventory_id')}")
-            return web.json_response({"error": "invalid_source_id", "ok": False, "message": "Некорректный ID предмета"}, status=400)
-
+        # Validate uid first
         if not uid or not target_name or target_price <= 0:
             return web.json_response({"error": "invalid_data", "ok": False, "message": "Некорректные данные"}, status=400)
-
         try:
             uid = int(uid)
         except (ValueError, TypeError):
             logger.warning(f"Invalid uid: {uid}")
             return web.json_response({"error": "invalid_user", "ok": False}, status=400)
 
-        # 1) Verify user owns the source inventory item. Try with 'withdrawn' col, fallback without.
+        # source_inv_id may be a real DB id, a client-generated Date.now() id,
+        # or missing. We attempt DB id first; if it fails we fall back to
+        # searching by item_name (+optional source_price) for the same user.
+        source_price_hint = None
         try:
-            inv_res = supabase.table("user_inventory").select("id, case_id, item_name, item_image, item_price, withdrawn").eq("user_id", uid).eq("id", source_inv_id).execute()
-            has_withdrawn_col = True
-        except Exception as e:
-            logger.warning(f"[upgrade] withdrawn column missing, retrying without: {e}")
-            inv_res = supabase.table("user_inventory").select("id, case_id, item_name, item_image, item_price").eq("user_id", uid).eq("id", source_inv_id).execute()
-            has_withdrawn_col = False
+            source_price_hint = int(data.get("source_price") or 0) or None
+        except (ValueError, TypeError):
+            source_price_hint = None
+        source_name_hint = (data.get("source_name") or "").strip() or None
 
-        if not inv_res.data:
-            logger.warning(f"[upgrade] source not found uid={uid} src_id={source_inv_id}")
+        try:
+            source_inv_id_int = int(source_inv_id) if source_inv_id is not None else None
+        except (ValueError, TypeError):
+            source_inv_id_int = None
+
+        # 1) Try lookup by id first (if it's a plausible DB id — small int).
+        # Client-side Date.now() ids are huge (>10^12) and will never match real rows,
+        # so skip the id query entirely for those to save a round-trip.
+        inv_res = None
+        has_withdrawn_col = True
+        if source_inv_id_int is not None and source_inv_id_int < 10_000_000_000:
+            try:
+                inv_res = supabase.table("user_inventory").select(
+                    "id, case_id, item_name, item_image, item_price, withdrawn"
+                ).eq("user_id", uid).eq("id", source_inv_id_int).execute()
+            except Exception as e:
+                logger.warning(f"[upgrade] withdrawn column missing on id lookup: {e}")
+                inv_res = supabase.table("user_inventory").select(
+                    "id, case_id, item_name, item_image, item_price"
+                ).eq("user_id", uid).eq("id", source_inv_id_int).execute()
+                has_withdrawn_col = False
+
+        # 2) Fallback: find by name (+ price hint) for this user.
+        if not inv_res or not inv_res.data:
+            name_for_lookup = source_name_hint or target_name  # best effort
+            q = supabase.table("user_inventory").select(
+                "id, case_id, item_name, item_image, item_price, withdrawn"
+            ).eq("user_id", uid)
+            if source_name_hint:
+                q = q.eq("item_name", source_name_hint)
+            if source_price_hint:
+                q = q.eq("item_price", source_price_hint)
+            try:
+                fb_res = q.order("opened_at", desc=True).limit(1).execute()
+            except Exception as e:
+                logger.warning(f"[upgrade] fallback w/ withdrawn failed: {e}")
+                q2 = supabase.table("user_inventory").select(
+                    "id, case_id, item_name, item_image, item_price"
+                ).eq("user_id", uid)
+                if source_name_hint:
+                    q2 = q2.eq("item_name", source_name_hint)
+                if source_price_hint:
+                    q2 = q2.eq("item_price", source_price_hint)
+                fb_res = q2.order("opened_at", desc=True).limit(1).execute()
+                has_withdrawn_col = False
+            inv_res = fb_res
+
+        if not inv_res or not inv_res.data:
+            logger.warning(f"[upgrade] source not found uid={uid} src_id={source_inv_id} name_hint={source_name_hint!r} price_hint={source_price_hint}")
             return web.json_response({"error": "source_not_found", "ok": False, "message": "Предмет не найден в инвентаре"}, status=404)
 
         source_item = inv_res.data[0]
+        # Resolve canonical DB id from whatever we matched
+        source_inv_id = int(source_item["id"])
         if has_withdrawn_col and source_item.get("withdrawn"):
             return web.json_response({"error": "source_used", "ok": False, "message": "Предмет уже использован"}, status=403)
 
