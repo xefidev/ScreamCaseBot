@@ -2079,7 +2079,6 @@ async def admin_delete_promo(message: types.Message):
         await message.answer(f"❌ Ошибка: {e}")
 
 
-@routes.post('/api/withdraw_request')
 async def api_withdraw_request(request):
     """User clicks 'Вывести' on an item > 500 stars. Returns fee requirements."""
     try:
@@ -2122,7 +2121,6 @@ async def api_withdraw_request(request):
         return web.json_response({"error": "server_error"}, status=500)
 
 
-@routes.post('/api/withdraw_pay')
 async def api_withdraw_pay(request):
     """User confirms paying withdrawal fee. Creates invoice for real payment."""
     try:
