@@ -264,11 +264,11 @@ def register_or_get(user_id, username=None, first_name=None, photo_url=None, ref
         supabase.table("users").insert(user_data).execute()
 
         if ref_id:
-            ref_user = supabase.table("users").select("tickets").eq("user_id", ref_id).execute()
+            ref_user = supabase.table("users").select("stars").eq("user_id", ref_id).execute()
             if ref_user.data:
-                new_tickets = (ref_user.data[0].get('tickets') or 0) + 1
-                supabase.table("users").update({"tickets": new_tickets}).eq("user_id", ref_id).execute()
-            logger.info(f"User {user_id} joined via referral {ref_id}")
+                new_stars = (ref_user.data[0].get('stars') or 0) + 1
+                supabase.table("users").update({"stars": new_stars}).eq("user_id", ref_id).execute()
+            logger.info(f"User {user_id} joined via referral {ref_id}, +1 star to {ref_id}")
 
         return (0, date), True
     except Exception as e:
@@ -657,7 +657,7 @@ async def start_cmd(message: types.Message, command: CommandObject):
                 ref_id = int(referred_by)
                 if ref_id != message.from_user.id:
                     try:
-                        await bot.send_message(ref_id, f"🎉 По вашей ссылке перешел новый пользователь! Вы получили +1 билет 🎫")
+                        await bot.send_message(ref_id, f"🎉 По вашей ссылке перешел новый пользователь! Вы получили +1 ⭐")
                     except Exception as e:
                         logger.error(f"Failed to notify referrer: {e}")
 
@@ -671,6 +671,28 @@ async def start_cmd(message: types.Message, command: CommandObject):
         await message.answer("❌ Ошибка при запуске. Попробуйте позже.")
 
 
+@dp.message(Command("ref"))
+async def ref_cmd(message: types.Message):
+    """Get personal referral link."""
+    try:
+        uid = message.from_user.id
+        bot_username = await _get_bot_username()
+        link = f"https://t.me/{bot_username}?start={uid}"
+        res = supabase.table("users").select("user_id").eq("referred_by", uid).execute()
+        count = len(res.data) if res.data else 0
+        await message.answer(
+            f"🔗 **Ваша реферальная ссылка**\n\n"
+            f"`{link}`\n\n"
+            f"👥 Приглашено: {count}\n"
+            f"⭐ За каждого друга: +1 звезда\n\n"
+            f"Поделитесь ссылкой — когда друг запустит бота, вы получите звезду!",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logger.error(f"Error in ref_cmd: {e}")
+        await message.answer("❌ Ошибка. Попробуйте позже.")
+
+
 @dp.message(Command("help"))
 async def help_cmd(message: types.Message):
     try:
@@ -680,7 +702,8 @@ async def help_cmd(message: types.Message):
 
         if message.from_user.id in ADMIN_IDS:
             text += "\n🛠 **Админ-панель:**\n"
-            text += "• `/luck` — Уровень удачи (админ)\n"
+            text += "• `/ref` — Ваша реферальная ссылка (+1⭐ за друга)\n"
+    text += "• `/luck` — Уровень удачи (админ)\n"
             text += "• `/+ <число>` — Добавить себе звезд\n"
             text += "• `/setbalance <ID> <число>` — Установить баланс пользователю\n"
             text += "• `/user <ID>` — Информация об игроке\n"
@@ -692,7 +715,8 @@ async def help_cmd(message: types.Message):
             text += "  Юзер должен пополнить ≥MIN_DEPOSIT⭐ за 24ч; код живёт DURATION_H часов\n"
             text += "  Пример: `/promo WELCOME 50 24`\n"
             text += "• `/listpromo` — Список промокодов (топ 20)\n"
-            text += "• `/delpromo CODE` — Деактивировать промокод\n"
+            text += "• `/adminref [CODE]` — Реферальная ссылка (auto-start)\n"
+    text += "• `/delpromo CODE` — Деактивировать промокод\n"
 
         await message.answer(text, parse_mode="Markdown")
     except Exception as e:
@@ -2000,6 +2024,37 @@ async def admin_list_promo(message: types.Message):
     except Exception as e:
         logger.error(f"Error in admin_list_promo: {e}", exc_info=True)
         await message.answer(f"❌ Ошибка: {e}")
+
+
+@dp.message(Command("adminref"))
+async def admin_ref_cmd(message: types.Message, command: CommandObject):
+    """Admin: generate referral link with auto-start."""
+    try:
+        uid = message.from_user.id
+        if uid not in ADMIN_IDS:
+            return  # silent ignore for non-admins
+
+        bot_username = await _get_bot_username()
+        args = command.args.strip() if command.args else ""
+
+        if args:
+            link = f"https://t.me/{bot_username}?start={args}"
+            await message.answer(
+                f"🔗 **Реферальная ссылка (custom)**\n\n"
+                f"`{link}`\n\n"
+                f"При переходе автоматически вызовет `/start {args}`",
+                parse_mode="Markdown"
+            )
+        else:
+            link = f"https://t.me/{bot_username}?start={uid}"
+            await message.answer(
+                f"🔗 **Админ-реферальная ссылка**\n\n"
+                f"`{link}`\n\n"
+                f"При переходе автоматически вызовет `/start {uid}`",
+                parse_mode="Markdown"
+            )
+    except Exception as e:
+        logger.error(f"Error in admin_ref_cmd: {e}")
 
 
 @dp.message(Command("delpromo"))
