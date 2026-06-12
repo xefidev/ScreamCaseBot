@@ -43,16 +43,6 @@ export default function CasePreview({ user, caseItem, onClose, onWin, balance, s
 
   const previewGifts = useMemo(() => {
     if (!dropItems || dropItems.length === 0) return [];
-  // Mobile optimization: disable passive event listeners for better performance
-  useEffect(() => {
-    const wheelDiv = document.querySelector('[data-wheel-container]');
-    if (wheelDiv) {
-      wheelDiv.addEventListener('touchmove', (e) => {
-        // Allow natural scroll, prevent jank
-      }, { passive: true });
-    }
-  }, []);
-
     if (dropItems.length === 1) return [dropItems[0]];
     const sorted = [...dropItems].sort((a, b) => b.price - a.price);
     return sorted.slice(0, 2);
