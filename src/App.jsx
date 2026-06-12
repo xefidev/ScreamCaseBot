@@ -348,7 +348,7 @@ export default function App() {
             <div className="grid grid-cols-1 gap-4 mt-6">
               <button
                 onClick={() => { triggerHaptic(); setActiveGame('wheel'); }}
-                className="relative h-44 overflow-hidden rounded-[2.5rem] border border-purple-500/30 text-left bg-gradient-to-br from-purple-600/10 to-black/40 shadow-2xl transition-all group"
+                className="tap-card relative h-44 overflow-hidden rounded-[2.5rem] border border-purple-500/30 text-left bg-gradient-to-br from-purple-600/10 to-black/40 shadow-2xl transition-all group"
               >
                 <div className="absolute right-[-10%] top-[-10%] h-40 w-40 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
                   <Gamepad2 size={120} className="text-purple-400 rotate-12" />
@@ -369,7 +369,7 @@ export default function App() {
 
               <button
                 onClick={() => { triggerHaptic(); setActiveGame('upgrade'); }}
-                className="relative h-44 overflow-hidden rounded-[2.5rem] border border-green-500/30 text-left bg-gradient-to-br from-green-600/10 to-black/40 shadow-2xl transition-all group"
+                className="tap-card relative h-44 overflow-hidden rounded-[2.5rem] border border-green-500/30 text-left bg-gradient-to-br from-green-600/10 to-black/40 shadow-2xl transition-all group"
               >
                 <div className="absolute right-[-10%] top-[-10%] h-40 w-40 flex items-center justify-center opacity-20 group-hover:opacity-40 transition-opacity">
                   <Zap size={120} className="text-green-400 -rotate-12" />
@@ -410,7 +410,7 @@ export default function App() {
     <div className="h-screen w-full overflow-hidden flex justify-center items-center bg-[#1a1b1e] text-white font-rounded select-none">
       <div className="relative z-10 flex flex-col h-screen w-full max-w-md bg-[#1a1b1e] overflow-hidden">
         <div className="shrink-0">
-          <div className="px-6 py-4 flex items-center justify-between bg-[#1a1b1e]/80 backdrop-blur-lg border-b border-white/5">
+          <div className="px-6 py-4 safe-pad-top flex items-center justify-between bg-[#1a1b1e]/80 backdrop-blur-lg border-b border-white/5">
           <div className="flex items-center justify-between w-full">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-white/5 relative">
@@ -438,7 +438,7 @@ export default function App() {
             </div>
             <button
               onClick={() => { setShowTopUp(true); triggerHaptic(); }}
-              className="flex items-center gap-3 bg-white/5 border border-white/10 pl-4 pr-3 py-2 rounded-2xl hover:bg-white/10 transition-all group"
+              className="tap-press flex items-center gap-3 bg-white/5 border border-white/10 pl-4 pr-3 py-2 rounded-2xl hover:bg-white/10 active:bg-white/15 transition-all group"
             >
               <div className="flex flex-col items-end">
                 <span className="text-lg font-black text-yellow-500 leading-none">
@@ -457,12 +457,23 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
-          {renderContent()}
+        <div className="flex-1 overflow-y-auto scroll-hide">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeGame || activeTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.22, ease: [0.2, 0.8, 0.2, 1] }}
+              className="h-full"
+            >
+              {renderContent()}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         <div className="shrink-0 pb-safe">
-          <div className="px-6 py-4 bg-[#1a1b1e]/90 backdrop-blur-xl border-t border-white/5">
+          <div className="px-6 py-3 safe-pad-bottom bg-[#1a1b1e]/90 backdrop-blur-xl border-t border-white/5">
           <div className="flex h-14 items-center justify-around gap-2">
             {Object.entries(TABS).map(([key, tabData]) => {
               const Icon = tabData.icon;
@@ -470,9 +481,12 @@ export default function App() {
               return (
                 <button
                   key={key}
-                  className="relative flex-1 flex flex-col items-center justify-center py-2 gap-1"
+                  className="tap-sm relative flex-1 flex flex-col items-center justify-center py-2 gap-1"
                   onClick={() => { setActiveTab(key); setActiveGame(null); triggerHaptic(); }}
                 >
+                  {isActive && (
+                    <span className="nav-active-dot absolute top-0 w-1 h-1 rounded-full bg-white" aria-hidden />
+                  )}
                   <div className={`w-12 h-8 rounded-2xl flex items-center justify-center transition-all ${isActive ? 'bg-white/10 text-white' : 'text-white/20 hover:text-white/40'}`}>
                     <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
                   </div>
